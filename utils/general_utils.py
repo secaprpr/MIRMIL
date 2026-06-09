@@ -1,10 +1,10 @@
 import random
 import numpy as np
 import torch
-import pytz
 import json
 import glob
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import shutil
 import pandas as pd
 import os
@@ -26,10 +26,7 @@ def print_args(args):
         print(f'Fold Info:{args.Dataset.now_fold}')
     
 def get_time():
-
-    tz = pytz.timezone('Asia/Shanghai')
-
-    now = datetime.now(tz)
+    now = datetime.now(ZoneInfo('Asia/Shanghai'))
 
     return now.strftime("%Y-%m-%d-%H-%M")
 def set_global_seed(seed):
@@ -78,6 +75,12 @@ def add_epoch_info_log(epoch_info_log,epoch,train_loss,val_loss,test_loss,val_me
     else:
         for key in val_metrics.keys():
             epoch_info_log['test_'+key].append(None)
+
+
+def attach_test_result(epoch_info_log, epoch_index, test_loss, test_metrics):
+    epoch_info_log["test_loss"][epoch_index] = test_loss
+    for key, value in test_metrics.items():
+        epoch_info_log["test_" + key][epoch_index] = value
         
 def cal_is_stopping(args,epoch_info_log,process_pipeline):
     if process_pipeline == 'Train_Test':

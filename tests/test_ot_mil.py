@@ -31,6 +31,7 @@ class OTMILTest(unittest.TestCase):
 
         self.assertEqual(output["logits"].shape, (1, 3))
         self.assertEqual(output["complement_logits"].shape, (1, 3))
+        self.assertEqual(output["full_logits"].shape, (1, 3))
         self.assertEqual(output["transport"].shape, (40, 4))
         self.assertEqual(output["selection_gate"].shape, (40,))
         self.assertTrue(torch.isfinite(losses["loss"]))

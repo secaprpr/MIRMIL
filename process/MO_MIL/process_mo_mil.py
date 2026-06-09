@@ -1,8 +1,17 @@
+import glob
+import os
+
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from utils.general_utils import add_epoch_info_log, early_stop, init_epoch_info_log, set_global_seed
+from utils.general_utils import (
+    add_epoch_info_log,
+    attach_test_result,
+    cal_is_stopping,
+    init_epoch_info_log,
+    set_global_seed,
+)
 from utils.loop_utils import train_loop, val_loop
 from utils.model_utils import (
     get_criterion,
@@ -60,14 +69,12 @@ def process_MO_MIL(args):
         train_loss, cost_time = train_loop(device, mil_model, train_dataloader, criterion, optimizer, now_scheduler)
         if process_pipeline == 'Train_Val_Test':
             val_loss, val_metrics = val_loop(device, args.General.num_classes, mil_model, val_dataloader, criterion)
-            test_loss, test_metrics = val_loop(device, args.General.num_classes, mil_model, test_dataloader, criterion)
+            test_loss, test_metrics = None, None
         elif process_pipeline == 'Train_Val':
             val_loss, val_metrics = val_loop(device, args.General.num_classes, mil_model, val_dataloader, criterion)
             test_loss, test_metrics = None, None
         else:
             val_loss, val_metrics, test_loss, test_metrics = None, None, None, None
-            if epoch + 1 == args.General.num_epochs:
-                test_loss, test_metrics = val_loop(device, args.General.num_classes, mil_model, test_dataloader, criterion)
 
         print('----------------INFO----------------\n')
         print(f'EPOCH:{epoch+1},  Train_Loss:{train_loss},  Val_Loss:{val_loss},  Test_Loss:{test_loss},  Cost_Time:{cost_time}\n')
@@ -76,10 +83,28 @@ def process_MO_MIL(args):
         add_epoch_info_log(epoch_info_log, epoch, train_loss, val_loss, test_loss, val_metrics, test_metrics)
         best_val_metric, best_epoch = model_select(reverse, args, mil_model.state_dict(), val_metrics, best_model_metric, best_val_metric, epoch, best_epoch)
 
-        if early_stop(args, epoch_info_log, process_pipeline, epoch, mil_model.state_dict(), best_epoch):
+        if cal_is_stopping(args, epoch_info_log, process_pipeline):
+            print(f'Early Stop In EPOCH {epoch + 1}!')
             break
 
-        if epoch + 1 == args.General.num_epochs:
-            save_last_model(args, mil_model.state_dict(), epoch + 1)
-            save_log(args, epoch_info_log, best_epoch, process_pipeline)
-
+    last_epoch = epoch_info_log['epoch'][-1]
+    save_last_model(args, mil_model.state_dict(), last_epoch)
+    if not test_dataset.is_None_Dataset():
+        checkpoint_paths = glob.glob(os.path.join(args.Logs.now_log_dir, 'Best*.pth'))
+        if checkpoint_paths:
+            mil_model.load_state_dict(
+                torch.load(checkpoint_paths[0], map_location=device, weights_only=True)
+            )
+            result_epoch = best_epoch
+        else:
+            result_epoch = last_epoch
+        test_loss, test_metrics = val_loop(
+            device,
+            args.General.num_classes,
+            mil_model,
+            test_dataloader,
+            criterion,
+        )
+        attach_test_result(epoch_info_log, result_epoch - 1, test_loss, test_metrics)
+        print('Final_Test_Metrics:', test_metrics)
+    save_log(args, epoch_info_log, best_epoch, process_pipeline)

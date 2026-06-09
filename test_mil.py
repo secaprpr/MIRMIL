@@ -1,7 +1,7 @@
 import argparse
 from utils.yaml_utils import read_yaml
 from torch.utils.data import DataLoader
-from utils.loop_utils import val_loop,clam_val_loop,ds_val_loop,dtfd_val_loop
+from utils.loop_utils import val_loop,clam_val_loop,ds_val_loop,dtfd_val_loop,ot_val_loop
 import warnings
 from utils.wsi_utils import WSI_Dataset,CDP_MIL_WSI_Dataset,LONG_MIL_WSI_Dataset,WSI_Coord_Dataset
 import torch
@@ -58,6 +58,16 @@ def test(args):
         test_loss,test_metrics =  ds_val_loop(device,num_classes,mil_model,test_dataloader,criterion)
     elif yaml_args.General.MODEL_NAME == 'DTFD_MIL':
         test_loss,test_metrics =  dtfd_val_loop(device,num_classes,model_list,test_dataloader,criterion,yaml_args.Model.num_Group,yaml_args.Model.grad_clipping,yaml_args.Model.distill,yaml_args.Model.total_instance)
+    elif yaml_args.General.MODEL_NAME == 'OT_MIL':
+        test_loss,test_metrics,diagnostics = ot_val_loop(
+            device,
+            num_classes,
+            mil_model,
+            test_dataloader,
+            criterion,
+            return_diagnostics=True,
+        )
+        print(f'OT_MIL Diagnostics: {diagnostics}')
     else:
         test_loss,test_metrics =  val_loop(device,num_classes,mil_model,test_dataloader,criterion)
     
@@ -89,4 +99,3 @@ if __name__ == '__main__':
     parser.add_argument('--test_log_dir',type=str,default='/path/to/your/test-log-dir',help='path to test log dir')
     args = parser.parse_args()
     test(args)
-

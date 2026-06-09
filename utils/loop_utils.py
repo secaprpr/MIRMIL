@@ -113,9 +113,11 @@ def ot_train_loop(device, model, loader, criterion, optimizer, scheduler):
     loss_log = 0.0
     component_log = {
         "classification_loss": 0.0,
+        "full_classification_loss": 0.0,
+        "consistency_loss": 0.0,
         "necessity_loss": 0.0,
         "minimality_loss": 0.0,
-        "usage_loss": 0.0,
+        "diversity_loss": 0.0,
     }
     for data in loader:
         optimizer.zero_grad()
@@ -146,6 +148,7 @@ def ot_val_loop(
     criterion,
     retrun_WSI_feature=False,
     return_WSI_attn=False,
+    return_diagnostics=False,
 ):
     model.eval()
     loss_log = 0.0
@@ -153,6 +156,9 @@ def ot_val_loop(
     probabilities = []
     WSI_features = []
     WSI_attns = []
+    selected_ratios = []
+    complement_probabilities = []
+    full_probabilities = []
     with torch.no_grad():
         for data in loader:
             label = data[1].long().to(device)
@@ -175,13 +181,45 @@ def ot_val_loop(
             probabilities.append(
                 torch.softmax(output["logits"].squeeze(0), dim=0).cpu().numpy()
             )
+            complement_probabilities.append(
+                torch.softmax(output["complement_logits"].squeeze(0), dim=0)
+                .cpu()
+                .numpy()
+            )
+            full_probabilities.append(
+                torch.softmax(output["full_logits"].squeeze(0), dim=0).cpu().numpy()
+            )
+            selected_ratios.append(output["selected_ratio"].item())
 
     if retrun_WSI_feature:
         return torch.cat(WSI_features, dim=0).cpu().numpy()
     if return_WSI_attn:
         return WSI_attns
     loss_log /= max(len(loader), 1)
-    return loss_log, cal_scores(probabilities, labels, num_classes)
+    selected_metrics = cal_scores(probabilities, labels, num_classes)
+    if not return_diagnostics:
+        return loss_log, selected_metrics
+    complement_metrics = cal_scores(complement_probabilities, labels, num_classes)
+    full_metrics = cal_scores(full_probabilities, labels, num_classes)
+    label_indices = torch.tensor(labels).view(-1).long()
+    selected_true = torch.tensor(probabilities).gather(
+        1, label_indices[:, None]
+    ).squeeze(1)
+    complement_true = torch.tensor(complement_probabilities).gather(
+        1, label_indices[:, None]
+    ).squeeze(1)
+    diagnostics = {
+        "selected_ratio_mean": float(torch.tensor(selected_ratios).mean()),
+        "selected_ratio_std": float(torch.tensor(selected_ratios).std(unbiased=False)),
+        "full_macro_auc": full_metrics["macro_auc"],
+        "complement_macro_auc": complement_metrics["macro_auc"],
+        "full_acc": full_metrics["acc"],
+        "complement_acc": complement_metrics["acc"],
+        "necessity_confidence_drop": float(
+            (selected_true - complement_true).mean()
+        ),
+    }
+    return loss_log, selected_metrics, diagnostics
 
 def ac_train_loop(device,model,loader,criterion,optimizer,scheduler,n_token):
     start = time.time()

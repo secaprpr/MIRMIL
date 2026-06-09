@@ -31,7 +31,9 @@ class OT_MIL(nn.Module):
         max_instances=4096,
         necessity_weight=0.5,
         minimality_weight=0.05,
-        usage_weight=0.01,
+        diversity_weight=0.01,
+        full_classification_weight=0.5,
+        consistency_weight=0.1,
         necessity_margin=1.0,
     ):
         super().__init__()
@@ -51,8 +53,11 @@ class OT_MIL(nn.Module):
         self.max_instances = max_instances
         self.necessity_weight = necessity_weight
         self.minimality_weight = minimality_weight
-        self.usage_weight = usage_weight
+        self.diversity_weight = diversity_weight
+        self.full_classification_weight = full_classification_weight
+        self.consistency_weight = consistency_weight
         self.necessity_margin = necessity_margin
+        self.regularization_progress = 1.0
 
         self.projector = nn.Sequential(
             nn.Linear(in_dim, hidden_dim),
@@ -104,18 +109,23 @@ class OT_MIL(nn.Module):
             (num_instances,), 1.0 / num_instances, dtype=dtype, device=device
         )
         target = F.softmax(self.prototype_logits, dim=0).to(dtype=dtype)
-        kernel = torch.exp(-cost / self.epsilon).clamp_min(tiny)
+        log_kernel = -cost / self.epsilon
+        log_source = source.clamp_min(tiny).log()
+        log_target = target.clamp_min(tiny).log()
         source_power = self.tau_source / (self.tau_source + self.epsilon)
         target_power = self.tau_target / (self.tau_target + self.epsilon)
 
-        u = torch.ones_like(source)
-        v = torch.ones_like(target)
+        log_u = torch.zeros_like(source)
+        log_v = torch.zeros_like(target)
         for _ in range(self.sinkhorn_iterations):
-            u = (source / (kernel @ v).clamp_min(tiny)).pow(source_power)
-            v = (target / (kernel.transpose(0, 1) @ u).clamp_min(tiny)).pow(
-                target_power
+            log_u = source_power * (
+                log_source - torch.logsumexp(log_kernel + log_v[None, :], dim=1)
             )
-        return u[:, None] * kernel * v[None, :]
+            log_v = target_power * (
+                log_target
+                - torch.logsumexp(log_kernel + log_u[:, None], dim=0)
+            )
+        return torch.exp(log_u[:, None] + log_kernel + log_v[None, :])
 
     def _selection_gate(self, row_mass):
         # Standardized log-mass removes UOT's global scaling ambiguity while
@@ -161,12 +171,17 @@ class OT_MIL(nn.Module):
         complement_repr = self._build_representation(
             features, conditional_plan, 1.0 - gate
         )
+        full_repr = self._build_representation(
+            features, conditional_plan, torch.ones_like(gate)
+        )
         logits = self.classifier(selected_repr)
         complement_logits = self.classifier(complement_repr)
+        full_logits = self.classifier(full_repr)
 
         result = {
             "logits": logits,
             "complement_logits": complement_logits,
+            "full_logits": full_logits,
             "transport": transport,
             "selection_gate": gate,
             "selected_ratio": gate.mean(),
@@ -180,10 +195,19 @@ class OT_MIL(nn.Module):
             result["WSI_attn"] = gate.unsqueeze(-1)
         return result
 
+    def set_regularization_progress(self, progress):
+        self.regularization_progress = float(min(max(progress, 0.0), 1.0))
+
     def compute_loss(self, output, labels, criterion=None):
         if criterion is None:
             criterion = F.cross_entropy
         classification = criterion(output["logits"], labels)
+        full_classification = criterion(output["full_logits"], labels)
+        consistency = F.kl_div(
+            F.log_softmax(output["logits"], dim=-1),
+            F.softmax(output["full_logits"].detach(), dim=-1),
+            reduction="batchmean",
+        )
 
         true_class = labels.view(-1, 1)
         selected_score = output["logits"].gather(1, true_class).squeeze(1)
@@ -195,25 +219,30 @@ class OT_MIL(nn.Module):
         ).mean()
         minimality = output["selected_ratio"]
 
-        usage = output["prototype_usage"]
-        usage = usage / usage.sum().clamp_min(torch.finfo(usage.dtype).eps)
-        usage_entropy = -(usage * usage.clamp_min(1e-8).log()).sum()
-        usage_penalty = torch.log(
-            torch.tensor(
-                float(self.num_prototypes), device=usage.device, dtype=usage.dtype
-            )
-        ) - usage_entropy
+        normalized_prototypes = F.normalize(self.prototypes, dim=-1)
+        similarity = normalized_prototypes @ normalized_prototypes.transpose(0, 1)
+        off_diagonal = similarity - torch.eye(
+            self.num_prototypes, device=similarity.device, dtype=similarity.dtype
+        )
+        diversity = off_diagonal.square().sum() / max(
+            self.num_prototypes * (self.num_prototypes - 1), 1
+        )
 
+        regularization_progress = self.regularization_progress
         total = (
             classification
-            + self.necessity_weight * necessity
-            + self.minimality_weight * minimality
-            + self.usage_weight * usage_penalty
+            + self.full_classification_weight * full_classification
+            + self.consistency_weight * consistency
+            + regularization_progress * self.necessity_weight * necessity
+            + regularization_progress * self.minimality_weight * minimality
+            + self.diversity_weight * diversity
         )
         return {
             "loss": total,
             "classification_loss": classification.detach(),
+            "full_classification_loss": full_classification.detach(),
+            "consistency_loss": consistency.detach(),
             "necessity_loss": necessity.detach(),
             "minimality_loss": minimality.detach(),
-            "usage_loss": usage_penalty.detach(),
+            "diversity_loss": diversity.detach(),
         }

@@ -156,7 +156,9 @@ def get_model_from_yaml(yaml_args):
             max_instances=yaml_args.Model.max_instances,
             necessity_weight=yaml_args.Model.necessity_weight,
             minimality_weight=yaml_args.Model.minimality_weight,
-            usage_weight=yaml_args.Model.usage_weight,
+            diversity_weight=yaml_args.Model.diversity_weight,
+            full_classification_weight=yaml_args.Model.full_classification_weight,
+            consistency_weight=yaml_args.Model.consistency_weight,
             necessity_margin=yaml_args.Model.necessity_margin,
         )
         return mil_model

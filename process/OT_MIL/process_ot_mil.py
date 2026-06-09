@@ -1,10 +1,15 @@
+import glob
+import json
+import os
+
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from utils.general_utils import (
     add_epoch_info_log,
-    early_stop,
+    attach_test_result,
+    cal_is_stopping,
     init_epoch_info_log,
     set_global_seed,
 )
@@ -65,6 +70,12 @@ def process_OT_MIL(args):
     print("Start Process!")
     print("Using Process Pipeline:", process_pipeline)
     for epoch in tqdm(range(args.General.num_epochs), colour="GREEN"):
+        regularization_warmup = max(
+            int(getattr(args.Model, "regularization_warmup_epochs", 0)), 1
+        )
+        model.set_regularization_progress(
+            min((epoch + 1) / regularization_warmup, 1.0)
+        )
         now_scheduler = warmup_scheduler if epoch + 1 <= warmup_epochs else scheduler
         train_loss, cost_time, components = ot_train_loop(
             device,
@@ -79,9 +90,7 @@ def process_OT_MIL(args):
             val_loss, val_metrics = ot_val_loop(
                 device, num_classes, model, val_dataloader, criterion
             )
-            test_loss, test_metrics = ot_val_loop(
-                device, num_classes, model, test_dataloader, criterion
-            )
+            test_loss, test_metrics = None, None
         elif process_pipeline == "Train_Val":
             val_loss, val_metrics = ot_val_loop(
                 device, num_classes, model, val_dataloader, criterion
@@ -89,10 +98,6 @@ def process_OT_MIL(args):
             test_loss, test_metrics = None, None
         else:
             val_loss, val_metrics, test_loss, test_metrics = None, None, None, None
-            if epoch + 1 == args.General.num_epochs:
-                test_loss, test_metrics = ot_val_loop(
-                    device, num_classes, model, test_dataloader, criterion
-                )
 
         print("----------------INFO----------------")
         print(
@@ -122,15 +127,39 @@ def process_OT_MIL(args):
             epoch,
             best_epoch,
         )
-        if early_stop(
-            args,
-            epoch_info_log,
-            process_pipeline,
-            epoch,
-            model.state_dict(),
-            best_epoch,
-        ):
+        if cal_is_stopping(args, epoch_info_log, process_pipeline):
+            print(f"Early Stop In EPOCH {epoch + 1}!")
             break
-        if epoch + 1 == args.General.num_epochs:
-            save_last_model(args, model.state_dict(), epoch + 1)
-            save_log(args, epoch_info_log, best_epoch, process_pipeline)
+
+    last_epoch = epoch_info_log["epoch"][-1]
+    save_last_model(args, model.state_dict(), last_epoch)
+    diagnostics = None
+    if not test_dataset.is_None_Dataset():
+        checkpoint_paths = glob.glob(os.path.join(args.Logs.now_log_dir, "Best*.pth"))
+        if checkpoint_paths:
+            model.load_state_dict(
+                torch.load(checkpoint_paths[0], map_location=device, weights_only=True)
+            )
+            result_epoch = best_epoch
+        else:
+            result_epoch = last_epoch
+        test_loss, test_metrics, diagnostics = ot_val_loop(
+            device,
+            num_classes,
+            model,
+            test_dataloader,
+            criterion,
+            return_diagnostics=True,
+        )
+        attach_test_result(
+            epoch_info_log, result_epoch - 1, test_loss, test_metrics
+        )
+        with open(
+            os.path.join(args.Logs.now_log_dir, "OT_MIL_diagnostics.json"),
+            "w",
+            encoding="utf-8",
+        ) as file:
+            json.dump(diagnostics, file, indent=2)
+        print("Final_Test_Metrics:", test_metrics)
+        print("Final_Test_Diagnostics:", diagnostics)
+    save_log(args, epoch_info_log, best_epoch, process_pipeline)
