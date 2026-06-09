@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 import json
 import os
 import subprocess
@@ -10,6 +11,23 @@ MODEL_CONFIGS = {
     "OT_MIL": "configs/OT_MIL.yaml",
     "MO_MIL": "configs/MO_MIL.yaml",
 }
+
+
+def file_sha256(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def git_commit():
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], text=True
+        ).strip()
+    except (OSError, subprocess.CalledProcessError):
+        return None
 
 
 def build_command(args, model, seed):
@@ -70,8 +88,10 @@ def main():
     ]
     manifest = {
         "created_at": datetime.now(timezone.utc).isoformat(),
+        "git_commit": git_commit(),
         "dataset_name": args.dataset_name,
         "split": os.path.abspath(args.split),
+        "split_sha256": file_sha256(args.split),
         "models": args.models,
         "seeds": args.seeds,
         "epochs": args.epochs,

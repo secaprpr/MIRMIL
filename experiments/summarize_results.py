@@ -18,6 +18,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("roots", nargs="+")
     parser.add_argument("--output")
+    parser.add_argument("--aggregate-output")
     args = parser.parse_args()
 
     rows = []
@@ -48,9 +49,32 @@ def main():
     result = pd.DataFrame(rows).sort_values(
         ["test_macro_auc", "val_macro_auc"], ascending=False
     )
+    metric_columns = [
+        "test_macro_auc",
+        "test_acc",
+        "test_bacc",
+        "test_macro_f1",
+        "selected_ratio_mean",
+        "full_macro_auc",
+        "complement_macro_auc",
+        "necessity_confidence_drop",
+    ]
+    available_metrics = [
+        column for column in metric_columns if column in result.columns
+    ]
+    aggregate = result.groupby("model")[available_metrics].agg(["mean", "std", "count"])
+    aggregate.columns = [
+        "_".join(column).rstrip("_") for column in aggregate.columns.to_flat_index()
+    ]
+    aggregate = aggregate.reset_index()
     if args.output:
         result.to_csv(args.output, index=False)
+    if args.aggregate_output:
+        aggregate.to_csv(args.aggregate_output, index=False)
+    print("Per-run results")
     print(result.to_string(index=False))
+    print("\nAggregate results")
+    print(aggregate.to_string(index=False))
 
 
 if __name__ == "__main__":

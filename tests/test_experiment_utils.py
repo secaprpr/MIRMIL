@@ -1,10 +1,11 @@
 import unittest
 from argparse import Namespace
+from tempfile import NamedTemporaryFile
 
 import pandas as pd
 
 from experiments.prepare_split import deterministic_stratified_split
-from experiments.run_benchmark import build_command
+from experiments.run_benchmark import build_command, file_sha256
 
 
 class ExperimentUtilsTest(unittest.TestCase):
@@ -49,6 +50,15 @@ class ExperimentUtilsTest(unittest.TestCase):
             self.assertIn("General.num_epochs=30", command)
             self.assertIn("Dataset.balanced_sampler.use=true", command)
         self.assertIn("Model.scheduler.cosine_config.T_max=28", ot_command)
+
+    def test_file_sha256_is_stable(self):
+        with NamedTemporaryFile() as file:
+            file.write(b"fixed split content")
+            file.flush()
+            first = file_sha256(file.name)
+            second = file_sha256(file.name)
+        self.assertEqual(first, second)
+        self.assertEqual(len(first), 64)
 
 
 if __name__ == "__main__":
