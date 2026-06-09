@@ -10,6 +10,9 @@ import os
 from utils.model_utils import get_model_from_yaml,get_criterion
 warnings.filterwarnings('ignore')
 
+# This module is a command-line evaluation entry point, not a pytest test module.
+__test__ = False
+
 def test(args):
     yaml_path = args.yaml_path
     print(f"MIL-model-yaml path: {yaml_path}")
