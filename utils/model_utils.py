@@ -15,8 +15,7 @@ class WarmUpLR(_LRScheduler):
         total_iters: totoal_iters of warmup phase
     """
     def __init__(self, optimizer, warmup_epochs,base_lr):
-        self.warmup_epochs = warmup_epochs
-        self.init_lr = base_lr/self.warmup_epochs
+        self.warmup_epochs = max(int(warmup_epochs), 1)
         super().__init__(optimizer)
 
 
@@ -24,7 +23,8 @@ class WarmUpLR(_LRScheduler):
         """we will use the first m batches, and set the learning
         rate to base_lr * m / total_iters
         """
-        return [self.init_lr * epoch for epoch in range(1,self.warmup_epochs+1)]
+        progress = min((self.last_epoch + 1) / self.warmup_epochs, 1.0)
+        return [base_lr * progress for base_lr in self.base_lrs]
 
 
 def get_criterion(criterion):
@@ -140,6 +140,26 @@ def save_log(args,epoch_info_log,best_epoch,process_pipeline):
     
 def get_model_from_yaml(yaml_args):
     model_name = yaml_args.General.MODEL_NAME
+    if model_name == 'OT_MIL':
+        from modules.OT_MIL.ot_mil import OT_MIL
+        mil_model = OT_MIL(
+            in_dim=yaml_args.Model.in_dim,
+            hidden_dim=yaml_args.Model.hidden_dim,
+            num_classes=yaml_args.General.num_classes,
+            num_prototypes=yaml_args.Model.num_prototypes,
+            dropout=yaml_args.Model.dropout,
+            sinkhorn_iterations=yaml_args.Model.sinkhorn_iterations,
+            epsilon=yaml_args.Model.epsilon,
+            tau_source=yaml_args.Model.tau_source,
+            tau_target=yaml_args.Model.tau_target,
+            gate_temperature=yaml_args.Model.gate_temperature,
+            max_instances=yaml_args.Model.max_instances,
+            necessity_weight=yaml_args.Model.necessity_weight,
+            minimality_weight=yaml_args.Model.minimality_weight,
+            usage_weight=yaml_args.Model.usage_weight,
+            necessity_margin=yaml_args.Model.necessity_margin,
+        )
+        return mil_model
     if model_name == 'AB_MIL':
         from modules.AB_MIL.ab_mil import AB_MIL
         mil_model = AB_MIL(yaml_args.Model.L,yaml_args.Model.D,yaml_args.General.num_classes,yaml_args.Model.dropout,get_act(yaml_args.Model.act),yaml_args.Model.in_dim)

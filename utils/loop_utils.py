@@ -106,6 +106,83 @@ def val_loop(device,num_classes,model,loader,criterion,retrun_WSI_feature = Fals
     val_loss_log /= len(loader)
     return val_loss_log,val_metrics
 
+
+def ot_train_loop(device, model, loader, criterion, optimizer, scheduler):
+    start = time.time()
+    model.train()
+    loss_log = 0.0
+    component_log = {
+        "classification_loss": 0.0,
+        "necessity_loss": 0.0,
+        "minimality_loss": 0.0,
+        "usage_loss": 0.0,
+    }
+    for data in loader:
+        optimizer.zero_grad()
+        label = data[1].long().to(device)
+        bag = data[0].float().to(device)
+        output = model(bag)
+        losses = model.compute_loss(output, label, criterion)
+        losses["loss"].backward()
+        optimizer.step()
+
+        loss_log += losses["loss"].item()
+        for key in component_log:
+            component_log[key] += losses[key].item()
+
+    if scheduler is not None:
+        scheduler.step()
+    num_batches = max(len(loader), 1)
+    loss_log /= num_batches
+    component_log = {key: value / num_batches for key, value in component_log.items()}
+    return loss_log, time.time() - start, component_log
+
+
+def ot_val_loop(
+    device,
+    num_classes,
+    model,
+    loader,
+    criterion,
+    retrun_WSI_feature=False,
+    return_WSI_attn=False,
+):
+    model.eval()
+    loss_log = 0.0
+    labels = []
+    probabilities = []
+    WSI_features = []
+    WSI_attns = []
+    with torch.no_grad():
+        for data in loader:
+            label = data[1].long().to(device)
+            bag = data[0].float().to(device)
+            output = model(
+                bag,
+                return_WSI_feature=retrun_WSI_feature,
+                return_WSI_attn=return_WSI_attn,
+            )
+            if retrun_WSI_feature:
+                WSI_features.append(output["WSI_feature"])
+                continue
+            if return_WSI_attn:
+                WSI_attns.append(output["WSI_attn"].cpu())
+                continue
+
+            losses = model.compute_loss(output, label, criterion)
+            loss_log += losses["loss"].item()
+            labels.append(label.cpu().numpy())
+            probabilities.append(
+                torch.softmax(output["logits"].squeeze(0), dim=0).cpu().numpy()
+            )
+
+    if retrun_WSI_feature:
+        return torch.cat(WSI_features, dim=0).cpu().numpy()
+    if return_WSI_attn:
+        return WSI_attns
+    loss_log /= max(len(loader), 1)
+    return loss_log, cal_scores(probabilities, labels, num_classes)
+
 def ac_train_loop(device,model,loader,criterion,optimizer,scheduler,n_token):
     start = time.time()
     model.train()

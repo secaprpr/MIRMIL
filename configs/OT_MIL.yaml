@@ -1,0 +1,66 @@
+General:
+    MODEL_NAME: OT_MIL
+    seed: 2024
+    num_classes: 2
+    num_epochs: 50
+    device: 0
+    num_workers: 4
+    best_model_metric: macro_auc
+    earlystop:
+        use: True
+        patience: 10
+        metric: macro_auc
+
+Dataset:
+    DATASET_NAME: your_dataset_name
+    dataset_csv_path: /path/to/your/dataset.csv
+    balanced_sampler:
+        use: False
+        replacement: True
+
+Logs:
+    log_root_dir: /path/to/your/log_dir
+
+Model:
+    in_dim: 1024
+    hidden_dim: 256
+    num_prototypes: 16
+    dropout: 0.1
+    max_instances: 4096
+
+    # Generalized Sinkhorn parameters for unbalanced OT.
+    sinkhorn_iterations: 20
+    epsilon: 0.1
+    tau_source: 0.5
+    tau_target: 0.5
+
+    # Minimal sufficient submeasure objective.
+    gate_temperature: 0.5
+    necessity_margin: 1.0
+    necessity_weight: 0.5
+    minimality_weight: 0.05
+    usage_weight: 0.01
+
+    criterion: ce
+    optimizer:
+        which: adamw
+        adam_config:
+            lr: 0.0002
+            weight_decay: 0.00001
+        adamw_config:
+            lr: 0.0002
+            weight_decay: 0.00001
+    scheduler:
+        warmup: 2
+        which: cosine
+        step_config:
+            step_size: 10
+            gamma: 0.5
+        multi_step_config:
+            milestones: [20, 35]
+            gamma: 0.5
+        exponential_config:
+            gamma: 0.95
+        cosine_config:
+            T_max: 48
+            eta_min: 0.000001

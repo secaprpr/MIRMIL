@@ -4,7 +4,10 @@ def process(args,yaml_path,options):
     save_dataset_csv(args)
     save_yaml(args,yaml_path,options)
     print_args(args)
-    if args.General.MODEL_NAME == 'MEAN_MIL':
+    if args.General.MODEL_NAME == 'OT_MIL':
+        from .OT_MIL.process_ot_mil import process_OT_MIL
+        process_OT_MIL(args)
+    elif args.General.MODEL_NAME == 'MEAN_MIL':
         from .MEAN_MIL.process_mean_mil import process_MEAN_MIL
         process_MEAN_MIL(args)
     elif args.General.MODEL_NAME == 'MAX_MIL':
