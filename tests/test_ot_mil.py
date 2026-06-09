@@ -25,11 +25,12 @@ class OTMILTest(unittest.TestCase):
         bag = torch.randn(1, 40, 32)
         label = torch.tensor([2])
 
-        output = model(bag)
+        output = model(bag, return_WSI_feature=True)
         losses = model.compute_loss(output, label)
         losses["loss"].backward()
 
         self.assertEqual(output["logits"].shape, (1, 3))
+        self.assertEqual(output["WSI_feature"].shape, (1, 100))
         self.assertEqual(output["complement_logits"].shape, (1, 3))
         self.assertEqual(output["full_logits"].shape, (1, 3))
         self.assertEqual(output["transport"].shape, (40, 4))

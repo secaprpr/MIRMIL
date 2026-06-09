@@ -70,7 +70,9 @@ class OT_MIL(nn.Module):
         self.prototype_logits = nn.Parameter(torch.zeros(num_prototypes))
         self.selection_threshold = nn.Parameter(torch.tensor(0.0))
 
-        representation_dim = num_prototypes * hidden_dim + num_prototypes
+        representation_dim = (
+            num_prototypes * hidden_dim + num_prototypes + 2 * hidden_dim
+        )
         self.classifier = nn.Sequential(
             nn.LayerNorm(representation_dim),
             nn.Linear(representation_dim, hidden_dim),
@@ -147,7 +149,21 @@ class OT_MIL(nn.Module):
             weighted_plan.transpose(0, 1) @ features
         ) / prototype_mass[:, None].clamp_min(tiny)
         normalized_mass = prototype_mass / prototype_mass.sum().clamp_min(tiny)
-        return torch.cat((barycenters.flatten(), normalized_mass), dim=0).unsqueeze(0)
+        total_weight = weights.sum().clamp_min(tiny)
+        global_mean = (weights[:, None] * features).sum(dim=0) / total_weight
+        global_variance = (
+            weights[:, None] * (features - global_mean).square()
+        ).sum(dim=0) / total_weight
+        global_std = torch.sqrt(global_variance.clamp_min(tiny))
+        return torch.cat(
+            (
+                barycenters.flatten(),
+                normalized_mass,
+                global_mean,
+                global_std,
+            ),
+            dim=0,
+        ).unsqueeze(0)
 
     def forward(self, x, return_WSI_attn=False, return_WSI_feature=False):
         if x.dim() == 3:
