@@ -1,8 +1,10 @@
 import unittest
+from argparse import Namespace
 
 import pandas as pd
 
 from experiments.prepare_split import deterministic_stratified_split
+from experiments.run_benchmark import build_command
 
 
 class ExperimentUtilsTest(unittest.TestCase):
@@ -22,6 +24,31 @@ class ExperimentUtilsTest(unittest.TestCase):
             self.assertEqual(counts[label, "train"], 6)
             self.assertEqual(counts[label, "val"], 2)
             self.assertEqual(counts[label, "test"], 2)
+
+    def test_benchmark_command_uses_shared_budget(self):
+        args = Namespace(
+            python="python",
+            num_classes=2,
+            epochs=30,
+            device=0,
+            num_workers=4,
+            patience=8,
+            dataset_name="CAMELYON16",
+            split="/tmp/split.csv",
+            balanced=True,
+            log_root="/tmp/logs",
+            in_dim=1024,
+            max_instances=4096,
+        )
+        ot_command = build_command(args, "OT_MIL", 2024)
+        mo_command = build_command(args, "MO_MIL", 2024)
+
+        for command in (ot_command, mo_command):
+            self.assertIn("Model.max_instances=4096", command)
+            self.assertIn("Model.sampling=random", command)
+            self.assertIn("General.num_epochs=30", command)
+            self.assertIn("Dataset.balanced_sampler.use=true", command)
+        self.assertIn("Model.scheduler.cosine_config.T_max=28", ot_command)
 
 
 if __name__ == "__main__":
