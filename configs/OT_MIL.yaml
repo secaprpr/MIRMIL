@@ -38,11 +38,11 @@ Model:
     # Minimal sufficient submeasure objective.
     gate_temperature: 0.5
     necessity_margin: 1.0
-    necessity_weight: 0.5
-    minimality_weight: 0.05
+    necessity_weight: 0.1
+    minimality_weight: 0.01
     diversity_weight: 0.01
-    full_classification_weight: 0.5
-    consistency_weight: 0.1
+    full_classification_weight: 0.25
+    consistency_weight: 0.05
     regularization_warmup_epochs: 5
 
     criterion: ce
