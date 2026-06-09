@@ -60,6 +60,29 @@ class CacheFeatureSubsetTest(unittest.TestCase):
             feature_paths(frame), ["a.h5", "b.h5", "c.h5", "d.h5"]
         )
 
+    def test_corrupt_cache_is_rebuilt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = os.path.join(directory, "slide.h5")
+            output_dir = os.path.join(directory, "cache")
+            os.makedirs(output_dir)
+            features = np.arange(20, dtype=np.float32).reshape(5, 4)
+            with h5py.File(source, "w") as file:
+                file.create_dataset("features", data=features)
+            destination, _, _, _ = cache_feature(source, output_dir, 3)
+            with open(destination, "wb") as file:
+                file.write(b"incomplete")
+
+            rebuilt_path, rows, dimensions, created = cache_feature(
+                source, output_dir, 3
+            )
+            cached = torch.load(
+                rebuilt_path, map_location="cpu", weights_only=True
+            )
+
+            self.assertTrue(created)
+            self.assertEqual((rows, dimensions), (3, 4))
+            np.testing.assert_array_equal(cached.numpy(), features[[0, 2, 4]])
+
 
 if __name__ == "__main__":
     unittest.main()

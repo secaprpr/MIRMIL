@@ -2,6 +2,7 @@ import argparse
 import hashlib
 import json
 import os
+import pickle
 from datetime import datetime, timezone
 
 import h5py
@@ -65,12 +66,28 @@ def load_subset(source_path, max_candidates):
 def cache_feature(source_path, output_dir, max_candidates, overwrite=False):
     destination = os.path.join(output_dir, output_name(source_path))
     if os.path.isfile(destination) and not overwrite:
-        cached = torch.load(destination, map_location="cpu", weights_only=True)
-        if cached.ndim != 2 or (
-            max_candidates > 0 and cached.shape[0] > max_candidates
+        try:
+            cached = torch.load(
+                destination, map_location="cpu", weights_only=True
+            )
+            valid = cached.ndim == 2 and (
+                max_candidates <= 0 or cached.shape[0] <= max_candidates
+            )
+            if valid:
+                return (
+                    destination,
+                    int(cached.shape[0]),
+                    int(cached.shape[1]),
+                    False,
+                )
+        except (
+            OSError,
+            RuntimeError,
+            EOFError,
+            pickle.UnpicklingError,
+            AttributeError,
         ):
-            raise ValueError(f"Invalid existing cache file: {destination}")
-        return destination, int(cached.shape[0]), int(cached.shape[1]), False
+            pass
 
     features = load_subset(source_path, max_candidates).cpu().contiguous()
     if features.ndim != 2:
