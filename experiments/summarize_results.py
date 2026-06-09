@@ -57,7 +57,9 @@ def main():
         "selected_ratio_mean",
         "full_macro_auc",
         "complement_macro_auc",
+        "random_macro_auc",
         "necessity_confidence_drop",
+        "selection_vs_random_confidence_gain",
     ]
     available_metrics = [
         column for column in metric_columns if column in result.columns

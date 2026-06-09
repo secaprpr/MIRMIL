@@ -159,6 +159,7 @@ def ot_val_loop(
     selected_ratios = []
     complement_probabilities = []
     full_probabilities = []
+    random_probabilities = []
     with torch.no_grad():
         for data in loader:
             label = data[1].long().to(device)
@@ -167,6 +168,7 @@ def ot_val_loop(
                 bag,
                 return_WSI_feature=retrun_WSI_feature,
                 return_WSI_attn=return_WSI_attn,
+                return_controls=return_diagnostics,
             )
             if retrun_WSI_feature:
                 WSI_features.append(output["WSI_feature"])
@@ -190,6 +192,12 @@ def ot_val_loop(
                 torch.softmax(output["full_logits"].squeeze(0), dim=0).cpu().numpy()
             )
             selected_ratios.append(output["selected_ratio"].item())
+            if return_diagnostics:
+                random_probabilities.append(
+                    torch.softmax(output["random_logits"].squeeze(0), dim=0)
+                    .cpu()
+                    .numpy()
+                )
 
     if retrun_WSI_feature:
         return torch.cat(WSI_features, dim=0).cpu().numpy()
@@ -201,6 +209,7 @@ def ot_val_loop(
         return loss_log, selected_metrics
     complement_metrics = cal_scores(complement_probabilities, labels, num_classes)
     full_metrics = cal_scores(full_probabilities, labels, num_classes)
+    random_metrics = cal_scores(random_probabilities, labels, num_classes)
     label_indices = torch.tensor(labels).view(-1).long()
     selected_true = torch.tensor(probabilities).gather(
         1, label_indices[:, None]
@@ -208,15 +217,23 @@ def ot_val_loop(
     complement_true = torch.tensor(complement_probabilities).gather(
         1, label_indices[:, None]
     ).squeeze(1)
+    random_true = torch.tensor(random_probabilities).gather(
+        1, label_indices[:, None]
+    ).squeeze(1)
     diagnostics = {
         "selected_ratio_mean": float(torch.tensor(selected_ratios).mean()),
         "selected_ratio_std": float(torch.tensor(selected_ratios).std(unbiased=False)),
         "full_macro_auc": full_metrics["macro_auc"],
         "complement_macro_auc": complement_metrics["macro_auc"],
+        "random_macro_auc": random_metrics["macro_auc"],
         "full_acc": full_metrics["acc"],
         "complement_acc": complement_metrics["acc"],
+        "random_acc": random_metrics["acc"],
         "necessity_confidence_drop": float(
             (selected_true - complement_true).mean()
+        ),
+        "selection_vs_random_confidence_gain": float(
+            (selected_true - random_true).mean()
         ),
     }
     return loss_log, selected_metrics, diagnostics

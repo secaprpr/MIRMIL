@@ -165,7 +165,13 @@ class OT_MIL(nn.Module):
             dim=0,
         ).unsqueeze(0)
 
-    def forward(self, x, return_WSI_attn=False, return_WSI_feature=False):
+    def forward(
+        self,
+        x,
+        return_WSI_attn=False,
+        return_WSI_feature=False,
+        return_controls=False,
+    ):
         if x.dim() == 3:
             if x.size(0) != 1:
                 raise ValueError("OT_MIL currently expects batch_size=1")
@@ -205,6 +211,18 @@ class OT_MIL(nn.Module):
             "prototype_usage": transport.sum(dim=0),
             "sampled_indices": sampled_indices,
         }
+        if return_controls:
+            generator = torch.Generator()
+            generator.manual_seed(features.size(0))
+            permutation = torch.randperm(
+                features.size(0), generator=generator, device="cpu"
+            ).to(features.device)
+            random_gate = gate.index_select(0, permutation)
+            random_repr = self._build_representation(
+                features, conditional_plan, random_gate
+            )
+            result["random_logits"] = self.classifier(random_repr)
+            result["random_selected_ratio"] = random_gate.mean()
         if return_WSI_feature:
             result["WSI_feature"] = selected_repr
         if return_WSI_attn:
