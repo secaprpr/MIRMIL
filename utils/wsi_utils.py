@@ -7,16 +7,41 @@ import torch
 from torch.utils.data import Dataset
 
 class WSI_Dataset(Dataset):
-    def __init__(self,dataset_info_csv_path,group):
+    def __init__(
+        self,
+        dataset_info_csv_path,
+        group,
+        max_instances=0,
+        sampling="uniform",
+    ):
         assert group in ['train','val','test'], 'group must be in [train,val,test]'
+        if sampling not in {"uniform", "random", "head"}:
+            raise ValueError("sampling must be uniform, random, or head")
         self.dataset_info_csv_path = dataset_info_csv_path
         self.dataset_df = pd.read_csv(self.dataset_info_csv_path)
         self.slide_path_list = self.dataset_df[group+'_slide_path'].dropna().to_list()
         self.labels_list = self.dataset_df[group+'_label'].dropna().to_list()
+        self.group = group
+        self.max_instances = int(max_instances or 0)
+        self.sampling = sampling
 
     def __len__(self):
         return len(self.slide_path_list)
     
+    def _sample_indices(self, num_instances):
+        if self.max_instances <= 0 or num_instances <= self.max_instances:
+            return None
+        if self.group == "train" and self.sampling == "random":
+            indices = np.random.choice(
+                num_instances, size=self.max_instances, replace=False
+            )
+            return np.sort(indices)
+        if self.sampling == "head":
+            return np.arange(self.max_instances)
+        return np.linspace(
+            0, num_instances - 1, self.max_instances, dtype=np.int64
+        )
+
     def __getitem__(self, idx):
 
         slide_path = self.slide_path_list[idx]
@@ -26,7 +51,13 @@ class WSI_Dataset(Dataset):
         # adapting to different feature file types(https://github.com/mahmoodlab/TRIDENT)
         if slide_path.endswith('.h5'):
             with h5py.File(slide_path, 'r') as h5_file:
-                feat = h5_file['features'][:]
+                feature_dataset = h5_file['features']
+                indices = self._sample_indices(feature_dataset.shape[0])
+                feat = (
+                    feature_dataset[:]
+                    if indices is None
+                    else feature_dataset[indices]
+                )
                 feat = torch.from_numpy(feat)
         else:
             feat = torch.load(slide_path)
@@ -40,6 +71,9 @@ class WSI_Dataset(Dataset):
                     raise ValueError(f"Unknown dict format in {slide_path}, keys: {list(feat.keys())}")
         if len(feat.shape) == 3:
             feat = feat.squeeze(0)
+        indices = self._sample_indices(feat.shape[0])
+        if indices is not None:
+            feat = feat[torch.from_numpy(indices)]
         return feat,label
 
     def is_None_Dataset(self):

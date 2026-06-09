@@ -28,9 +28,26 @@ from utils.wsi_utils import WSI_Dataset
 
 
 def process_OT_MIL(args):
-    train_dataset = WSI_Dataset(args.Dataset.dataset_csv_path, "train")
-    val_dataset = WSI_Dataset(args.Dataset.dataset_csv_path, "val")
-    test_dataset = WSI_Dataset(args.Dataset.dataset_csv_path, "test")
+    max_instances = args.Model.max_instances
+    sampling = args.Model.sampling
+    train_dataset = WSI_Dataset(
+        args.Dataset.dataset_csv_path,
+        "train",
+        max_instances=max_instances,
+        sampling=sampling,
+    )
+    val_dataset = WSI_Dataset(
+        args.Dataset.dataset_csv_path,
+        "val",
+        max_instances=max_instances,
+        sampling="uniform",
+    )
+    test_dataset = WSI_Dataset(
+        args.Dataset.dataset_csv_path,
+        "test",
+        max_instances=max_instances,
+        sampling="uniform",
+    )
     process_pipeline = get_process_pipeline(val_dataset, test_dataset)
     args.General.process_pipeline = process_pipeline
 

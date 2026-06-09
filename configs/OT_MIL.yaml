@@ -27,6 +27,7 @@ Model:
     num_prototypes: 16
     dropout: 0.1
     max_instances: 4096
+    sampling: random
 
     # Generalized Sinkhorn parameters for unbalanced OT.
     sinkhorn_iterations: 20
