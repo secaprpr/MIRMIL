@@ -4,7 +4,10 @@ from tempfile import NamedTemporaryFile
 
 import pandas as pd
 
-from experiments.prepare_split import deterministic_stratified_split
+from experiments.prepare_split import (
+    deterministic_group_stratified_split,
+    deterministic_stratified_split,
+)
 from experiments.run_benchmark import build_command, file_sha256
 
 
@@ -50,6 +53,52 @@ class ExperimentUtilsTest(unittest.TestCase):
             self.assertIn("General.num_epochs=30", command)
             self.assertIn("Dataset.balanced_sampler.use=true", command)
         self.assertIn("Model.scheduler.cosine_config.T_max=28", ot_command)
+
+    def test_group_split_prevents_patient_leakage(self):
+        frame = pd.DataFrame(
+            {
+                "slide_id": [f"slide_{index:02d}" for index in range(24)],
+                "patient_id": [
+                    f"patient_{label}_{patient}"
+                    for label in (0, 1)
+                    for patient in range(6)
+                    for _ in range(2)
+                ],
+                "label": [0] * 12 + [1] * 12,
+                "slide_path": [f"/tmp/{index}.pt" for index in range(24)],
+            }
+        )
+        first = deterministic_group_stratified_split(
+            frame, 2024, 0.5, 0.25, "patient_id"
+        )
+        second = deterministic_group_stratified_split(
+            frame, 2024, 0.5, 0.25, "patient_id"
+        )
+
+        self.assertTrue(first.equals(second))
+        self.assertEqual(first.groupby("patient_id")["split"].nunique().max(), 1)
+        patient_counts = (
+            first.drop_duplicates("patient_id")
+            .groupby(["label", "split"])
+            .size()
+        )
+        for label in (0, 1):
+            self.assertEqual(patient_counts[label, "train"], 3)
+            self.assertEqual(patient_counts[label, "val"], 2)
+            self.assertEqual(patient_counts[label, "test"], 1)
+
+    def test_group_split_rejects_mixed_labels(self):
+        frame = pd.DataFrame(
+            {
+                "slide_id": ["a", "b"],
+                "patient_id": ["patient", "patient"],
+                "label": [0, 1],
+            }
+        )
+        with self.assertRaisesRegex(ValueError, "multiple labels"):
+            deterministic_group_stratified_split(
+                frame, 2024, 0.6, 0.2, "patient_id"
+            )
 
     def test_file_sha256_is_stable(self):
         with NamedTemporaryFile() as file:

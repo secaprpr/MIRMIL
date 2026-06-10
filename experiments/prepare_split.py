@@ -32,6 +32,36 @@ def deterministic_stratified_split(df, seed, train_ratio, val_ratio):
     return pd.concat(assignments, ignore_index=True).sort_values("slide_id")
 
 
+def deterministic_group_stratified_split(
+    df, seed, train_ratio, val_ratio, group_column="group_id"
+):
+    if group_column not in df.columns:
+        raise ValueError(f"Missing group column: {group_column}")
+
+    labels_per_group = df.groupby(group_column)["label"].nunique()
+    mixed_groups = labels_per_group[labels_per_group > 1]
+    if len(mixed_groups):
+        raise ValueError(
+            f"{len(mixed_groups)} groups contain multiple labels; "
+            f"first: {mixed_groups.index[0]}"
+        )
+
+    groups = (
+        df[[group_column, "label"]]
+        .drop_duplicates()
+        .rename(columns={group_column: "slide_id"})
+    )
+    group_assignments = deterministic_stratified_split(
+        groups, seed, train_ratio, val_ratio
+    )[["slide_id", "split"]].rename(columns={"slide_id": group_column})
+    assignments = df.merge(
+        group_assignments, on=group_column, how="left", validate="many_to_one"
+    )
+    if assignments["split"].isna().any():
+        raise RuntimeError("Some groups were not assigned to a split")
+    return assignments.sort_values("slide_id").reset_index(drop=True)
+
+
 def build_training_csv(assignments, output_path):
     columns = {}
     for split in ("train", "val", "test"):
@@ -49,6 +79,11 @@ def main():
     parser.add_argument("--dataset-name", required=True)
     parser.add_argument("--slide-column", default="slide_id")
     parser.add_argument("--label-column", default="label")
+    parser.add_argument(
+        "--group-column",
+        default=None,
+        help="Optional patient/group column used to prevent cross-split leakage",
+    )
     parser.add_argument("--feature-extension", default=".pt")
     parser.add_argument("--seed", type=int, default=2024)
     parser.add_argument("--train-ratio", type=float, default=0.6)
@@ -62,10 +97,15 @@ def main():
         raise ValueError("train_ratio + val_ratio must be less than 1")
 
     source = pd.read_csv(args.labels)
-    frame = source[[args.slide_column, args.label_column]].rename(
+    source_columns = [args.slide_column, args.label_column]
+    if args.group_column:
+        source_columns.append(args.group_column)
+    frame = source[source_columns].rename(
         columns={args.slide_column: "slide_id", args.label_column: "label"}
     )
     frame["slide_id"] = frame["slide_id"].astype(str)
+    if args.group_column:
+        frame[args.group_column] = frame[args.group_column].astype(str)
     if not pd.api.types.is_numeric_dtype(frame["label"]):
         label_names = sorted(frame["label"].unique())
         label_mapping = {name: index for index, name in enumerate(label_names)}
@@ -100,9 +140,18 @@ def main():
     if frame["slide_id"].duplicated().any():
         raise ValueError("Duplicate slide IDs found")
 
-    assignments = deterministic_stratified_split(
-        frame, args.seed, args.train_ratio, args.val_ratio
-    )
+    if args.group_column:
+        assignments = deterministic_group_stratified_split(
+            frame,
+            args.seed,
+            args.train_ratio,
+            args.val_ratio,
+            group_column=args.group_column,
+        )
+    else:
+        assignments = deterministic_stratified_split(
+            frame, args.seed, args.train_ratio, args.val_ratio
+        )
     os.makedirs(args.output_dir, exist_ok=True)
     prefix = os.path.join(args.output_dir, args.dataset_name)
     assignment_path = prefix + "_assignments.csv"
@@ -117,6 +166,13 @@ def main():
         .unstack(fill_value=0)
         .to_dict(orient="index")
     )
+    assignment_columns = ["slide_id", "label", "split"]
+    if args.group_column:
+        assignment_columns.insert(1, args.group_column)
+        group_split_counts = assignments.groupby(args.group_column)["split"].nunique()
+        if (group_split_counts > 1).any():
+            raise RuntimeError("Group leakage detected after split assignment")
+
     manifest = {
         "dataset": args.dataset_name,
         "seed": args.seed,
@@ -126,11 +182,17 @@ def main():
             "test": 1 - args.train_ratio - args.val_ratio,
         },
         "num_slides": len(assignments),
+        "group_column": args.group_column,
+        "num_groups": (
+            int(assignments[args.group_column].nunique())
+            if args.group_column
+            else len(assignments)
+        ),
         "num_classes": int(assignments["label"].nunique()),
         "label_mapping": label_mapping,
         "counts": counts,
         "assignment_sha256": hashlib.sha256(
-            assignments[["slide_id", "label", "split"]]
+            assignments[assignment_columns]
             .to_csv(index=False)
             .encode("utf-8")
         ).hexdigest(),
