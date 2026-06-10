@@ -6,7 +6,7 @@ Date: 2026-06-10
 
 This report records the transition from the OT-MIL prototype to a tested,
 reproducible implementation and its comparison with the repository's MO-MIL
-baseline on PANDA and Camelyon16.
+baseline on PANDA, Camelyon16, and TCGA-NSCLC.
 
 The shared protocol uses:
 
@@ -15,7 +15,9 @@ The shared protocol uses:
 - one final test evaluation per selected checkpoint;
 - the same split, patch budget, deterministic validation/test sampling, and
   balanced training sampler for both methods;
-- 30 epochs, early stopping patience 8, and 512 sampled patches per slide.
+- 30 epochs and early stopping patience 8;
+- 512 sampled patches for the original PANDA/Camelyon16 study and 4,096
+  patches for the PANDA capacity follow-up and TCGA-NSCLC study.
 
 MO-MIL uses its method-specific optimizer and scheduler from the repository
 configuration. Its sequence layer is the repository's dependency-free PyTorch
@@ -53,6 +55,20 @@ The cached and original normalized assignments were compared exactly.
 The cache uses deterministic uniform candidate selection. Both methods sample
 the same 512-patch budget from the same candidate cache.
 
+### TCGA-NSCLC
+
+- LUAD PLIP-QC features: 507 slides / 444 patients
+- LUSC PLIP-QC features: 484 slides / 452 patients
+- Feature dimension: 512
+- Patient-level split: 572 train / 218 validation / 201 test slides
+- Patients: 896
+- Assignment SHA-256:
+  `1c065c12dada02c957e97557895c3998d3fc33be3c0d5f32bd607607a2640b63`
+
+All slides from one TCGA patient are constrained to one split. The reproducible
+preparation script creates labels, patient IDs, and a unified symlink feature
+directory without copying the source features.
+
 ## Main Results
 
 Mean and sample standard deviation over three seeds:
@@ -64,14 +80,35 @@ Mean and sample standard deviation over three seeds:
 | Camelyon16 | MO-MIL | **0.8116 +/- 0.0272** | **0.7099** | **0.6629** | **0.6318** |
 | Camelyon16 | OT-MIL | 0.7173 +/- 0.0766 | 0.6235 | 0.6397 | 0.6201 |
 | Camelyon16 | UOT-only | 0.7576 +/- 0.0342 | 0.6420 | 0.6506 | 0.6196 |
+| TCGA-NSCLC PLIP-QC, 4,096 patches | MO-MIL | 0.9160 +/- 0.0110 | 0.8308 | 0.8310 | 0.8299 |
+| TCGA-NSCLC PLIP-QC, 4,096 patches | OT-MIL | **0.9235 +/- 0.0025** | **0.8607** | **0.8605** | **0.8602** |
 
-Paired stratified bootstrap, 5,000 iterations:
+Paired stratified bootstrap, 5,000 iterations unless noted:
 
 | Dataset/configuration | Mean AUC difference vs MO-MIL | 95% CI | P(OT > MO) |
 |---|---:|---:|---:|
 | PANDA OT-MIL, 512 patches | +0.00555 | [+0.00208, +0.00896] | 0.9988 |
 | Camelyon16 OT-MIL, 512 patches | -0.09422 | [-0.16903, -0.01799] | 0.0072 |
 | Camelyon16 UOT-only, 512 patches | -0.05398 | [-0.12358, +0.01278] | 0.0614 |
+| TCGA-NSCLC OT-MIL, 4,096 patches (10,000) | +0.00752 | [-0.00515, +0.02076] | 0.8720 |
+
+## PANDA Capacity Follow-up
+
+A validation-only search with empty test columns selected `hidden_dim=512`,
+`num_prototypes=16`. Its validation AUC exceeded the default configuration for
+all three seeds. The frozen checkpoints were then evaluated once using the
+full split through the evaluator's audited `--split-override`.
+
+| Method, 4,096 patches | Macro-AUC | Accuracy | Balanced accuracy | Macro-F1 |
+|---|---:|---:|---:|---:|
+| MO-MIL | 0.9005 +/- 0.0033 | 0.6384 | 0.5897 | 0.5914 |
+| Default OT-MIL | 0.9063 +/- 0.0038 | 0.6493 | 0.6082 | 0.6076 |
+| OT-MIL H512 | **0.9075 +/- 0.0025** | **0.6495** | **0.6109** | **0.6097** |
+
+H512 exceeded MO-MIL in every seed. The paired AUC difference was `+0.00696`,
+95% CI `[+0.00355, +0.01030]`, with `P(OT > MO) = 1.0`. H512 also raised the
+mean AUC over default OT-MIL by `+0.00120`, but that comparison was not
+significant: 95% CI `[-0.00118, +0.00365]`.
 
 ## PANDA Robustness
 
@@ -162,11 +199,48 @@ patience 8, balanced sampling, and `Model.max_instances=512`. UOT-only set
 necessity, minimality, diversity, full-classification, and consistency weights
 to zero. Validation-only searches used a split with zero test rows.
 
+TCGA-NSCLC preparation and patient-level split:
+
+```bash
+python experiments/prepare_tcga_nsclc.py \
+  --luad-dir /srv/storage/hdd/ychong/chong/Datasets/TCGA-LUAD/features/plip_qc/pt_files \
+  --lusc-dir /srv/storage/hdd/ychong/chong/Datasets/TCGA-LUSC/features/plip_qc/pt_files \
+  --output-dir /srv/storage1/hdd/cff/wqy/otmil/nsclc_plip_qc_repro
+
+python experiments/prepare_split.py \
+  --labels /srv/storage1/hdd/cff/wqy/otmil/nsclc_plip_qc_repro/NSCLC_labels.csv \
+  --feature-dir /srv/storage1/hdd/cff/wqy/otmil/nsclc_plip_qc_repro/pt_files \
+  --output-dir /srv/storage1/hdd/cff/wqy/otmil/nsclc_plip_qc_repro \
+  --dataset-name NSCLC_PLIP_QC --group-column patient_id --seed 2024
+```
+
+TCGA-NSCLC formal comparison:
+
+```bash
+python experiments/run_benchmark.py \
+  --split /srv/storage1/hdd/cff/wqy/otmil/nsclc_plip_qc/NSCLC_PLIP_QC_split.csv \
+  --dataset-name NSCLC_PLIP_QC --num-classes 2 \
+  --log-root /srv/storage1/hdd/cff/wqy/otmil/experiment_logs/nsclc_plip_qc_formal \
+  --models OT_MIL MO_MIL --seeds 2024 2025 2026 \
+  --epochs 30 --patience 8 --max-instances 4096 \
+  --in-dim 512 --num-workers 2 --balanced
+```
+
+PANDA H512 frozen-checkpoint evaluation:
+
+```bash
+python experiments/evaluate_checkpoints.py \
+  --run-root experiment_artifacts/logs/panda_h512_tune \
+  --output-dir experiment_artifacts/logs/panda_h512_formal_eval \
+  --models OT_MIL --budgets 4096 --device 0 --num-workers 4 \
+  --split-override experiment_artifacts/splits/PANDA_R50_CACHE_split.csv
+```
+
 Final verification:
 
 ```bash
 python -m pytest -q
-# 22 passed
+# 27 passed
 ```
 
 ## Git History
@@ -195,6 +269,12 @@ Research-stage commits:
 - `58265544a5177703833f0cea69a116a9ce75352c` OT-gated instance evidence
   branch and legacy compatibility
 - `5cd547e72838e686e25be8ad479787f558d9075d` binary paired-bootstrap fix
+- `706a6cb75a3839b44411c5715fb4b3033eace9e9` patient-aware deterministic
+  splits
+- `8bf2a22f61b6bbd9161e2527aa4ccaaa84cd603b` frozen-checkpoint split
+  override with provenance
+- `597c16dd79a1db15c0173b7ac4e3c43c58d9596f` reproducible TCGA-NSCLC
+  preparation
 
 ## Failures And Resolutions
 
@@ -211,6 +291,12 @@ Research-stage commits:
   validates and atomically rebuilds incomplete files.
 - The bootstrap tool originally handled only multiclass probabilities. Binary
   AUC support and a regression test were added.
+- Sampled CONCH files included corrupt serialized tensors, so TCGA-NSCLC used
+  the independently checked PLIP-QC feature set.
+- The server environment did not include pytest. Repository tests were run
+  locally, while server smoke tests used Python's standard `unittest`.
+- A 10,000-iteration multiclass PANDA bootstrap exceeded the initial local
+  timeout; the registered 5,000-iteration protocol completed successfully.
 
 ## Research Assessment
 
@@ -218,15 +304,16 @@ The PANDA result supports a narrow claim: OT-induced submeasure selection is
 competitive and consistently improves over the evaluated MO-MIL baseline on a
 large multiclass cohort, including reduced patch budgets.
 
-The current evidence does not support a dataset-general superiority claim.
-On Camelyon16, the full objective is significantly worse than MO-MIL, and
-UOT-only does not close the gap. Validation-only capacity, temperature,
-sparsity, and instance-evidence searches failed to improve on the original
-UOT-only validation AUC. This is a reproducible technical limitation rather
-than an unresolved execution failure.
+The follow-up evidence now supports improvement over MO-MIL on PANDA and
+TCGA-NSCLC. PANDA H512 is significant under paired bootstrap. TCGA-NSCLC has a
+higher three-seed mean, much lower variance, and better accuracy-based metrics,
+but its AUC confidence interval still crosses zero. Camelyon16 remains a clear
+negative result.
 
-The current package is not ready for an AAAI main-paper submission claiming a
-general superior method. A credible next paper iteration needs a principled
-class-conditional or rare-lesion transport mechanism, additional datasets and
-domain labels or augmentation invariance, and validation on the official
-Mamba2 MO-MIL implementation rather than only the PyTorch fallback.
+These results support continuing toward an AAAI submission, but not yet a
+broad superiority claim. The defensible claim is that OT-induced submeasure
+selection improves a large multiclass cohort and transfers positively to a
+patient-split TCGA subtype task, while rare-lesion sensitivity remains a known
+limitation. Submission readiness still requires official Mamba2 MO-MIL
+validation, at least one more independent cohort or cross-center test, and a
+principled mechanism that addresses the Camelyon16 failure.
