@@ -36,6 +36,8 @@ class OT_MIL(nn.Module):
         full_classification_weight=0.5,
         consistency_weight=0.1,
         necessity_margin=1.0,
+        instance_evidence_weight=0.0,
+        instance_evidence_temperature=1.0,
     ):
         super().__init__()
         if num_prototypes < 1:
@@ -44,6 +46,8 @@ class OT_MIL(nn.Module):
             raise ValueError("OT regularization parameters must be positive")
         if not 0.0 <= selection_fraction < 1.0:
             raise ValueError("selection_fraction must be in [0, 1)")
+        if instance_evidence_weight < 0 or instance_evidence_temperature <= 0:
+            raise ValueError("Instance evidence parameters must be positive")
 
         self.hidden_dim = hidden_dim
         self.num_classes = num_classes
@@ -61,6 +65,8 @@ class OT_MIL(nn.Module):
         self.full_classification_weight = full_classification_weight
         self.consistency_weight = consistency_weight
         self.necessity_margin = necessity_margin
+        self.instance_evidence_weight = instance_evidence_weight
+        self.instance_evidence_temperature = instance_evidence_temperature
         self.regularization_progress = 1.0
 
         self.projector = nn.Sequential(
@@ -83,6 +89,11 @@ class OT_MIL(nn.Module):
             nn.GELU(),
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, num_classes),
+        )
+        self.instance_classifier = (
+            nn.Linear(hidden_dim, num_classes)
+            if instance_evidence_weight > 0
+            else None
         )
         self.apply(_init_weights)
 
@@ -175,6 +186,19 @@ class OT_MIL(nn.Module):
             dim=0,
         ).unsqueeze(0)
 
+    def _aggregate_instance_evidence(self, features, weights):
+        if self.instance_classifier is None:
+            raise RuntimeError("Instance evidence branch is disabled")
+        temperature = self.instance_evidence_temperature
+        instance_logits = self.instance_classifier(features) / temperature
+        log_weights = weights.clamp_min(
+            torch.finfo(weights.dtype).eps
+        ).log()
+        pooled = torch.logsumexp(
+            instance_logits + log_weights[:, None], dim=0
+        ) - torch.logsumexp(log_weights, dim=0)
+        return (temperature * pooled).unsqueeze(0)
+
     def forward(
         self,
         x,
@@ -209,6 +233,18 @@ class OT_MIL(nn.Module):
         logits = self.classifier(selected_repr)
         complement_logits = self.classifier(complement_repr)
         full_logits = self.classifier(full_repr)
+        if self.instance_evidence_weight > 0:
+            logits = logits + self.instance_evidence_weight * (
+                self._aggregate_instance_evidence(features, gate)
+            )
+            complement_logits = complement_logits + self.instance_evidence_weight * (
+                self._aggregate_instance_evidence(features, 1.0 - gate)
+            )
+            full_logits = full_logits + self.instance_evidence_weight * (
+                self._aggregate_instance_evidence(
+                    features, torch.ones_like(gate)
+                )
+            )
 
         result = {
             "logits": logits,
@@ -232,6 +268,12 @@ class OT_MIL(nn.Module):
                 features, conditional_plan, random_gate
             )
             result["random_logits"] = self.classifier(random_repr)
+            if self.instance_evidence_weight > 0:
+                result["random_logits"] = result[
+                    "random_logits"
+                ] + self.instance_evidence_weight * (
+                    self._aggregate_instance_evidence(features, random_gate)
+                )
             result["random_selected_ratio"] = random_gate.mean()
         if return_WSI_feature:
             result["WSI_feature"] = selected_repr

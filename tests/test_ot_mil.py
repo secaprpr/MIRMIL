@@ -1,9 +1,10 @@
 import unittest
 
 import torch
+from addict import Dict
 
 from modules.OT_MIL.ot_mil import OT_MIL
-from utils.model_utils import WarmUpLR
+from utils.model_utils import WarmUpLR, get_model_from_yaml
 
 
 class OTMILTest(unittest.TestCase):
@@ -81,6 +82,59 @@ class OTMILTest(unittest.TestCase):
     def test_invalid_selection_fraction_is_rejected(self):
         with self.assertRaises(ValueError):
             OT_MIL(selection_fraction=1.0)
+
+    def test_instance_evidence_branch_is_trainable(self):
+        torch.manual_seed(17)
+        model = OT_MIL(
+            in_dim=32,
+            hidden_dim=16,
+            num_classes=3,
+            num_prototypes=4,
+            dropout=0.0,
+            sinkhorn_iterations=8,
+            gate_temperature=0.5,
+            max_instances=128,
+            instance_evidence_weight=0.5,
+        )
+        output = model(torch.randn(1, 24, 32))
+        loss = output["logits"].sum()
+        loss.backward()
+
+        self.assertIsNotNone(model.instance_classifier.weight.grad)
+        self.assertTrue(
+            torch.isfinite(model.instance_classifier.weight.grad).all()
+        )
+
+    def test_legacy_config_uses_optional_defaults(self):
+        config = Dict(
+            {
+                "General": {"MODEL_NAME": "OT_MIL", "num_classes": 2},
+                "Model": {
+                    "in_dim": 32,
+                    "hidden_dim": 16,
+                    "num_prototypes": 4,
+                    "dropout": 0.0,
+                    "sinkhorn_iterations": 8,
+                    "epsilon": 0.1,
+                    "tau_source": 0.5,
+                    "tau_target": 0.5,
+                    "gate_temperature": 0.5,
+                    "max_instances": 128,
+                    "necessity_weight": 0.1,
+                    "minimality_weight": 0.01,
+                    "diversity_weight": 0.01,
+                    "full_classification_weight": 0.25,
+                    "consistency_weight": 0.05,
+                    "necessity_margin": 1.0,
+                },
+            }
+        )
+
+        model = get_model_from_yaml(config)
+
+        self.assertEqual(model.selection_fraction, 0.0)
+        self.assertEqual(model.instance_evidence_weight, 0.0)
+        self.assertIsNone(model.instance_classifier)
 
     def test_warmup_scheduler_matches_optimizer_groups(self):
         model = self._make_model()

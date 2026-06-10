@@ -7,6 +7,10 @@ from torch.optim.lr_scheduler import _LRScheduler
 from .process_utils import get_act
 
 
+def _model_option(yaml_args, name, default):
+    return yaml_args.Model[name] if name in yaml_args.Model else default
+
+
 class WarmUpLR(_LRScheduler):
     """warmup_training learning rate scheduler
 
@@ -153,8 +157,8 @@ def get_model_from_yaml(yaml_args):
             tau_source=yaml_args.Model.tau_source,
             tau_target=yaml_args.Model.tau_target,
             gate_temperature=yaml_args.Model.gate_temperature,
-            selection_fraction=getattr(
-                yaml_args.Model, "selection_fraction", 0.0
+            selection_fraction=_model_option(
+                yaml_args, "selection_fraction", 0.0
             ),
             max_instances=yaml_args.Model.max_instances,
             necessity_weight=yaml_args.Model.necessity_weight,
@@ -163,6 +167,12 @@ def get_model_from_yaml(yaml_args):
             full_classification_weight=yaml_args.Model.full_classification_weight,
             consistency_weight=yaml_args.Model.consistency_weight,
             necessity_margin=yaml_args.Model.necessity_margin,
+            instance_evidence_weight=_model_option(
+                yaml_args, "instance_evidence_weight", 0.0
+            ),
+            instance_evidence_temperature=_model_option(
+                yaml_args, "instance_evidence_temperature", 1.0
+            ),
         )
         return mil_model
     if model_name == 'AB_MIL':
