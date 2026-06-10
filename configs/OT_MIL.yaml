@@ -37,6 +37,9 @@ Model:
 
     # Minimal sufficient submeasure objective.
     gate_temperature: 0.5
+    # 0 preserves the learned global threshold. Values in (0, 1) initialize
+    # each bag's soft threshold at the corresponding evidence quantile.
+    selection_fraction: 0.0
     necessity_margin: 1.0
     necessity_weight: 0.1
     minimality_weight: 0.01

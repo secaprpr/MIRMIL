@@ -153,6 +153,9 @@ def get_model_from_yaml(yaml_args):
             tau_source=yaml_args.Model.tau_source,
             tau_target=yaml_args.Model.tau_target,
             gate_temperature=yaml_args.Model.gate_temperature,
+            selection_fraction=getattr(
+                yaml_args.Model, "selection_fraction", 0.0
+            ),
             max_instances=yaml_args.Model.max_instances,
             necessity_weight=yaml_args.Model.necessity_weight,
             minimality_weight=yaml_args.Model.minimality_weight,

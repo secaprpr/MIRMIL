@@ -28,6 +28,7 @@ class OT_MIL(nn.Module):
         tau_source=0.5,
         tau_target=0.5,
         gate_temperature=0.1,
+        selection_fraction=0.0,
         max_instances=4096,
         necessity_weight=0.5,
         minimality_weight=0.05,
@@ -41,6 +42,8 @@ class OT_MIL(nn.Module):
             raise ValueError("num_prototypes must be positive")
         if epsilon <= 0 or tau_source <= 0 or tau_target <= 0:
             raise ValueError("OT regularization parameters must be positive")
+        if not 0.0 <= selection_fraction < 1.0:
+            raise ValueError("selection_fraction must be in [0, 1)")
 
         self.hidden_dim = hidden_dim
         self.num_classes = num_classes
@@ -50,6 +53,7 @@ class OT_MIL(nn.Module):
         self.tau_source = tau_source
         self.tau_target = tau_target
         self.gate_temperature = gate_temperature
+        self.selection_fraction = selection_fraction
         self.max_instances = max_instances
         self.necessity_weight = necessity_weight
         self.minimality_weight = minimality_weight
@@ -136,8 +140,14 @@ class OT_MIL(nn.Module):
         evidence_score = (log_mass - log_mass.mean()) / log_mass.std(
             unbiased=False
         ).clamp_min(1e-4)
+        threshold = self.selection_threshold
+        if self.selection_fraction > 0.0 and evidence_score.numel() > 1:
+            sparse_threshold = torch.quantile(
+                evidence_score.detach(), 1.0 - self.selection_fraction
+            )
+            threshold = threshold + sparse_threshold
         return torch.sigmoid(
-            (evidence_score - self.selection_threshold)
+            (evidence_score - threshold)
             / max(self.gate_temperature, 1e-6)
         )
 

@@ -63,6 +63,25 @@ class OTMILTest(unittest.TestCase):
         self.assertEqual(output["WSI_attn"].shape, (12, 1))
         self.assertTrue(((output["WSI_attn"] >= 0) & (output["WSI_attn"] <= 1)).all())
 
+    def test_quantile_gate_reduces_selected_mass(self):
+        torch.manual_seed(13)
+        dense_model = self._make_model().eval()
+        sparse_model = self._make_model().eval()
+        sparse_model.load_state_dict(dense_model.state_dict())
+        sparse_model.selection_fraction = 0.1
+        bag = torch.randn(1, 100, 32)
+
+        with torch.no_grad():
+            dense_ratio = dense_model(bag)["selected_ratio"]
+            sparse_ratio = sparse_model(bag)["selected_ratio"]
+
+        self.assertLess(sparse_ratio.item(), dense_ratio.item())
+        self.assertLess(sparse_ratio.item(), 0.25)
+
+    def test_invalid_selection_fraction_is_rejected(self):
+        with self.assertRaises(ValueError):
+            OT_MIL(selection_fraction=1.0)
+
     def test_warmup_scheduler_matches_optimizer_groups(self):
         model = self._make_model()
         optimizer = torch.optim.Adam(model.parameters(), lr=2e-4)
