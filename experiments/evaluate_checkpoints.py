@@ -73,9 +73,11 @@ def json_safe(value):
     return value
 
 
-def evaluate_run(run_dir, budget, device, num_workers):
+def evaluate_run(run_dir, budget, device, num_workers, split_override=None):
     config_path, checkpoint_path = find_run_files(run_dir)
     args = read_yaml(config_path)
+    if split_override:
+        args.Dataset.dataset_csv_path = os.path.abspath(split_override)
     args.Model.max_instances = budget
     args.General.device = device
     set_global_seed(args.General.seed)
@@ -200,8 +202,17 @@ def main():
     parser.add_argument("--budgets", nargs="+", type=int, default=[128, 256, 512])
     parser.add_argument("--device", type=int, default=0)
     parser.add_argument("--num-workers", type=int, default=4)
+    parser.add_argument(
+        "--split-override",
+        help=(
+            "Evaluate frozen checkpoints on this split CSV instead of the "
+            "training-time config split"
+        ),
+    )
     args = parser.parse_args()
 
+    if args.split_override and not os.path.isfile(args.split_override):
+        raise FileNotFoundError(args.split_override)
     run_dirs = discover_runs(args.run_root, set(args.models))
     if not run_dirs:
         raise FileNotFoundError(f"No completed runs found under {args.run_root}")
@@ -211,13 +222,27 @@ def main():
     provenance = {
         "git_commit": git_commit(),
         "run_root": os.path.abspath(args.run_root),
+        "split_override": (
+            os.path.abspath(args.split_override)
+            if args.split_override
+            else None
+        ),
+        "split_override_sha256": (
+            file_sha256(args.split_override)
+            if args.split_override
+            else None
+        ),
         "budgets": args.budgets,
         "runs": [],
     }
     for run_dir in run_dirs:
         for budget in args.budgets:
             result, predictions, config_path, checkpoint_path = evaluate_run(
-                run_dir, budget, args.device, args.num_workers
+                run_dir,
+                budget,
+                args.device,
+                args.num_workers,
+                split_override=args.split_override,
             )
             results.append(result)
             prediction_name = (

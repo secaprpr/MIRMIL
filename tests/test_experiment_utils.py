@@ -8,6 +8,7 @@ from experiments.prepare_split import (
     deterministic_group_stratified_split,
     deterministic_stratified_split,
 )
+from experiments.evaluate_checkpoints import file_sha256 as evaluation_file_sha256
 from experiments.run_benchmark import build_command, file_sha256
 
 
@@ -106,7 +107,9 @@ class ExperimentUtilsTest(unittest.TestCase):
             file.flush()
             first = file_sha256(file.name)
             second = file_sha256(file.name)
+            evaluation_hash = evaluation_file_sha256(file.name)
         self.assertEqual(first, second)
+        self.assertEqual(first, evaluation_hash)
         self.assertEqual(len(first), 64)
 
 
