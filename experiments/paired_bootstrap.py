@@ -9,6 +9,8 @@ from sklearn.metrics import roc_auc_score
 
 
 def macro_auc(labels, probabilities):
+    if probabilities.shape[1] == 2:
+        return roc_auc_score(labels, probabilities[:, 1])
     return roc_auc_score(
         labels,
         probabilities,
