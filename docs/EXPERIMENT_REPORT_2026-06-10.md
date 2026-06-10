@@ -157,6 +157,47 @@ Inference-budget robustness did not close the gap:
 | 2,048 | 0.7590 | 0.8319 |
 | 4,096 | 0.7656 | 0.8404 |
 
+### Rare-lesion branch
+
+A binary rare-lesion branch was added after the first Camelyon16 analysis. It
+uses a positive-class patch score and weighted top-k log-mean-exp pooling. The
+branch is disabled by default, preserves legacy checkpoints, and rejects
+active use for multiclass tasks.
+
+The validation-only screen disabled all auxiliary regularizers and used all
+4,096 cached candidates. Directly injecting the rare score into the OT gate
+was unstable. The frozen configuration used `rare_instance_topk=16`,
+`rare_instance_weight=0.25`, and `rare_gate_weight=0`.
+
+| Seed | Validation AUC | Balanced accuracy | Macro-F1 |
+|---:|---:|---:|---:|
+| 2024 | 0.8920 | 0.8068 | 0.7945 |
+| 2025 | 0.9332 | 0.8395 | 0.8442 |
+| 2026 | 0.8935 | 0.7926 | 0.7905 |
+| Mean +/- SD | 0.9063 +/- 0.0234 | 0.8130 +/- 0.0240 | 0.8097 +/- 0.0299 |
+
+The configuration was then compared fairly with MO-MIL using 4,096 patches,
+the same full split, seeds, balanced sampler, epoch budget, and early stopping.
+
+| Method, 4,096 patches | Test AUC | Balanced accuracy | Macro-F1 |
+|---|---:|---:|---:|
+| MO-MIL | **0.8414 +/- 0.0349** | **0.7405** | **0.7340** |
+| OT-MIL rare branch | 0.7798 +/- 0.0867 | 0.7188 | 0.7187 |
+
+The rare branch therefore did not transfer its validation improvement to the
+test set. Its seed AUCs were `0.7088`, `0.8764`, and `0.7543`, indicating
+substantial initialization sensitivity. Equal-weight three-seed ensembles
+reached 0.8253 for OT-MIL and 0.8480 for MO-MIL. An exploratory equal-weight
+cross-model ensemble reached 0.8707, showing complementary errors, but this
+was inspected after test evaluation and is not a registered formal result.
+
+The candidate cache is a major remaining data limitation. Original positive
+slides contain a median of 47,358 train, 47,199 validation, and 33,742 test
+patches. The 4,096 cache retains median fractions of only 8.6%, 8.7%, and
+12.1%, respectively. A 16,384-candidate cache was started to test whether
+greater tissue coverage resolves the rare-lesion failure, but server
+authentication became unavailable before completion could be verified.
+
 ## Commands
 
 Main PANDA benchmark:
@@ -199,6 +240,37 @@ patience 8, balanced sampling, and `Model.max_instances=512`. UOT-only set
 necessity, minimality, diversity, full-classification, and consistency weights
 to zero. Validation-only searches used a split with zero test rows.
 
+Camelyon16 rare-lesion formal comparison:
+
+```bash
+python train_mil.py --yaml_path configs/OT_MIL.yaml --options \
+  General.seed=2024 General.num_classes=2 General.num_epochs=30 \
+  General.device=0 General.num_workers=2 \
+  General.earlystop.use=true General.earlystop.patience=8 \
+  Dataset.DATASET_NAME=CAM16_OT_RARE4096 \
+  Dataset.dataset_csv_path=experiment_artifacts/splits/CAMELYON16_R50_CACHE4096_split.csv \
+  Dataset.balanced_sampler.use=true \
+  Logs.log_root_dir=/srv/storage1/hdd/cff/wqy/otmil/experiment_logs/camelyon16_rare_formal4096 \
+  Model.max_instances=4096 Model.sampling=random \
+  Model.rare_instance_weight=0.25 Model.rare_instance_topk=16 \
+  Model.rare_gate_weight=0 Model.necessity_weight=0 \
+  Model.minimality_weight=0 Model.diversity_weight=0 \
+  Model.full_classification_weight=0 Model.consistency_weight=0 \
+  Model.scheduler.cosine_config.T_max=28
+
+python train_mil.py --yaml_path configs/MO_MIL.yaml --options \
+  General.seed=2024 General.num_classes=2 General.num_epochs=30 \
+  General.device=0 General.num_workers=2 \
+  General.earlystop.use=true General.earlystop.patience=8 \
+  Dataset.DATASET_NAME=CAM16_MO4096 \
+  Dataset.dataset_csv_path=experiment_artifacts/splits/CAMELYON16_R50_CACHE4096_split.csv \
+  Dataset.balanced_sampler.use=true \
+  Logs.log_root_dir=/srv/storage1/hdd/cff/wqy/otmil/experiment_logs/camelyon16_rare_formal4096 \
+  Model.in_dim=1024 Model.max_instances=4096 Model.sampling=random
+```
+
+The two commands were repeated for seeds 2025 and 2026.
+
 TCGA-NSCLC preparation and patient-level split:
 
 ```bash
@@ -240,7 +312,7 @@ Final verification:
 
 ```bash
 python -m pytest -q
-# 27 passed
+# 29 passed
 ```
 
 ## Git History
@@ -275,6 +347,8 @@ Research-stage commits:
   override with provenance
 - `597c16dd79a1db15c0173b7ac4e3c43c58d9596f` reproducible TCGA-NSCLC
   preparation
+- `8fde720` binary rare-lesion instance evidence with legacy-compatible
+  defaults
 
 ## Failures And Resolutions
 
@@ -297,6 +371,13 @@ Research-stage commits:
   locally, while server smoke tests used Python's standard `unittest`.
 - A 10,000-iteration multiclass PANDA bootstrap exceeded the initial local
   timeout; the registered 5,000-iteration protocol completed successfully.
+- The first 4,096-patch MO-MIL command omitted `Model.in_dim=1024` and failed
+  before its first training batch with a matrix-shape error. It was restarted
+  with the correct feature dimension; no result from the failed run was used.
+- During construction of the 16,384-candidate Camelyon16 cache, the server
+  stopped accepting the previously working `wqy` public keys. Password
+  authentication also rejected the supplied `wqy` and `qfh` credentials, so
+  cache completion and follow-up experiments remain unverified.
 
 ## Research Assessment
 
