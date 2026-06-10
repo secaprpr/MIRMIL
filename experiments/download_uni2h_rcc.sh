@@ -43,9 +43,6 @@ for project in "${projects[@]}"; do
             --location \
             --continue-at - \
             --connect-timeout 30 \
-            --retry 5 \
-            --retry-all-errors \
-            --retry-delay 10 \
             --output "$partial" \
             "https://huggingface.co/datasets/MahmoodLab/UNI2-h-features/resolve/main/TCGA/${project}.tar.gz"; do
         if (( attempt >= max_retries )); then
