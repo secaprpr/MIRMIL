@@ -17,6 +17,9 @@ class WSIDatasetSamplingTest(unittest.TestCase):
         self.h5_path = os.path.join(self.temp_dir.name, "slide.h5")
         with h5py.File(self.h5_path, "w") as file:
             file.create_dataset("features", data=self.features)
+        self.uni_h5_path = os.path.join(self.temp_dir.name, "uni_slide.h5")
+        with h5py.File(self.uni_h5_path, "w") as file:
+            file.create_dataset("features", data=self.features[None, ...])
         self.pt_path = os.path.join(self.temp_dir.name, "slide.pt")
         torch.save(torch.from_numpy(self.features), self.pt_path)
 
@@ -55,6 +58,20 @@ class WSIDatasetSamplingTest(unittest.TestCase):
         )
         features, _ = dataset[0]
         self.assertTrue(torch.equal(features, torch.from_numpy(self.features[:8])))
+
+    def test_uniform_sampling_supports_uni_batched_h5(self):
+        dataset = WSI_Dataset(
+            self._csv(self.uni_h5_path),
+            "val",
+            max_instances=10,
+            sampling="uniform",
+        )
+        features, _ = dataset[0]
+        indices = np.linspace(0, 99, 10, dtype=np.int64)
+        expected = torch.from_numpy(self.features[indices])
+
+        self.assertEqual(features.shape, (10, 2))
+        self.assertTrue(torch.equal(features, expected))
 
 
 if __name__ == "__main__":

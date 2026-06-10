@@ -42,8 +42,23 @@ def load_subset(source_path, max_candidates):
     if source_path.endswith(".h5"):
         with h5py.File(source_path, "r") as file:
             dataset = file["features"]
-            indices = candidate_indices(dataset.shape[0], max_candidates)
-            features = dataset[:] if indices is None else dataset[indices]
+            if dataset.ndim == 2:
+                num_instances = dataset.shape[0]
+                indices = candidate_indices(num_instances, max_candidates)
+                features = dataset[:] if indices is None else dataset[indices]
+            elif dataset.ndim == 3 and dataset.shape[0] == 1:
+                num_instances = dataset.shape[1]
+                indices = candidate_indices(num_instances, max_candidates)
+                features = (
+                    dataset[0]
+                    if indices is None
+                    else dataset[0, indices, :]
+                )
+            else:
+                raise ValueError(
+                    f"Unexpected H5 feature shape {dataset.shape} in "
+                    f"{source_path}"
+                )
         return torch.from_numpy(features)
 
     loaded = torch.load(source_path, map_location="cpu", weights_only=False)

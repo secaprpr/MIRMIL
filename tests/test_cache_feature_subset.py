@@ -47,6 +47,27 @@ class CacheFeatureSubsetTest(unittest.TestCase):
                 cached.numpy(), features[[0, 3, 6, 9]]
             )
 
+    def test_cache_supports_uni_batched_h5_features(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = os.path.join(directory, "slide.h5")
+            output_dir = os.path.join(directory, "cache")
+            os.makedirs(output_dir)
+            features = np.arange(40, dtype=np.float32).reshape(10, 4)
+            with h5py.File(source, "w") as file:
+                file.create_dataset("features", data=features[None, ...])
+
+            cached_path, rows, dimensions, _ = cache_feature(
+                source, output_dir, 4
+            )
+            cached = torch.load(
+                cached_path, map_location="cpu", weights_only=True
+            )
+
+            self.assertEqual((rows, dimensions), (4, 4))
+            np.testing.assert_array_equal(
+                cached.numpy(), features[[0, 3, 6, 9]]
+            )
+
     def test_feature_paths_are_unique_and_ordered(self):
         frame = pd.DataFrame(
             {

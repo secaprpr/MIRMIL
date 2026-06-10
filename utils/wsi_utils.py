@@ -52,12 +52,30 @@ class WSI_Dataset(Dataset):
         if slide_path.endswith('.h5'):
             with h5py.File(slide_path, 'r') as h5_file:
                 feature_dataset = h5_file['features']
-                indices = self._sample_indices(feature_dataset.shape[0])
-                feat = (
-                    feature_dataset[:]
-                    if indices is None
-                    else feature_dataset[indices]
-                )
+                if feature_dataset.ndim == 2:
+                    num_instances = feature_dataset.shape[0]
+                    indices = self._sample_indices(num_instances)
+                    feat = (
+                        feature_dataset[:]
+                        if indices is None
+                        else feature_dataset[indices]
+                    )
+                elif (
+                    feature_dataset.ndim == 3
+                    and feature_dataset.shape[0] == 1
+                ):
+                    num_instances = feature_dataset.shape[1]
+                    indices = self._sample_indices(num_instances)
+                    feat = (
+                        feature_dataset[0]
+                        if indices is None
+                        else feature_dataset[0, indices, :]
+                    )
+                else:
+                    raise ValueError(
+                        f"Unexpected H5 feature shape "
+                        f"{feature_dataset.shape} in {slide_path}"
+                    )
                 feat = torch.from_numpy(feat)
         else:
             feat = torch.load(slide_path)
