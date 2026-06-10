@@ -173,6 +173,18 @@ def get_model_from_yaml(yaml_args):
             instance_evidence_temperature=_model_option(
                 yaml_args, "instance_evidence_temperature", 1.0
             ),
+            rare_instance_weight=_model_option(
+                yaml_args, "rare_instance_weight", 0.0
+            ),
+            rare_instance_topk=_model_option(
+                yaml_args, "rare_instance_topk", 32
+            ),
+            rare_instance_temperature=_model_option(
+                yaml_args, "rare_instance_temperature", 1.0
+            ),
+            rare_gate_weight=_model_option(
+                yaml_args, "rare_gate_weight", 0.0
+            ),
         )
         return mil_model
     if model_name == 'AB_MIL':

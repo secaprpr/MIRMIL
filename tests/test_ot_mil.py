@@ -135,6 +135,37 @@ class OTMILTest(unittest.TestCase):
         self.assertEqual(model.selection_fraction, 0.0)
         self.assertEqual(model.instance_evidence_weight, 0.0)
         self.assertIsNone(model.instance_classifier)
+        self.assertEqual(model.rare_instance_weight, 0.0)
+        self.assertIsNone(model.rare_instance_classifier)
+
+    def test_rare_instance_branch_is_trainable(self):
+        torch.manual_seed(19)
+        model = OT_MIL(
+            in_dim=32,
+            hidden_dim=16,
+            num_classes=2,
+            num_prototypes=4,
+            dropout=0.0,
+            sinkhorn_iterations=8,
+            gate_temperature=0.5,
+            max_instances=128,
+            rare_instance_weight=0.5,
+            rare_instance_topk=4,
+            rare_gate_weight=0.25,
+        )
+        output = model(torch.randn(1, 24, 32), return_controls=True)
+        loss = output["logits"].sum()
+        loss.backward()
+
+        self.assertEqual(output["rare_instance_scores"].shape, (24,))
+        self.assertIsNotNone(model.rare_instance_classifier.weight.grad)
+        self.assertTrue(
+            torch.isfinite(model.rare_instance_classifier.weight.grad).all()
+        )
+
+    def test_rare_instance_branch_rejects_multiclass_use(self):
+        with self.assertRaisesRegex(ValueError, "requires two classes"):
+            OT_MIL(num_classes=3, rare_instance_weight=0.5)
 
     def test_warmup_scheduler_matches_optimizer_groups(self):
         model = self._make_model()

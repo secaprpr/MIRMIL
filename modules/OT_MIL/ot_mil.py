@@ -38,6 +38,10 @@ class OT_MIL(nn.Module):
         necessity_margin=1.0,
         instance_evidence_weight=0.0,
         instance_evidence_temperature=1.0,
+        rare_instance_weight=0.0,
+        rare_instance_topk=32,
+        rare_instance_temperature=1.0,
+        rare_gate_weight=0.0,
     ):
         super().__init__()
         if num_prototypes < 1:
@@ -48,6 +52,15 @@ class OT_MIL(nn.Module):
             raise ValueError("selection_fraction must be in [0, 1)")
         if instance_evidence_weight < 0 or instance_evidence_temperature <= 0:
             raise ValueError("Instance evidence parameters must be positive")
+        if (
+            rare_instance_weight < 0
+            or rare_instance_topk < 1
+            or rare_instance_temperature <= 0
+            or not 0.0 <= rare_gate_weight <= 1.0
+        ):
+            raise ValueError("Rare-instance parameters are invalid")
+        if (rare_instance_weight > 0 or rare_gate_weight > 0) and num_classes != 2:
+            raise ValueError("Rare-instance evidence currently requires two classes")
 
         self.hidden_dim = hidden_dim
         self.num_classes = num_classes
@@ -67,6 +80,10 @@ class OT_MIL(nn.Module):
         self.necessity_margin = necessity_margin
         self.instance_evidence_weight = instance_evidence_weight
         self.instance_evidence_temperature = instance_evidence_temperature
+        self.rare_instance_weight = rare_instance_weight
+        self.rare_instance_topk = rare_instance_topk
+        self.rare_instance_temperature = rare_instance_temperature
+        self.rare_gate_weight = rare_gate_weight
         self.regularization_progress = 1.0
 
         self.projector = nn.Sequential(
@@ -93,6 +110,11 @@ class OT_MIL(nn.Module):
         self.instance_classifier = (
             nn.Linear(hidden_dim, num_classes)
             if instance_evidence_weight > 0
+            else None
+        )
+        self.rare_instance_classifier = (
+            nn.Linear(hidden_dim, 1)
+            if rare_instance_weight > 0 or rare_gate_weight > 0
             else None
         )
         self.apply(_init_weights)
@@ -199,6 +221,30 @@ class OT_MIL(nn.Module):
         ) - torch.logsumexp(log_weights, dim=0)
         return (temperature * pooled).unsqueeze(0)
 
+    def _rare_instance_scores(self, features):
+        if self.rare_instance_classifier is None:
+            raise RuntimeError("Rare-instance evidence branch is disabled")
+        return self.rare_instance_classifier(features).squeeze(-1)
+
+    def _aggregate_rare_evidence(self, scores, weights):
+        topk = min(self.rare_instance_topk, scores.numel())
+        weighted_scores = scores + weights.clamp_min(
+            torch.finfo(weights.dtype).eps
+        ).log()
+        top_scores = torch.topk(weighted_scores, topk).values
+        temperature = self.rare_instance_temperature
+        positive_logit = temperature * (
+            torch.logsumexp(top_scores / temperature, dim=0)
+            - torch.log(
+                torch.tensor(
+                    topk,
+                    device=top_scores.device,
+                    dtype=top_scores.dtype,
+                )
+            )
+        )
+        return torch.stack((-0.5 * positive_logit, 0.5 * positive_logit)).unsqueeze(0)
+
     def forward(
         self,
         x,
@@ -222,6 +268,17 @@ class OT_MIL(nn.Module):
             torch.finfo(transport.dtype).eps
         )
         gate = self._selection_gate(row_mass)
+        rare_scores = None
+        if self.rare_instance_classifier is not None:
+            rare_scores = self._rare_instance_scores(features)
+            if self.rare_gate_weight > 0:
+                rare_gate = torch.sigmoid(
+                    rare_scores / self.rare_instance_temperature
+                )
+                gate = (
+                    (1.0 - self.rare_gate_weight) * gate
+                    + self.rare_gate_weight * rare_gate
+                )
 
         selected_repr = self._build_representation(features, conditional_plan, gate)
         complement_repr = self._build_representation(
@@ -245,6 +302,18 @@ class OT_MIL(nn.Module):
                     features, torch.ones_like(gate)
                 )
             )
+        if self.rare_instance_weight > 0:
+            logits = logits + self.rare_instance_weight * (
+                self._aggregate_rare_evidence(rare_scores, gate)
+            )
+            complement_logits = complement_logits + self.rare_instance_weight * (
+                self._aggregate_rare_evidence(rare_scores, 1.0 - gate)
+            )
+            full_logits = full_logits + self.rare_instance_weight * (
+                self._aggregate_rare_evidence(
+                    rare_scores, torch.ones_like(gate)
+                )
+            )
 
         result = {
             "logits": logits,
@@ -257,6 +326,8 @@ class OT_MIL(nn.Module):
             "prototype_usage": transport.sum(dim=0),
             "sampled_indices": sampled_indices,
         }
+        if rare_scores is not None:
+            result["rare_instance_scores"] = rare_scores
         if return_controls:
             generator = torch.Generator()
             generator.manual_seed(features.size(0))
@@ -273,6 +344,12 @@ class OT_MIL(nn.Module):
                     "random_logits"
                 ] + self.instance_evidence_weight * (
                     self._aggregate_instance_evidence(features, random_gate)
+                )
+            if self.rare_instance_weight > 0:
+                result["random_logits"] = result[
+                    "random_logits"
+                ] + self.rare_instance_weight * (
+                    self._aggregate_rare_evidence(rare_scores, random_gate)
                 )
             result["random_selected_ratio"] = random_gate.mean()
         if return_WSI_feature:
