@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 import pickle
+import tempfile
 from datetime import datetime, timezone
 
 import h5py
@@ -110,9 +111,18 @@ def cache_feature(source_path, output_dir, max_candidates, overwrite=False):
             f"Expected two-dimensional features in {source_path}, "
             f"got shape {tuple(features.shape)}"
         )
-    temporary = f"{destination}.tmp"
-    torch.save(features, temporary)
-    os.replace(temporary, destination)
+    handle, temporary = tempfile.mkstemp(
+        prefix=f"{os.path.basename(destination)}.",
+        suffix=".tmp",
+        dir=output_dir,
+    )
+    os.close(handle)
+    try:
+        torch.save(features, temporary)
+        os.replace(temporary, destination)
+    finally:
+        if os.path.exists(temporary):
+            os.remove(temporary)
     return destination, int(features.shape[0]), int(features.shape[1]), True
 
 

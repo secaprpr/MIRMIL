@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 
 import h5py
 import numpy as np
@@ -103,6 +104,40 @@ class CacheFeatureSubsetTest(unittest.TestCase):
             self.assertTrue(created)
             self.assertEqual((rows, dimensions), (3, 4))
             np.testing.assert_array_equal(cached.numpy(), features[[0, 2, 4]])
+
+    def test_concurrent_cache_writes_use_unique_temporary_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = os.path.join(directory, "slide.h5")
+            output_dir = os.path.join(directory, "cache")
+            os.makedirs(output_dir)
+            features = np.arange(40, dtype=np.float32).reshape(10, 4)
+            with h5py.File(source, "w") as file:
+                file.create_dataset("features", data=features)
+
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                futures = [
+                    executor.submit(
+                        cache_feature, source, output_dir, 4, True
+                    )
+                    for _ in range(2)
+                ]
+                results = [future.result() for future in futures]
+
+            self.assertEqual(results[0][0], results[1][0])
+            cached = torch.load(
+                results[0][0], map_location="cpu", weights_only=True
+            )
+            np.testing.assert_array_equal(
+                cached.numpy(), features[[0, 3, 6, 9]]
+            )
+            self.assertEqual(
+                [
+                    name
+                    for name in os.listdir(output_dir)
+                    if name.endswith(".tmp")
+                ],
+                [],
+            )
 
 
 if __name__ == "__main__":
