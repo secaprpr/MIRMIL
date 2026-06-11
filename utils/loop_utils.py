@@ -117,6 +117,7 @@ def ot_train_loop(device, model, loader, criterion, optimizer, scheduler):
         "consistency_loss": 0.0,
         "necessity_loss": 0.0,
         "minimality_loss": 0.0,
+        "common_gate_energy": 0.0,
         "complement_uniformity_loss": 0.0,
         "diversity_loss": 0.0,
     }

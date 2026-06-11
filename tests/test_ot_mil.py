@@ -363,6 +363,31 @@ class OTMILTest(unittest.TestCase):
         self.assertTrue(torch.allclose(gates[:, 0], gates[:, 1]))
         self.assertTrue(torch.all(gates > 0.5))
 
+    def test_binary_common_gate_penalty_regularizes_only_shared_potential(self):
+        model = OT_MIL(
+            in_dim=8,
+            hidden_dim=4,
+            num_classes=2,
+            num_prototypes=2,
+            prototype_rank_dim=2,
+            dropout=0.0,
+            mass_faithful_transport=True,
+            learned_evidence_gate=True,
+            class_conditional_gate=True,
+            residual_evidence_logits=True,
+            binary_likelihood_ratio=True,
+            binary_common_gate_weight=1.0,
+            binary_common_gate_penalty_weight=0.5,
+        )
+        with torch.no_grad():
+            model.evidence_scorer.weight[0].fill_(0.25)
+        output = model(torch.randn(1, 12, 8))
+        losses = model.compute_loss(output, torch.tensor([1]))
+        losses["loss"].backward()
+
+        self.assertGreater(output["common_gate_energy"], 0)
+        self.assertGreater(model.evidence_scorer.weight.grad[0].abs().sum(), 0)
+
     def test_binary_likelihood_ratio_rejects_invalid_modes(self):
         with self.assertRaisesRegex(ValueError, "requires two classes"):
             OT_MIL(
@@ -376,6 +401,11 @@ class OTMILTest(unittest.TestCase):
             OT_MIL(num_classes=2, binary_likelihood_ratio=True)
         with self.assertRaisesRegex(ValueError, "requires likelihood-ratio"):
             OT_MIL(num_classes=2, binary_common_gate_weight=0.5)
+        with self.assertRaisesRegex(ValueError, "requires common-gate"):
+            OT_MIL(
+                num_classes=2,
+                binary_common_gate_penalty_weight=0.5,
+            )
 
     def test_rare_instance_branch_is_trainable(self):
         torch.manual_seed(19)

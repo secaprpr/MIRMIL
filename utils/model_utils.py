@@ -209,6 +209,9 @@ def get_model_from_yaml(yaml_args):
             binary_common_gate_weight=_model_option(
                 yaml_args, "binary_common_gate_weight", 0.0
             ),
+            binary_common_gate_penalty_weight=_model_option(
+                yaml_args, "binary_common_gate_penalty_weight", 0.0
+            ),
             necessity_log_probability=_model_option(
                 yaml_args, "necessity_log_probability", False
             ),

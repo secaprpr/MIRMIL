@@ -50,6 +50,7 @@ class OT_MIL(nn.Module):
         residual_evidence_logits=False,
         binary_likelihood_ratio=False,
         binary_common_gate_weight=0.0,
+        binary_common_gate_penalty_weight=0.0,
         necessity_log_probability=False,
         complement_uniformity_weight=0.0,
     ):
@@ -76,6 +77,7 @@ class OT_MIL(nn.Module):
         if (
             evidence_gate_weight < 0
             or binary_common_gate_weight < 0
+            or binary_common_gate_penalty_weight < 0
             or complement_uniformity_weight < 0
         ):
             raise ValueError("Evidence-gate and complement weights must be non-negative")
@@ -106,6 +108,10 @@ class OT_MIL(nn.Module):
         if binary_common_gate_weight > 0 and not binary_likelihood_ratio:
             raise ValueError(
                 "Binary common-gate evidence requires likelihood-ratio mode"
+            )
+        if binary_common_gate_penalty_weight > 0 and binary_common_gate_weight <= 0:
+            raise ValueError(
+                "Binary common-gate penalty requires common-gate evidence"
             )
 
         self.hidden_dim = hidden_dim
@@ -138,6 +144,9 @@ class OT_MIL(nn.Module):
         self.residual_evidence_logits = residual_evidence_logits
         self.binary_likelihood_ratio = binary_likelihood_ratio
         self.binary_common_gate_weight = binary_common_gate_weight
+        self.binary_common_gate_penalty_weight = (
+            binary_common_gate_penalty_weight
+        )
         self.necessity_log_probability = necessity_log_probability
         self.complement_uniformity_weight = complement_uniformity_weight
         self.regularization_progress = 1.0
@@ -462,6 +471,13 @@ class OT_MIL(nn.Module):
             torch.finfo(transport.dtype).eps
         )
         gate = self._selection_gate(row_mass, features)
+        common_gate_energy = features.new_zeros(())
+        if self.binary_common_gate_weight > 0:
+            common_score = (
+                self.binary_common_gate_weight
+                * self.evidence_scorer(features)[:, 0]
+            )
+            common_gate_energy = common_score.square().mean()
         rare_scores = None
         if self.rare_instance_classifier is not None:
             rare_scores = self._rare_instance_scores(features)
@@ -570,6 +586,7 @@ class OT_MIL(nn.Module):
             ),
             "selected_ratio": selected_ratio,
             "gate_mean": gate.mean(),
+            "common_gate_energy": common_gate_energy,
             "selection_threshold": self.selection_threshold,
             "prototype_usage": transport.sum(dim=0),
             "sampled_indices": sampled_indices,
@@ -665,6 +682,7 @@ class OT_MIL(nn.Module):
             self.necessity_margin - selected_score + complement_score
         ).mean()
         minimality = output["selected_ratio"]
+        common_gate_energy = output["common_gate_energy"]
         complement_probabilities = F.softmax(
             output["complement_logits"], dim=-1
         )
@@ -701,6 +719,9 @@ class OT_MIL(nn.Module):
             + regularization_progress * self.necessity_weight * necessity
             + regularization_progress * self.minimality_weight * minimality
             + regularization_progress
+            * self.binary_common_gate_penalty_weight
+            * common_gate_energy
+            + regularization_progress
             * self.complement_uniformity_weight
             * complement_uniformity
             + self.diversity_weight * diversity
@@ -712,6 +733,7 @@ class OT_MIL(nn.Module):
             "consistency_loss": consistency.detach(),
             "necessity_loss": necessity.detach(),
             "minimality_loss": minimality.detach(),
+            "common_gate_energy": common_gate_energy.detach(),
             "complement_uniformity_loss": complement_uniformity.detach(),
             "diversity_loss": diversity.detach(),
         }
