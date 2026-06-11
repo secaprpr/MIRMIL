@@ -139,6 +139,7 @@ class OTMILTest(unittest.TestCase):
         self.assertIsNone(model.rare_instance_classifier)
         self.assertFalse(model.mass_faithful_transport)
         self.assertFalse(model.learned_evidence_gate)
+        self.assertFalse(model.class_conditional_gate)
 
     def test_mass_faithful_gate_uses_transport_retention(self):
         model = OT_MIL(
@@ -192,6 +193,39 @@ class OTMILTest(unittest.TestCase):
         after_shift = model.compute_loss(shifted, labels)["necessity_loss"]
 
         self.assertTrue(torch.allclose(original, after_shift, atol=1e-5))
+
+    def test_class_conditional_gate_builds_one_submeasure_per_class(self):
+        torch.manual_seed(29)
+        model = OT_MIL(
+            in_dim=32,
+            hidden_dim=16,
+            num_classes=3,
+            num_prototypes=4,
+            dropout=0.0,
+            sinkhorn_iterations=8,
+            mass_faithful_transport=True,
+            learned_evidence_gate=True,
+            class_conditional_gate=True,
+        )
+        output = model(
+            torch.randn(1, 24, 32),
+            return_WSI_feature=True,
+            return_controls=True,
+        )
+        torch.nn.functional.cross_entropy(
+            output["logits"], torch.tensor([2])
+        ).backward()
+
+        self.assertEqual(output["class_selection_gates"].shape, (24, 3))
+        self.assertEqual(output["selection_gate"].shape, (24,))
+        self.assertEqual(output["WSI_feature"].shape, (3, 100))
+        self.assertEqual(output["logits"].shape, (1, 3))
+        self.assertIsNotNone(model.evidence_scorer.weight.grad)
+        self.assertGreater(model.evidence_scorer.weight.grad.abs().sum().item(), 0)
+
+    def test_class_conditional_gate_requires_learned_scores(self):
+        with self.assertRaisesRegex(ValueError, "requires a learned"):
+            OT_MIL(class_conditional_gate=True)
 
     def test_rare_instance_branch_is_trainable(self):
         torch.manual_seed(19)

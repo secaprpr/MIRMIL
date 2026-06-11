@@ -194,6 +194,9 @@ def get_model_from_yaml(yaml_args):
             evidence_gate_weight=_model_option(
                 yaml_args, "evidence_gate_weight", 1.0
             ),
+            class_conditional_gate=_model_option(
+                yaml_args, "class_conditional_gate", False
+            ),
             necessity_log_probability=_model_option(
                 yaml_args, "necessity_log_probability", False
             ),

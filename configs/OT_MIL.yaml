@@ -54,6 +54,7 @@ Model:
     mass_faithful_transport: True
     learned_evidence_gate: True
     evidence_gate_weight: 1.0
+    class_conditional_gate: True
     necessity_log_probability: True
     complement_uniformity_weight: 0.05
     necessity_margin: 1.0

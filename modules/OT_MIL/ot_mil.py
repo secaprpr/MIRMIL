@@ -45,6 +45,7 @@ class OT_MIL(nn.Module):
         mass_faithful_transport=False,
         learned_evidence_gate=False,
         evidence_gate_weight=1.0,
+        class_conditional_gate=False,
         necessity_log_probability=False,
         complement_uniformity_weight=0.0,
     ):
@@ -68,6 +69,14 @@ class OT_MIL(nn.Module):
             raise ValueError("Rare-instance evidence currently requires two classes")
         if evidence_gate_weight < 0 or complement_uniformity_weight < 0:
             raise ValueError("Evidence-gate and complement weights must be non-negative")
+        if class_conditional_gate and not learned_evidence_gate:
+            raise ValueError("Class-conditional gating requires a learned evidence gate")
+        if class_conditional_gate and (
+            rare_instance_weight > 0 or rare_gate_weight > 0
+        ):
+            raise ValueError(
+                "Class-conditional and binary rare-instance gates cannot be combined"
+            )
 
         self.hidden_dim = hidden_dim
         self.num_classes = num_classes
@@ -94,6 +103,7 @@ class OT_MIL(nn.Module):
         self.mass_faithful_transport = mass_faithful_transport
         self.learned_evidence_gate = learned_evidence_gate
         self.evidence_gate_weight = evidence_gate_weight
+        self.class_conditional_gate = class_conditional_gate
         self.necessity_log_probability = necessity_log_probability
         self.complement_uniformity_weight = complement_uniformity_weight
         self.regularization_progress = 1.0
@@ -109,7 +119,12 @@ class OT_MIL(nn.Module):
         self.prototype_logits = nn.Parameter(torch.zeros(num_prototypes))
         self.selection_threshold = nn.Parameter(torch.tensor(0.0))
         self.evidence_scorer = (
-            nn.Linear(hidden_dim, 1) if learned_evidence_gate else None
+            nn.Linear(
+                hidden_dim,
+                num_classes if class_conditional_gate else 1,
+            )
+            if learned_evidence_gate
+            else None
         )
 
         representation_dim = (
@@ -194,9 +209,15 @@ class OT_MIL(nn.Module):
             if self.evidence_scorer is not None:
                 if features is None:
                     raise ValueError("features are required by the learned evidence gate")
-                evidence_score = evidence_score + self.evidence_gate_weight * (
-                    self.evidence_scorer(features).squeeze(-1)
-                )
+                learned_score = self.evidence_scorer(features)
+                if self.class_conditional_gate:
+                    evidence_score = evidence_score[:, None] + (
+                        self.evidence_gate_weight * learned_score
+                    )
+                else:
+                    evidence_score = evidence_score + self.evidence_gate_weight * (
+                        learned_score.squeeze(-1)
+                    )
         else:
             # Legacy mode retains only within-bag UOT mass rank.
             log_mass = row_mass.clamp_min(torch.finfo(row_mass.dtype).eps).log()
@@ -206,13 +227,40 @@ class OT_MIL(nn.Module):
         threshold = self.selection_threshold
         if self.selection_fraction > 0.0 and evidence_score.numel() > 1:
             sparse_threshold = torch.quantile(
-                evidence_score.detach(), 1.0 - self.selection_fraction
+                evidence_score.detach(),
+                1.0 - self.selection_fraction,
+                dim=0 if evidence_score.dim() == 2 else None,
             )
             threshold = threshold + sparse_threshold
         return torch.sigmoid(
             (evidence_score - threshold)
             / max(self.gate_temperature, 1e-6)
         )
+
+    def _class_conditional_representations(self, features, transport, gates):
+        return torch.cat(
+            [
+                self._build_transport_representation(
+                    features, transport * gates[:, class_index, None]
+                )
+                for class_index in range(self.num_classes)
+            ],
+            dim=0,
+        )
+
+    def _class_conditional_logits(self, representations):
+        class_score_matrix = self.classifier(representations)
+        return class_score_matrix.diagonal().unsqueeze(0)
+
+    def _class_conditional_instance_evidence(self, features, gates):
+        return torch.stack(
+            [
+                self._aggregate_instance_evidence(
+                    features, gates[:, class_index]
+                )[0, class_index]
+                for class_index in range(self.num_classes)
+            ]
+        ).unsqueeze(0)
 
     def _build_transport_representation(self, features, weighted_plan):
         tiny = torch.finfo(features.dtype).eps
@@ -314,7 +362,20 @@ class OT_MIL(nn.Module):
                     + self.rare_gate_weight * rare_gate
                 )
 
-        if self.mass_faithful_transport:
+        if self.class_conditional_gate:
+            selected_repr = self._class_conditional_representations(
+                features, transport, gate
+            )
+            complement_repr = self._class_conditional_representations(
+                features, transport, 1.0 - gate
+            )
+            full_repr = self._build_transport_representation(features, transport)
+            class_mass = (row_mass[:, None] * gate).sum(dim=0)
+            selected_ratio = (
+                class_mass
+                / row_mass.sum().clamp_min(torch.finfo(row_mass.dtype).eps)
+            ).mean()
+        elif self.mass_faithful_transport:
             selected_repr = self._build_transport_representation(
                 features, transport * gate[:, None]
             )
@@ -336,16 +397,32 @@ class OT_MIL(nn.Module):
                 features, conditional_plan, torch.ones_like(gate)
             )
             selected_ratio = gate.mean()
-        logits = self.classifier(selected_repr)
-        complement_logits = self.classifier(complement_repr)
+        if self.class_conditional_gate:
+            logits = self._class_conditional_logits(selected_repr)
+            complement_logits = self._class_conditional_logits(complement_repr)
+        else:
+            logits = self.classifier(selected_repr)
+            complement_logits = self.classifier(complement_repr)
         full_logits = self.classifier(full_repr)
         if self.instance_evidence_weight > 0:
-            logits = logits + self.instance_evidence_weight * (
-                self._aggregate_instance_evidence(features, gate)
-            )
-            complement_logits = complement_logits + self.instance_evidence_weight * (
-                self._aggregate_instance_evidence(features, 1.0 - gate)
-            )
+            if self.class_conditional_gate:
+                logits = logits + self.instance_evidence_weight * (
+                    self._class_conditional_instance_evidence(features, gate)
+                )
+                complement_logits = complement_logits + (
+                    self.instance_evidence_weight
+                    * self._class_conditional_instance_evidence(
+                        features, 1.0 - gate
+                    )
+                )
+            else:
+                logits = logits + self.instance_evidence_weight * (
+                    self._aggregate_instance_evidence(features, gate)
+                )
+                complement_logits = complement_logits + (
+                    self.instance_evidence_weight
+                    * self._aggregate_instance_evidence(features, 1.0 - gate)
+                )
             full_logits = full_logits + self.instance_evidence_weight * (
                 self._aggregate_instance_evidence(
                     features, torch.ones_like(gate)
@@ -369,13 +446,17 @@ class OT_MIL(nn.Module):
             "complement_logits": complement_logits,
             "full_logits": full_logits,
             "transport": transport,
-            "selection_gate": gate,
+            "selection_gate": (
+                gate.mean(dim=1) if self.class_conditional_gate else gate
+            ),
             "selected_ratio": selected_ratio,
             "gate_mean": gate.mean(),
             "selection_threshold": self.selection_threshold,
             "prototype_usage": transport.sum(dim=0),
             "sampled_indices": sampled_indices,
         }
+        if self.class_conditional_gate:
+            result["class_selection_gates"] = gate
         if rare_scores is not None:
             result["rare_instance_scores"] = rare_scores
         if return_controls:
@@ -385,7 +466,11 @@ class OT_MIL(nn.Module):
                 features.size(0), generator=generator, device="cpu"
             ).to(features.device)
             random_gate = gate.index_select(0, permutation)
-            if self.mass_faithful_transport:
+            if self.class_conditional_gate:
+                random_repr = self._class_conditional_representations(
+                    features, transport, random_gate
+                )
+            elif self.mass_faithful_transport:
                 random_repr = self._build_transport_representation(
                     features, transport * random_gate[:, None]
                 )
@@ -393,13 +478,24 @@ class OT_MIL(nn.Module):
                 random_repr = self._build_representation(
                     features, conditional_plan, random_gate
                 )
-            result["random_logits"] = self.classifier(random_repr)
+            if self.class_conditional_gate:
+                result["random_logits"] = self._class_conditional_logits(
+                    random_repr
+                )
+            else:
+                result["random_logits"] = self.classifier(random_repr)
             if self.instance_evidence_weight > 0:
+                if self.class_conditional_gate:
+                    random_evidence = self._class_conditional_instance_evidence(
+                        features, random_gate
+                    )
+                else:
+                    random_evidence = self._aggregate_instance_evidence(
+                        features, random_gate
+                    )
                 result["random_logits"] = result[
                     "random_logits"
-                ] + self.instance_evidence_weight * (
-                    self._aggregate_instance_evidence(features, random_gate)
-                )
+                ] + self.instance_evidence_weight * random_evidence
             if self.rare_instance_weight > 0:
                 result["random_logits"] = result[
                     "random_logits"
@@ -410,7 +506,7 @@ class OT_MIL(nn.Module):
         if return_WSI_feature:
             result["WSI_feature"] = selected_repr
         if return_WSI_attn:
-            result["WSI_attn"] = gate.unsqueeze(-1)
+            result["WSI_attn"] = result["selection_gate"].unsqueeze(-1)
         return result
 
     def set_regularization_progress(self, progress):
