@@ -127,6 +127,8 @@ def main():
             continue
         predictions = pd.read_csv(path)
         grouped = aggregate_prediction_frame(predictions, group_mapping)
+        grouped["seed"] = int(match.group("seed"))
+        grouped["budget"] = int(match.group("budget"))
         metrics = evaluate_grouped_frame(grouped)
         result = {
             "model": match.group("model"),
@@ -140,7 +142,7 @@ def main():
             "macro_f1": metrics["macro_f1"],
         }
         results.append(result)
-        output_name = f"grouped_{os.path.basename(path)}"
+        output_name = os.path.basename(path)
         grouped.to_csv(os.path.join(args.output_dir, output_name), index=False)
         print(json.dumps(result, indent=2))
 

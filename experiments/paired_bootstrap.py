@@ -46,7 +46,7 @@ def load_prediction(path):
     return frame, probability_columns
 
 
-def paired_frames(input_dir, budget):
+def paired_frames(input_dir, budget, id_column="slide_path"):
     pairs = []
     pattern = os.path.join(input_dir, f"OT_MIL_seed*_budget{budget}.csv")
     for ot_path in sorted(glob.glob(pattern)):
@@ -60,9 +60,11 @@ def paired_frames(input_dir, budget):
         mo_frame, mo_probability_columns = load_prediction(mo_path)
         if probability_columns != mo_probability_columns:
             raise ValueError(f"Probability columns differ for seed {seed}")
+        if id_column not in ot_frame or id_column not in mo_frame:
+            raise ValueError(f"Missing prediction ID column: {id_column}")
         merged = ot_frame.merge(
             mo_frame,
-            on=["slide_path", "label", "seed", "budget"],
+            on=[id_column, "label", "seed", "budget"],
             suffixes=("_ot", "_mo"),
             validate="one_to_one",
         )
@@ -105,9 +107,14 @@ def main():
         default="macro_auc",
     )
     parser.add_argument("--output")
+    parser.add_argument(
+        "--id-column",
+        default="slide_path",
+        help="Row identifier used to pair OT-MIL and MO-MIL predictions",
+    )
     args = parser.parse_args()
 
-    pairs = paired_frames(args.input_dir, args.budget)
+    pairs = paired_frames(args.input_dir, args.budget, args.id_column)
     rng = np.random.default_rng(args.seed)
     observed = []
     bootstrap_differences = np.empty(args.iterations, dtype=np.float64)
