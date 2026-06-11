@@ -56,6 +56,8 @@ Model:
     learned_evidence_gate: False
     evidence_gate_weight: 1.0
     class_conditional_gate: False
+    class_prototype_routing: False
+    class_prototype_separation_weight: 0.0
     residual_evidence_logits: False
     binary_likelihood_ratio: False
     binary_common_gate_weight: 0.0

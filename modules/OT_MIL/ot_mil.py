@@ -47,6 +47,8 @@ class OT_MIL(nn.Module):
         learned_evidence_gate=False,
         evidence_gate_weight=1.0,
         class_conditional_gate=False,
+        class_prototype_routing=False,
+        class_prototype_separation_weight=0.0,
         residual_evidence_logits=False,
         binary_likelihood_ratio=False,
         binary_common_gate_weight=0.0,
@@ -86,11 +88,20 @@ class OT_MIL(nn.Module):
             or binary_common_gate_penalty_weight < 0
             or binary_common_gate_balance_power < 0
             or binary_dual_endpoint_weight < 0
+            or class_prototype_separation_weight < 0
             or complement_uniformity_weight < 0
         ):
             raise ValueError("Evidence-gate and complement weights must be non-negative")
         if class_conditional_gate and not learned_evidence_gate:
             raise ValueError("Class-conditional gating requires a learned evidence gate")
+        if class_prototype_routing and not class_conditional_gate:
+            raise ValueError(
+                "Class-prototype routing requires class-conditional gating"
+            )
+        if class_prototype_separation_weight > 0 and not class_prototype_routing:
+            raise ValueError(
+                "Class-prototype separation requires prototype routing"
+            )
         if class_conditional_gate and (
             rare_instance_weight > 0 or rare_gate_weight > 0
         ):
@@ -165,6 +176,10 @@ class OT_MIL(nn.Module):
         self.learned_evidence_gate = learned_evidence_gate
         self.evidence_gate_weight = evidence_gate_weight
         self.class_conditional_gate = class_conditional_gate
+        self.class_prototype_routing = class_prototype_routing
+        self.class_prototype_separation_weight = (
+            class_prototype_separation_weight
+        )
         self.residual_evidence_logits = residual_evidence_logits
         self.binary_likelihood_ratio = binary_likelihood_ratio
         self.binary_common_gate_weight = binary_common_gate_weight
@@ -190,6 +205,13 @@ class OT_MIL(nn.Module):
         self.prototypes = nn.Parameter(torch.empty(num_prototypes, hidden_dim))
         nn.init.normal_(self.prototypes, std=0.02)
         self.prototype_logits = nn.Parameter(torch.zeros(num_prototypes))
+        self.class_prototype_logits = (
+            nn.Parameter(torch.empty(num_classes, num_prototypes))
+            if class_prototype_routing
+            else None
+        )
+        if self.class_prototype_logits is not None:
+            nn.init.normal_(self.class_prototype_logits, std=1e-3)
         self.selection_threshold = nn.Parameter(torch.tensor(0.0))
         evidence_output_dim = num_classes if class_conditional_gate else 1
         if binary_likelihood_ratio:
@@ -387,11 +409,26 @@ class OT_MIL(nn.Module):
             / max(self.gate_temperature, 1e-6)
         )
 
+    def _class_prototype_weights(self):
+        if self.class_prototype_logits is None:
+            return None
+        return self.num_prototypes * F.softmax(
+            self.class_prototype_logits, dim=1
+        )
+
     def _class_conditional_representations(self, features, transport, gates):
+        prototype_weights = self._class_prototype_weights()
         return torch.cat(
             [
                 self._build_transport_representation(
-                    features, transport * gates[:, class_index, None]
+                    features,
+                    transport
+                    * gates[:, class_index, None]
+                    * (
+                        prototype_weights[class_index][None, :]
+                        if prototype_weights is not None
+                        else 1.0
+                    ),
                 )
                 for class_index in range(self.num_classes)
             ],
@@ -748,6 +785,8 @@ class OT_MIL(nn.Module):
                 if contrast_gate is not None
                 else gate
             )
+        if self.class_prototype_logits is not None:
+            result["class_prototype_weights"] = self._class_prototype_weights()
         if contrast_gate is not None:
             result["contrast_logits"] = contrast_logits
             result["common_logits"] = common_logits
@@ -874,6 +913,23 @@ class OT_MIL(nn.Module):
         ).mean()
         minimality = output["selected_ratio"]
         common_gate_energy = output["common_gate_energy"]
+        class_prototype_separation = classification.new_zeros(())
+        if self.class_prototype_logits is not None:
+            prototype_distributions = F.softmax(
+                self.class_prototype_logits, dim=1
+            )
+            prototype_similarity = (
+                F.normalize(prototype_distributions, dim=1)
+                @ F.normalize(prototype_distributions, dim=1).transpose(0, 1)
+            )
+            off_diagonal_mask = ~torch.eye(
+                self.num_classes,
+                dtype=torch.bool,
+                device=prototype_similarity.device,
+            )
+            class_prototype_separation = prototype_similarity[
+                off_diagonal_mask
+            ].mean()
         complement_probabilities = F.softmax(
             output["complement_logits"], dim=-1
         )
@@ -914,6 +970,9 @@ class OT_MIL(nn.Module):
             * self.binary_common_gate_penalty_weight
             * common_gate_energy
             + regularization_progress
+            * self.class_prototype_separation_weight
+            * class_prototype_separation
+            + regularization_progress
             * self.complement_uniformity_weight
             * complement_uniformity
             + self.diversity_weight * diversity
@@ -927,6 +986,9 @@ class OT_MIL(nn.Module):
             "necessity_loss": necessity.detach(),
             "minimality_loss": minimality.detach(),
             "common_gate_energy": common_gate_energy.detach(),
+            "class_prototype_separation_loss": (
+                class_prototype_separation.detach()
+            ),
             "complement_uniformity_loss": complement_uniformity.detach(),
             "diversity_loss": diversity.detach(),
         }

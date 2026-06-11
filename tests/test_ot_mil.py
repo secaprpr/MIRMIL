@@ -538,6 +538,42 @@ class OTMILTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "requires a dual-gate"):
             OT_MIL(num_classes=2, binary_dual_endpoint_weight=0.5)
 
+    def test_class_prototype_routing_preserves_mass_scale_and_is_trainable(self):
+        model = OT_MIL(
+            in_dim=8,
+            hidden_dim=4,
+            num_classes=3,
+            num_prototypes=4,
+            prototype_rank_dim=2,
+            dropout=0.0,
+            mass_faithful_transport=True,
+            learned_evidence_gate=True,
+            class_conditional_gate=True,
+            class_prototype_routing=True,
+            class_prototype_separation_weight=0.1,
+            residual_evidence_logits=True,
+        )
+        weights = model._class_prototype_weights()
+        output = model(torch.randn(1, 12, 8))
+        losses = model.compute_loss(output, torch.tensor([1]))
+        losses["loss"].backward()
+
+        self.assertEqual(weights.shape, (3, 4))
+        self.assertTrue(
+            torch.allclose(weights.mean(dim=1), torch.ones(3), atol=1e-6)
+        )
+        self.assertEqual(output["class_prototype_weights"].shape, (3, 4))
+        self.assertGreater(model.class_prototype_logits.grad.abs().sum(), 0)
+
+    def test_class_prototype_routing_rejects_invalid_modes(self):
+        with self.assertRaisesRegex(ValueError, "requires class-conditional"):
+            OT_MIL(num_classes=3, class_prototype_routing=True)
+        with self.assertRaisesRegex(ValueError, "requires prototype routing"):
+            OT_MIL(
+                num_classes=3,
+                class_prototype_separation_weight=0.1,
+            )
+
     def test_rare_instance_branch_is_trainable(self):
         torch.manual_seed(19)
         model = OT_MIL(
