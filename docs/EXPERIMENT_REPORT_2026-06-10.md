@@ -69,6 +69,28 @@ All slides from one TCGA patient are constrained to one split. The reproducible
 preparation script creates labels, patient IDs, and a unified symlink feature
 directory without copying the source features.
 
+### TCGA-RCC UNI2-h
+
+- Official feature source: `MahmoodLab/UNI2-h-features`
+- Projects: TCGA-KIRC, TCGA-KIRP, and TCGA-KICH
+- Feature dimension: 1,536
+- Slides: 925; patients: 895
+- Class slides: 519 KIRC / 297 KIRP / 109 KICH
+- Patient-level split: 561 train / 185 validation / 179 test slides
+- Label CSV SHA-256:
+  `506b041e7032c70d9f1b148e94378019239ee2e29c03d41dcab54d8dc0485f6d`
+- Assignment SHA-256:
+  `a054aba0d4b1e5bddbab0986d53e0bbf0883fa89a4cb4db5955427d826a1abb1`
+- Cached split SHA-256:
+  `e34b60c9decf75c25558eba3640481ceef3ad27e3c77a18910b755311ff90868`
+- Fixed cache: 3,602,153 instances and 22,133,947,932 bytes
+
+The official archives were downloaded directly from Hugging Face without
+downloading TCGA whole-slide images. Project membership defines the RCC
+subtype label. H5 structure and feature dimension were validated before
+patient-level splitting. The same deterministic 4,096-candidate cache was used
+by both methods.
+
 ## Main Results
 
 Mean and sample standard deviation over three seeds:
@@ -82,6 +104,8 @@ Mean and sample standard deviation over three seeds:
 | Camelyon16 | UOT-only | 0.7576 +/- 0.0342 | 0.6420 | 0.6506 | 0.6196 |
 | TCGA-NSCLC PLIP-QC, 4,096 patches | MO-MIL | 0.9160 +/- 0.0110 | 0.8308 | 0.8310 | 0.8299 |
 | TCGA-NSCLC PLIP-QC, 4,096 patches | OT-MIL | **0.9235 +/- 0.0025** | **0.8607** | **0.8605** | **0.8602** |
+| TCGA-RCC UNI2-h, 4,096 patches | MO-MIL | **0.9904 +/- 0.0025** | 0.9441 | 0.9599 | 0.9378 |
+| TCGA-RCC UNI2-h, 4,096 patches | OT-MIL | 0.9892 +/- 0.0029 | **0.9516** | **0.9642** | **0.9486** |
 
 Paired stratified bootstrap, 5,000 iterations unless noted:
 
@@ -91,6 +115,9 @@ Paired stratified bootstrap, 5,000 iterations unless noted:
 | Camelyon16 OT-MIL, 512 patches | -0.09422 | [-0.16903, -0.01799] | 0.0072 |
 | Camelyon16 UOT-only, 512 patches | -0.05398 | [-0.12358, +0.01278] | 0.0614 |
 | TCGA-NSCLC OT-MIL, 4,096 patches (10,000) | +0.00752 | [-0.00515, +0.02076] | 0.8720 |
+| TCGA-RCC macro-AUC, 4,096 patches (10,000) | -0.00122 | [-0.00457, +0.00192] | 0.2192 |
+| TCGA-RCC balanced accuracy (10,000) | +0.00436 | [-0.00606, +0.01493] | 0.8046 |
+| TCGA-RCC macro-F1 (10,000) | +0.01081 | [-0.00251, +0.02523] | 0.9401 |
 
 ## PANDA Capacity Follow-up
 
@@ -298,6 +325,39 @@ python experiments/run_benchmark.py \
   --in-dim 512 --num-workers 2 --balanced
 ```
 
+TCGA-RCC UNI2-h preparation and formal comparison:
+
+```bash
+experiments/download_uni2h_rcc.sh \
+  /mnt/d/datasets/UNI2-h_features none \
+  TCGA-KIRC TCGA-KIRP TCGA-KICH
+
+experiments/extract_uni2h_projects.sh \
+  /mnt/d/datasets/UNI2-h_features \
+  TCGA-KIRC TCGA-KIRP TCGA-KICH
+
+python experiments/prepare_tcga_projects.py \
+  --project KIRC=/mnt/d/datasets/UNI2-h_features/TCGA-KIRC \
+  --project KIRP=/mnt/d/datasets/UNI2-h_features/TCGA-KIRP \
+  --project KICH=/mnt/d/datasets/UNI2-h_features/TCGA-KICH \
+  --output-dir /home/sigirika/datasets/tcga_rcc_uni2h
+
+python experiments/prepare_split.py \
+  --labels /home/sigirika/datasets/tcga_rcc_uni2h/TCGA_projects_labels.csv \
+  --feature-dir /home/sigirika/datasets/tcga_rcc_uni2h/features \
+  --output-dir /home/sigirika/datasets/tcga_rcc_uni2h \
+  --dataset-name TCGA_RCC_UNI2H --group-column patient_id \
+  --feature-extension .h5 --seed 2024
+
+python experiments/run_benchmark.py \
+  --split /home/sigirika/datasets/tcga_rcc_uni2h/TCGA_RCC_UNI2H_CACHE4096_split.csv \
+  --dataset-name TCGA_RCC_UNI2H_CACHE4096 --num-classes 3 \
+  --log-root /home/sigirika/experiment_logs/tcga_rcc_uni2h_formal \
+  --models OT_MIL MO_MIL --seeds 2024 2025 2026 \
+  --epochs 30 --patience 8 --max-instances 4096 \
+  --in-dim 1536 --device 0 --num-workers 2 --balanced
+```
+
 PANDA H512 frozen-checkpoint evaluation:
 
 ```bash
@@ -312,7 +372,7 @@ Final verification:
 
 ```bash
 python -m pytest -q
-# 29 passed
+# 37 passed
 ```
 
 ## Git History
@@ -349,6 +409,12 @@ Research-stage commits:
   preparation
 - `8fde720` binary rare-lesion instance evidence with legacy-compatible
   defaults
+- `f283619` generic TCGA multi-project labels, H5 validation, and links
+- `8de7572`, `ff4ff5c`, `2dc97ce`, `a4d3f98` reproducible, resumable UNI2-h
+  download workflow
+- `1f05278` atomic UNI2-h archive extraction
+- `01ebb10` efficient batched UNI2-h H5 loading and caching
+- `fa01328` paired bootstrap for classification metrics
 
 ## Failures And Resolutions
 
@@ -385,16 +451,19 @@ The PANDA result supports a narrow claim: OT-induced submeasure selection is
 competitive and consistently improves over the evaluated MO-MIL baseline on a
 large multiclass cohort, including reduced patch budgets.
 
-The follow-up evidence now supports improvement over MO-MIL on PANDA and
+The follow-up evidence supports improvement over MO-MIL on PANDA and
 TCGA-NSCLC. PANDA H512 is significant under paired bootstrap. TCGA-NSCLC has a
 higher three-seed mean, much lower variance, and better accuracy-based metrics,
-but its AUC confidence interval still crosses zero. Camelyon16 remains a clear
-negative result.
+but its AUC confidence interval still crosses zero. On official TCGA-RCC
+UNI2-h features, AUC is statistically tied while OT-MIL improves accuracy,
+balanced accuracy, and macro-F1; macro-F1 improves in all three seeds, although
+its bootstrap confidence interval still crosses zero. Camelyon16 remains a
+clear negative result.
 
 These results support continuing toward an AAAI submission, but not yet a
 broad superiority claim. The defensible claim is that OT-induced submeasure
 selection improves a large multiclass cohort and transfers positively to a
 patient-split TCGA subtype task, while rare-lesion sensitivity remains a known
 limitation. Submission readiness still requires official Mamba2 MO-MIL
-validation, at least one more independent cohort or cross-center test, and a
-principled mechanism that addresses the Camelyon16 failure.
+validation and preferably an external CPTAC evaluation. Camelyon16 can be
+retained as a limitation rather than a main benchmark.
