@@ -51,6 +51,7 @@ class OT_MIL(nn.Module):
         binary_likelihood_ratio=False,
         binary_common_gate_weight=0.0,
         binary_common_gate_penalty_weight=0.0,
+        binary_common_gate_balance_power=0.0,
         necessity_log_probability=False,
         complement_uniformity_weight=0.0,
     ):
@@ -78,6 +79,7 @@ class OT_MIL(nn.Module):
             evidence_gate_weight < 0
             or binary_common_gate_weight < 0
             or binary_common_gate_penalty_weight < 0
+            or binary_common_gate_balance_power < 0
             or complement_uniformity_weight < 0
         ):
             raise ValueError("Evidence-gate and complement weights must be non-negative")
@@ -113,6 +115,10 @@ class OT_MIL(nn.Module):
             raise ValueError(
                 "Binary common-gate penalty requires common-gate evidence"
             )
+        if binary_common_gate_balance_power > 0 and binary_common_gate_weight <= 0:
+            raise ValueError(
+                "Binary common-gate balancing requires common-gate evidence"
+            )
 
         self.hidden_dim = hidden_dim
         self.num_classes = num_classes
@@ -147,6 +153,7 @@ class OT_MIL(nn.Module):
         self.binary_common_gate_penalty_weight = (
             binary_common_gate_penalty_weight
         )
+        self.binary_common_gate_balance_power = binary_common_gate_balance_power
         self.necessity_log_probability = necessity_log_probability
         self.complement_uniformity_weight = complement_uniformity_weight
         self.regularization_progress = 1.0
@@ -289,6 +296,23 @@ class OT_MIL(nn.Module):
                                 * learned_score[:, :1]
                             )
                             log_likelihood_ratio = learned_score[:, 1:2]
+                            if self.binary_common_gate_balance_power > 0:
+                                tiny = torch.finfo(common_score.dtype).eps
+                                common_magnitude = (
+                                    common_score.detach().abs().mean()
+                                )
+                                contrast_magnitude = (
+                                    log_likelihood_ratio.detach().abs().mean()
+                                )
+                                common_scale = (
+                                    (contrast_magnitude + tiny)
+                                    / (
+                                        common_magnitude
+                                        + contrast_magnitude
+                                        + 2.0 * tiny
+                                    )
+                                ).pow(self.binary_common_gate_balance_power)
+                                common_score = common_scale * common_score
                         else:
                             common_score = 0.0
                             log_likelihood_ratio = learned_score
@@ -472,11 +496,26 @@ class OT_MIL(nn.Module):
         )
         gate = self._selection_gate(row_mass, features)
         common_gate_energy = features.new_zeros(())
+        common_gate_scale = features.new_ones(())
         if self.binary_common_gate_weight > 0:
+            evidence_scores = self.evidence_scorer(features)
             common_score = (
                 self.binary_common_gate_weight
-                * self.evidence_scorer(features)[:, 0]
+                * evidence_scores[:, 0]
             )
+            if self.binary_common_gate_balance_power > 0:
+                tiny = torch.finfo(common_score.dtype).eps
+                common_magnitude = common_score.detach().abs().mean()
+                contrast_magnitude = evidence_scores[:, 1].detach().abs().mean()
+                common_gate_scale = (
+                    (contrast_magnitude + tiny)
+                    / (
+                        common_magnitude
+                        + contrast_magnitude
+                        + 2.0 * tiny
+                    )
+                ).pow(self.binary_common_gate_balance_power)
+                common_score = common_gate_scale * common_score
             common_gate_energy = common_score.square().mean()
         rare_scores = None
         if self.rare_instance_classifier is not None:
@@ -587,6 +626,7 @@ class OT_MIL(nn.Module):
             "selected_ratio": selected_ratio,
             "gate_mean": gate.mean(),
             "common_gate_energy": common_gate_energy,
+            "common_gate_scale": common_gate_scale,
             "selection_threshold": self.selection_threshold,
             "prototype_usage": transport.sum(dim=0),
             "sampled_indices": sampled_indices,
