@@ -52,12 +52,12 @@ Model:
     class_conditional_gate: True
     residual_evidence_logits: True
     binary_likelihood_ratio: True
-    binary_common_gate_weight: 0.0
+    binary_common_gate_weight: 1.0
     binary_common_gate_penalty_weight: 0.0
     binary_common_gate_balance_power: 0.0
     binary_common_gate_learnable_scale: False
-    binary_dual_gate_mix: 0.0
-    binary_dual_endpoint_weight: 0.0
+    binary_dual_gate_mix: 0.6
+    binary_dual_endpoint_weight: 1.0
     necessity_log_probability: True
     complement_uniformity_weight: 0.0
     necessity_margin: 1.0
