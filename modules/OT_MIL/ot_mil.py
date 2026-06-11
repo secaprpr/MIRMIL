@@ -22,6 +22,7 @@ class OT_MIL(nn.Module):
         hidden_dim=256,
         num_classes=2,
         num_prototypes=16,
+        prototype_rank_dim=0,
         dropout=0.1,
         sinkhorn_iterations=20,
         epsilon=0.1,
@@ -53,6 +54,8 @@ class OT_MIL(nn.Module):
         super().__init__()
         if num_prototypes < 1:
             raise ValueError("num_prototypes must be positive")
+        if prototype_rank_dim < 0:
+            raise ValueError("prototype_rank_dim must be non-negative")
         if epsilon <= 0 or tau_source <= 0 or tau_target <= 0:
             raise ValueError("OT regularization parameters must be positive")
         if not 0.0 <= selection_fraction < 1.0:
@@ -89,6 +92,7 @@ class OT_MIL(nn.Module):
         self.hidden_dim = hidden_dim
         self.num_classes = num_classes
         self.num_prototypes = num_prototypes
+        self.prototype_rank_dim = prototype_rank_dim
         self.sinkhorn_iterations = sinkhorn_iterations
         self.epsilon = epsilon
         self.tau_source = tau_source
@@ -135,9 +139,21 @@ class OT_MIL(nn.Module):
             if learned_evidence_gate
             else None
         )
+        self.prototype_projector = (
+            nn.Sequential(
+                nn.Linear(hidden_dim, prototype_rank_dim),
+                nn.LayerNorm(prototype_rank_dim),
+                nn.GELU(),
+            )
+            if prototype_rank_dim > 0
+            else None
+        )
 
+        prototype_feature_dim = prototype_rank_dim or hidden_dim
         representation_dim = (
-            num_prototypes * hidden_dim + num_prototypes + 2 * hidden_dim
+            num_prototypes * prototype_feature_dim
+            + num_prototypes
+            + 2 * hidden_dim
         )
         self.classifier = nn.Sequential(
             nn.LayerNorm(representation_dim),
@@ -312,9 +328,14 @@ class OT_MIL(nn.Module):
             instance_mass[:, None] * (features - global_mean).square()
         ).sum(dim=0) / total_mass
         global_std = torch.sqrt(global_variance.clamp_min(tiny))
+        prototype_features = (
+            self.prototype_projector(barycenters)
+            if self.prototype_projector is not None
+            else barycenters
+        )
         return torch.cat(
             (
-                barycenters.flatten(),
+                prototype_features.flatten(),
                 normalized_mass,
                 global_mean,
                 global_std,

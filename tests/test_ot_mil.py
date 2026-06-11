@@ -157,6 +157,23 @@ class OTMILTest(unittest.TestCase):
         self.assertTrue(torch.all(gate[1:] > gate[:-1]))
         self.assertAlmostEqual(gate[1].item(), 0.5, places=6)
 
+    def test_low_rank_prototype_embedding_reduces_representation_size(self):
+        model = OT_MIL(
+            in_dim=32,
+            hidden_dim=16,
+            num_classes=3,
+            num_prototypes=4,
+            prototype_rank_dim=5,
+            dropout=0.0,
+        )
+        output = model(torch.randn(1, 12, 32), return_WSI_feature=True)
+
+        self.assertEqual(output["WSI_feature"].shape, (1, 56))
+        self.assertEqual(
+            model.classifier[0].normalized_shape,
+            (56,),
+        )
+
     def test_learned_evidence_gate_receives_classification_gradient(self):
         torch.manual_seed(23)
         model = OT_MIL(

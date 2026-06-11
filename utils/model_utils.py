@@ -151,6 +151,9 @@ def get_model_from_yaml(yaml_args):
             hidden_dim=yaml_args.Model.hidden_dim,
             num_classes=yaml_args.General.num_classes,
             num_prototypes=yaml_args.Model.num_prototypes,
+            prototype_rank_dim=_model_option(
+                yaml_args, "prototype_rank_dim", 0
+            ),
             dropout=yaml_args.Model.dropout,
             sinkhorn_iterations=yaml_args.Model.sinkhorn_iterations,
             epsilon=yaml_args.Model.epsilon,
