@@ -621,6 +621,72 @@ Frozen slide-level selection diagnostics:
 Unlike the legacy model, the learned submeasure now consistently improves
 over both the full representation and a permuted equal-mass gate.
 
+## Binary Likelihood-Ratio Follow-up
+
+The next revision tested whether binary molecular prediction should be
+parameterized directly as an antisymmetric log-likelihood ratio. The learned
+gate potential was decomposed as
+
+`phi_0(x) = q(x) - s(x), phi_1(x) = q(x) + s(x)`,
+
+where `s` is class-contrast evidence and `q` is class-shared diagnostic
+quality. All mechanism selection used the same train/validation-only CSVs
+with empty test columns.
+
+Three-seed validation results:
+
+| Variant | COAD MSI AUC | UCEC MSI AUC |
+| --- | ---: | ---: |
+| Pure log-odds, `q=0` | **0.9742 +/- 0.0150** | 0.6958 +/- 0.0240 |
+| Shared quality, `q=1` | 0.9556 +/- 0.0152 | **0.7223 +/- 0.0167** |
+| Learnable task coupling | 0.9690 | 0.7014 |
+| Dual gate + endpoint supervision | 0.9677 +/- 0.0026 | 0.7188 +/- 0.0455 |
+
+The two endpoint models were complementary. A validation-only probability
+ensemble with shared-endpoint weight `0.60` reached a cross-cohort mean AUC
+of `0.8487`, versus `0.8350` for pure log-odds and `0.8390` for shared
+quality. A single shared-backbone dual-gate model did not reproduce that
+gain. Endpoint supervision recovered seed-2024 UCEC validation AUC from
+`0.7038` to `0.7451`, but one UCEC seed collapsed to `0.6663`; its contrast,
+shared, and full-bag AUCs all declined, indicating shared-representation
+optimization instability rather than a mixture-only failure.
+
+After freezing `binary_dual_gate_mix=0.6` and
+`binary_dual_endpoint_weight=1.0`, patient-level formal evaluation gave:
+
+| Cohort/model | Macro AUC | Balanced accuracy | Macro-F1 |
+| --- | ---: | ---: | ---: |
+| COAD MO-MIL | **0.9465** | **0.8539** | 0.8011 |
+| COAD dual-gate OT-MIL | 0.9231 +/- 0.0006 | 0.8328 | **0.8209** |
+| UCEC MO-MIL | **0.7318** | **0.6689** | **0.6758** |
+| UCEC dual-gate OT-MIL | 0.6937 +/- 0.0389 | 0.6340 | 0.6313 |
+
+The dual-gate hypothesis therefore failed frozen-test generalization. The
+default `OT_MIL_BINARY.yaml` was restored to the previously validated v2
+class-conditional residual model. The likelihood-ratio, shared-quality,
+balancing, task-coupling, and dual-gate mechanisms remain available as
+explicit ablations, all disabled by default.
+
+One local dual-gate run failed after epoch 10 with `cudaErrorUnknown` while
+the Windows-side GPU had about 8 GB of unreported activity. A diagnostic
+rerun with `CUDA_LAUNCH_BLOCKING=1` was terminated by the command timeout
+after epoch 17. Both runs were excluded; a clean rerun completed normally.
+
+Representative validation command:
+
+```bash
+python train_mil.py --yaml_path configs/OT_MIL_BINARY.yaml --options \
+  General.seed=2024 General.num_classes=2 General.num_epochs=25 \
+  Dataset.dataset_csv_path=/home/sigirika/experiment_splits/otmil_v2_tuning/UCEC_MSI_train_val.csv \
+  Dataset.DATASET_NAME=UCEC_MSI_DUAL_SUP_S2024 \
+  Logs.log_root_dir=/home/sigirika/experiment_logs/otmil_v3_tuning/dual_gate_supervised \
+  Model.in_dim=1536 Model.max_instances=4096 \
+  Model.binary_likelihood_ratio=True \
+  Model.binary_common_gate_weight=1.0 \
+  Model.binary_dual_gate_mix=0.6 \
+  Model.binary_dual_endpoint_weight=1.0
+```
+
 Representative commands:
 
 ```bash
@@ -684,6 +750,16 @@ Research-stage commits:
 - `1de3c5f` patient-level probability aggregation
 - `4cd5f7e` patient-level paired-bootstrap support
 - `8582069` hierarchical binary-versus-multiclass preference analysis
+- `df05025`, `8d2631d` antisymmetric binary likelihood-ratio evidence and
+  symmetry-breaking initialization
+- `708bdc8`, `af26222` shared diagnostic-quality decomposition and minimality
+  regularization
+- `8d5f925`, `9bf6ef4` contrast-balanced and task-level shared-evidence
+  coupling
+- `a1b29d3`, `3aa9a0f` dual-submeasure probability fusion and endpoint
+  supervision
+- `d957a98`, `e1d3508` frozen dual-gate evaluation configuration and
+  restoration of the validated v2 default
 
 ## Failures And Resolutions
 
