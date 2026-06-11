@@ -46,6 +46,7 @@ class OT_MIL(nn.Module):
         learned_evidence_gate=False,
         evidence_gate_weight=1.0,
         class_conditional_gate=False,
+        residual_evidence_logits=False,
         necessity_log_probability=False,
         complement_uniformity_weight=0.0,
     ):
@@ -77,6 +78,13 @@ class OT_MIL(nn.Module):
             raise ValueError(
                 "Class-conditional and binary rare-instance gates cannot be combined"
             )
+        if residual_evidence_logits and (
+            instance_evidence_weight > 0 or rare_instance_weight > 0
+        ):
+            raise ValueError(
+                "Residual evidence logits cannot be combined with auxiliary "
+                "instance-logit branches"
+            )
 
         self.hidden_dim = hidden_dim
         self.num_classes = num_classes
@@ -104,6 +112,7 @@ class OT_MIL(nn.Module):
         self.learned_evidence_gate = learned_evidence_gate
         self.evidence_gate_weight = evidence_gate_weight
         self.class_conditional_gate = class_conditional_gate
+        self.residual_evidence_logits = residual_evidence_logits
         self.necessity_log_probability = necessity_log_probability
         self.complement_uniformity_weight = complement_uniformity_weight
         self.regularization_progress = 1.0
@@ -137,6 +146,11 @@ class OT_MIL(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, num_classes),
         )
+        self.evidence_residual_classifier = (
+            nn.Linear(representation_dim, num_classes)
+            if residual_evidence_logits
+            else None
+        )
         self.instance_classifier = (
             nn.Linear(hidden_dim, num_classes)
             if instance_evidence_weight > 0
@@ -151,6 +165,9 @@ class OT_MIL(nn.Module):
         if self.evidence_scorer is not None:
             nn.init.zeros_(self.evidence_scorer.weight)
             nn.init.zeros_(self.evidence_scorer.bias)
+        if self.evidence_residual_classifier is not None:
+            nn.init.zeros_(self.evidence_residual_classifier.weight)
+            nn.init.zeros_(self.evidence_residual_classifier.bias)
 
     def _sample_instances(self, x):
         num_instances = x.size(0)
@@ -261,6 +278,25 @@ class OT_MIL(nn.Module):
                 for class_index in range(self.num_classes)
             ]
         ).unsqueeze(0)
+
+    def _evidence_residual_logits(
+        self, representations, full_representation, full_logits
+    ):
+        if self.evidence_residual_classifier is None:
+            raise RuntimeError("Residual evidence classifier is disabled")
+        if self.class_conditional_gate:
+            residual_features = representations - full_representation.expand(
+                self.num_classes, -1
+            )
+            residual_matrix = self.evidence_residual_classifier(
+                residual_features
+            )
+            residual_logits = residual_matrix.diagonal().unsqueeze(0)
+        else:
+            residual_logits = self.evidence_residual_classifier(
+                representations - full_representation
+            )
+        return full_logits + residual_logits
 
     def _build_transport_representation(self, features, weighted_plan):
         tiny = torch.finfo(features.dtype).eps
@@ -397,13 +433,20 @@ class OT_MIL(nn.Module):
                 features, conditional_plan, torch.ones_like(gate)
             )
             selected_ratio = gate.mean()
-        if self.class_conditional_gate:
+        full_logits = self.classifier(full_repr)
+        if self.residual_evidence_logits:
+            logits = self._evidence_residual_logits(
+                selected_repr, full_repr, full_logits
+            )
+            complement_logits = self._evidence_residual_logits(
+                complement_repr, full_repr, full_logits
+            )
+        elif self.class_conditional_gate:
             logits = self._class_conditional_logits(selected_repr)
             complement_logits = self._class_conditional_logits(complement_repr)
         else:
             logits = self.classifier(selected_repr)
             complement_logits = self.classifier(complement_repr)
-        full_logits = self.classifier(full_repr)
         if self.instance_evidence_weight > 0:
             if self.class_conditional_gate:
                 logits = logits + self.instance_evidence_weight * (
@@ -478,7 +521,11 @@ class OT_MIL(nn.Module):
                 random_repr = self._build_representation(
                     features, conditional_plan, random_gate
                 )
-            if self.class_conditional_gate:
+            if self.residual_evidence_logits:
+                result["random_logits"] = self._evidence_residual_logits(
+                    random_repr, full_repr, full_logits
+                )
+            elif self.class_conditional_gate:
                 result["random_logits"] = self._class_conditional_logits(
                     random_repr
                 )

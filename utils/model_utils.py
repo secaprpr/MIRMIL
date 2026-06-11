@@ -197,6 +197,9 @@ def get_model_from_yaml(yaml_args):
             class_conditional_gate=_model_option(
                 yaml_args, "class_conditional_gate", False
             ),
+            residual_evidence_logits=_model_option(
+                yaml_args, "residual_evidence_logits", False
+            ),
             necessity_log_probability=_model_option(
                 yaml_args, "necessity_log_probability", False
             ),

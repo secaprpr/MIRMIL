@@ -140,6 +140,7 @@ class OTMILTest(unittest.TestCase):
         self.assertFalse(model.mass_faithful_transport)
         self.assertFalse(model.learned_evidence_gate)
         self.assertFalse(model.class_conditional_gate)
+        self.assertFalse(model.residual_evidence_logits)
 
     def test_mass_faithful_gate_uses_transport_retention(self):
         model = OT_MIL(
@@ -226,6 +227,39 @@ class OTMILTest(unittest.TestCase):
     def test_class_conditional_gate_requires_learned_scores(self):
         with self.assertRaisesRegex(ValueError, "requires a learned"):
             OT_MIL(class_conditional_gate=True)
+
+    def test_residual_evidence_starts_from_full_bag_prediction(self):
+        torch.manual_seed(31)
+        model = OT_MIL(
+            in_dim=32,
+            hidden_dim=16,
+            num_classes=3,
+            num_prototypes=4,
+            dropout=0.0,
+            sinkhorn_iterations=8,
+            mass_faithful_transport=True,
+            learned_evidence_gate=True,
+            class_conditional_gate=True,
+            residual_evidence_logits=True,
+        )
+        output = model(torch.randn(1, 24, 32), return_controls=True)
+
+        self.assertTrue(torch.allclose(output["logits"], output["full_logits"]))
+        self.assertTrue(
+            torch.allclose(output["complement_logits"], output["full_logits"])
+        )
+        self.assertTrue(
+            torch.allclose(output["random_logits"], output["full_logits"])
+        )
+
+        loss = torch.nn.functional.cross_entropy(
+            output["logits"], torch.tensor([1])
+        )
+        loss.backward()
+        self.assertGreater(
+            model.evidence_residual_classifier.weight.grad.abs().sum().item(),
+            0,
+        )
 
     def test_rare_instance_branch_is_trainable(self):
         torch.manual_seed(19)
