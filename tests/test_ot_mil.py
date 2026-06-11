@@ -473,6 +473,38 @@ class OTMILTest(unittest.TestCase):
             torch.allclose(torch.softmax(output["logits"], dim=-1), expected)
         )
 
+    def test_binary_dual_gate_supervises_both_endpoints(self):
+        model = OT_MIL(
+            in_dim=8,
+            hidden_dim=4,
+            num_classes=2,
+            num_prototypes=2,
+            prototype_rank_dim=2,
+            dropout=0.0,
+            mass_faithful_transport=True,
+            learned_evidence_gate=True,
+            class_conditional_gate=True,
+            residual_evidence_logits=True,
+            binary_likelihood_ratio=True,
+            binary_common_gate_weight=1.0,
+            binary_dual_gate_mix=0.6,
+            binary_dual_endpoint_weight=1.0,
+        )
+        output = model(torch.randn(1, 12, 8))
+        losses = model.compute_loss(output, torch.tensor([1]))
+        expected = 0.5 * (
+            torch.nn.functional.cross_entropy(
+                output["contrast_logits"], torch.tensor([1])
+            )
+            + torch.nn.functional.cross_entropy(
+                output["common_logits"], torch.tensor([1])
+            )
+        )
+
+        self.assertTrue(
+            torch.allclose(losses["endpoint_classification_loss"], expected)
+        )
+
     def test_binary_likelihood_ratio_rejects_invalid_modes(self):
         with self.assertRaisesRegex(ValueError, "requires two classes"):
             OT_MIL(
@@ -503,6 +535,8 @@ class OTMILTest(unittest.TestCase):
             )
         with self.assertRaisesRegex(ValueError, "requires common-gate"):
             OT_MIL(num_classes=2, binary_dual_gate_mix=0.5)
+        with self.assertRaisesRegex(ValueError, "requires a dual-gate"):
+            OT_MIL(num_classes=2, binary_dual_endpoint_weight=0.5)
 
     def test_rare_instance_branch_is_trainable(self):
         torch.manual_seed(19)

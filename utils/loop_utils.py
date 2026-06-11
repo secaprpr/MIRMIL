@@ -113,6 +113,7 @@ def ot_train_loop(device, model, loader, criterion, optimizer, scheduler):
     loss_log = 0.0
     component_log = {
         "classification_loss": 0.0,
+        "endpoint_classification_loss": 0.0,
         "full_classification_loss": 0.0,
         "consistency_loss": 0.0,
         "necessity_loss": 0.0,

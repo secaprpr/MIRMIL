@@ -54,6 +54,7 @@ class OT_MIL(nn.Module):
         binary_common_gate_balance_power=0.0,
         binary_common_gate_learnable_scale=False,
         binary_dual_gate_mix=0.0,
+        binary_dual_endpoint_weight=0.0,
         necessity_log_probability=False,
         complement_uniformity_weight=0.0,
     ):
@@ -84,6 +85,7 @@ class OT_MIL(nn.Module):
             or binary_common_gate_weight < 0
             or binary_common_gate_penalty_weight < 0
             or binary_common_gate_balance_power < 0
+            or binary_dual_endpoint_weight < 0
             or complement_uniformity_weight < 0
         ):
             raise ValueError("Evidence-gate and complement weights must be non-negative")
@@ -131,6 +133,10 @@ class OT_MIL(nn.Module):
             raise ValueError(
                 "Binary dual-gate mixture requires common-gate evidence"
             )
+        if binary_dual_endpoint_weight > 0 and binary_dual_gate_mix <= 0:
+            raise ValueError(
+                "Binary endpoint supervision requires a dual-gate mixture"
+            )
 
         self.hidden_dim = hidden_dim
         self.num_classes = num_classes
@@ -170,6 +176,7 @@ class OT_MIL(nn.Module):
             binary_common_gate_learnable_scale
         )
         self.binary_dual_gate_mix = binary_dual_gate_mix
+        self.binary_dual_endpoint_weight = binary_dual_endpoint_weight
         self.necessity_log_probability = necessity_log_probability
         self.complement_uniformity_weight = complement_uniformity_weight
         self.regularization_progress = 1.0
@@ -834,6 +841,12 @@ class OT_MIL(nn.Module):
         if criterion is None:
             criterion = F.cross_entropy
         classification = criterion(output["logits"], labels)
+        endpoint_classification = classification.new_zeros(())
+        if self.binary_dual_endpoint_weight > 0:
+            endpoint_classification = 0.5 * (
+                criterion(output["contrast_logits"], labels)
+                + criterion(output["common_logits"], labels)
+            )
         full_classification = criterion(output["full_logits"], labels)
         consistency = F.kl_div(
             F.log_softmax(output["logits"], dim=-1),
@@ -892,6 +905,7 @@ class OT_MIL(nn.Module):
         regularization_progress = self.regularization_progress
         total = (
             classification
+            + self.binary_dual_endpoint_weight * endpoint_classification
             + self.full_classification_weight * full_classification
             + self.consistency_weight * consistency
             + regularization_progress * self.necessity_weight * necessity
@@ -907,6 +921,7 @@ class OT_MIL(nn.Module):
         return {
             "loss": total,
             "classification_loss": classification.detach(),
+            "endpoint_classification_loss": endpoint_classification.detach(),
             "full_classification_loss": full_classification.detach(),
             "consistency_loss": consistency.detach(),
             "necessity_loss": necessity.detach(),

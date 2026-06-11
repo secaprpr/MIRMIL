@@ -221,6 +221,9 @@ def get_model_from_yaml(yaml_args):
             binary_dual_gate_mix=_model_option(
                 yaml_args, "binary_dual_gate_mix", 0.0
             ),
+            binary_dual_endpoint_weight=_model_option(
+                yaml_args, "binary_dual_endpoint_weight", 0.0
+            ),
             necessity_log_probability=_model_option(
                 yaml_args, "necessity_log_probability", False
             ),
