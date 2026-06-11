@@ -1,0 +1,97 @@
+General:
+    MODEL_NAME: OT_MIL
+    seed: 2024
+    num_classes: 4
+    num_epochs: 50
+    device: 0
+    num_workers: 4
+    best_model_metric: macro_auc
+    earlystop:
+        use: True
+        patience: 10
+        metric: macro_auc
+
+Dataset:
+    DATASET_NAME: your_multiclass_dataset
+    dataset_csv_path: /path/to/your/dataset.csv
+    balanced_sampler:
+        use: True
+        replacement: True
+
+Logs:
+    log_root_dir: /path/to/your/log_dir
+
+Model:
+    in_dim: 1024
+    hidden_dim: 256
+    num_prototypes: 16
+    prototype_rank_dim: 64
+    dropout: 0.1
+    max_instances: 4096
+    sampling: random
+
+    sinkhorn_iterations: 20
+    epsilon: 0.1
+    tau_source: 0.5
+    tau_target: 0.5
+
+    gate_temperature: 0.5
+    selection_fraction: 0.0
+    instance_evidence_weight: 0.0
+    instance_evidence_temperature: 1.0
+    rare_instance_weight: 0.0
+    rare_instance_topk: 32
+    rare_instance_temperature: 1.0
+    rare_gate_weight: 0.0
+
+    # Learn a class-conditional diagnostic submeasure while anchoring every
+    # class score to the shared full-bag representation.
+    mass_faithful_transport: True
+    learned_evidence_gate: True
+    evidence_gate_weight: 1.0
+    class_conditional_gate: True
+    class_prototype_routing: False
+    class_prototype_separation_weight: 0.0
+    residual_evidence_logits: True
+
+    binary_likelihood_ratio: False
+    binary_common_gate_weight: 0.0
+    binary_common_gate_penalty_weight: 0.0
+    binary_common_gate_balance_power: 0.0
+    binary_common_gate_learnable_scale: False
+    binary_dual_gate_mix: 0.0
+    binary_dual_endpoint_weight: 0.0
+
+    necessity_log_probability: True
+    complement_uniformity_weight: 0.0
+    necessity_margin: 1.0
+    necessity_weight: 0.0
+    minimality_weight: 0.0
+    diversity_weight: 0.01
+    full_classification_weight: 0.25
+    consistency_weight: 0.0
+    regularization_warmup_epochs: 5
+
+    criterion: ce
+    optimizer:
+        which: adamw
+        adam_config:
+            lr: 0.0002
+            weight_decay: 0.00001
+        adamw_config:
+            lr: 0.0002
+            weight_decay: 0.00001
+    scheduler:
+        warmup: 2
+        which: cosine
+        step_config:
+            step_size: 10
+            gamma: 0.5
+        multi_step_config:
+            milestones: [20, 35]
+            gamma: 0.5
+        exponential_config:
+            gamma: 0.95
+        cosine_config:
+            T_max: 48
+            eta_min: 0.000001
