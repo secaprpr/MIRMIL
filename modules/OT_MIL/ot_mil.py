@@ -49,6 +49,7 @@ class OT_MIL(nn.Module):
         class_conditional_gate=False,
         residual_evidence_logits=False,
         binary_likelihood_ratio=False,
+        binary_common_gate_weight=0.0,
         necessity_log_probability=False,
         complement_uniformity_weight=0.0,
     ):
@@ -72,7 +73,11 @@ class OT_MIL(nn.Module):
             raise ValueError("Rare-instance parameters are invalid")
         if (rare_instance_weight > 0 or rare_gate_weight > 0) and num_classes != 2:
             raise ValueError("Rare-instance evidence currently requires two classes")
-        if evidence_gate_weight < 0 or complement_uniformity_weight < 0:
+        if (
+            evidence_gate_weight < 0
+            or binary_common_gate_weight < 0
+            or complement_uniformity_weight < 0
+        ):
             raise ValueError("Evidence-gate and complement weights must be non-negative")
         if class_conditional_gate and not learned_evidence_gate:
             raise ValueError("Class-conditional gating requires a learned evidence gate")
@@ -97,6 +102,10 @@ class OT_MIL(nn.Module):
             raise ValueError(
                 "Binary likelihood-ratio evidence requires class-conditional "
                 "gating and residual logits"
+            )
+        if binary_common_gate_weight > 0 and not binary_likelihood_ratio:
+            raise ValueError(
+                "Binary common-gate evidence requires likelihood-ratio mode"
             )
 
         self.hidden_dim = hidden_dim
@@ -128,6 +137,7 @@ class OT_MIL(nn.Module):
         self.class_conditional_gate = class_conditional_gate
         self.residual_evidence_logits = residual_evidence_logits
         self.binary_likelihood_ratio = binary_likelihood_ratio
+        self.binary_common_gate_weight = binary_common_gate_weight
         self.necessity_log_probability = necessity_log_probability
         self.complement_uniformity_weight = complement_uniformity_weight
         self.regularization_progress = 1.0
@@ -142,15 +152,11 @@ class OT_MIL(nn.Module):
         nn.init.normal_(self.prototypes, std=0.02)
         self.prototype_logits = nn.Parameter(torch.zeros(num_prototypes))
         self.selection_threshold = nn.Parameter(torch.tensor(0.0))
+        evidence_output_dim = num_classes if class_conditional_gate else 1
+        if binary_likelihood_ratio:
+            evidence_output_dim = 2 if binary_common_gate_weight > 0 else 1
         self.evidence_scorer = (
-            nn.Linear(
-                hidden_dim,
-                (
-                    1
-                    if binary_likelihood_ratio
-                    else num_classes if class_conditional_gate else 1
-                ),
-            )
+            nn.Linear(hidden_dim, evidence_output_dim)
             if learned_evidence_gate
             else None
         )
@@ -268,8 +274,21 @@ class OT_MIL(nn.Module):
                 learned_score = self.evidence_scorer(features)
                 if self.class_conditional_gate:
                     if self.binary_likelihood_ratio:
+                        if self.binary_common_gate_weight > 0:
+                            common_score = (
+                                self.binary_common_gate_weight
+                                * learned_score[:, :1]
+                            )
+                            log_likelihood_ratio = learned_score[:, 1:2]
+                        else:
+                            common_score = 0.0
+                            log_likelihood_ratio = learned_score
                         learned_score = torch.cat(
-                            (-learned_score, learned_score), dim=1
+                            (
+                                common_score - log_likelihood_ratio,
+                                common_score + log_likelihood_ratio,
+                            ),
+                            dim=1,
                         )
                     evidence_score = evidence_score[:, None] + (
                         self.evidence_gate_weight * learned_score

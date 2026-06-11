@@ -58,6 +58,7 @@ Model:
     class_conditional_gate: False
     residual_evidence_logits: False
     binary_likelihood_ratio: False
+    binary_common_gate_weight: 0.0
     necessity_log_probability: False
     complement_uniformity_weight: 0.0
     necessity_margin: 1.0

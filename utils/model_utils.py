@@ -206,6 +206,9 @@ def get_model_from_yaml(yaml_args):
             binary_likelihood_ratio=_model_option(
                 yaml_args, "binary_likelihood_ratio", False
             ),
+            binary_common_gate_weight=_model_option(
+                yaml_args, "binary_common_gate_weight", 0.0
+            ),
             necessity_log_probability=_model_option(
                 yaml_args, "necessity_log_probability", False
             ),
