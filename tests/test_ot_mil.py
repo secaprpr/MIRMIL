@@ -444,6 +444,35 @@ class OTMILTest(unittest.TestCase):
         )
         self.assertGreater(model.binary_common_gate_logit.grad.abs(), 0)
 
+    def test_binary_dual_gate_mixes_endpoint_probabilities(self):
+        model = OT_MIL(
+            in_dim=8,
+            hidden_dim=4,
+            num_classes=2,
+            num_prototypes=2,
+            prototype_rank_dim=2,
+            dropout=0.0,
+            mass_faithful_transport=True,
+            learned_evidence_gate=True,
+            class_conditional_gate=True,
+            residual_evidence_logits=True,
+            binary_likelihood_ratio=True,
+            binary_common_gate_weight=1.0,
+            binary_dual_gate_mix=0.6,
+        )
+        with torch.no_grad():
+            model.evidence_scorer.weight[0].fill_(0.25)
+            model.evidence_scorer.weight[1].fill_(-0.1)
+        output = model(torch.randn(1, 12, 8))
+        expected = (
+            0.4 * torch.softmax(output["contrast_logits"], dim=-1)
+            + 0.6 * torch.softmax(output["common_logits"], dim=-1)
+        )
+
+        self.assertTrue(
+            torch.allclose(torch.softmax(output["logits"], dim=-1), expected)
+        )
+
     def test_binary_likelihood_ratio_rejects_invalid_modes(self):
         with self.assertRaisesRegex(ValueError, "requires two classes"):
             OT_MIL(
@@ -472,6 +501,8 @@ class OTMILTest(unittest.TestCase):
                 num_classes=2,
                 binary_common_gate_learnable_scale=True,
             )
+        with self.assertRaisesRegex(ValueError, "requires common-gate"):
+            OT_MIL(num_classes=2, binary_dual_gate_mix=0.5)
 
     def test_rare_instance_branch_is_trainable(self):
         torch.manual_seed(19)

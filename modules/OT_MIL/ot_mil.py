@@ -53,6 +53,7 @@ class OT_MIL(nn.Module):
         binary_common_gate_penalty_weight=0.0,
         binary_common_gate_balance_power=0.0,
         binary_common_gate_learnable_scale=False,
+        binary_dual_gate_mix=0.0,
         necessity_log_probability=False,
         complement_uniformity_weight=0.0,
     ):
@@ -65,6 +66,8 @@ class OT_MIL(nn.Module):
             raise ValueError("OT regularization parameters must be positive")
         if not 0.0 <= selection_fraction < 1.0:
             raise ValueError("selection_fraction must be in [0, 1)")
+        if not 0.0 <= binary_dual_gate_mix <= 1.0:
+            raise ValueError("Binary dual-gate mixture must be in [0, 1]")
         if instance_evidence_weight < 0 or instance_evidence_temperature <= 0:
             raise ValueError("Instance evidence parameters must be positive")
         if (
@@ -124,6 +127,10 @@ class OT_MIL(nn.Module):
             raise ValueError(
                 "Learnable binary common-gate scaling requires common-gate evidence"
             )
+        if binary_dual_gate_mix > 0 and binary_common_gate_weight <= 0:
+            raise ValueError(
+                "Binary dual-gate mixture requires common-gate evidence"
+            )
 
         self.hidden_dim = hidden_dim
         self.num_classes = num_classes
@@ -162,6 +169,7 @@ class OT_MIL(nn.Module):
         self.binary_common_gate_learnable_scale = (
             binary_common_gate_learnable_scale
         )
+        self.binary_dual_gate_mix = binary_dual_gate_mix
         self.necessity_log_probability = necessity_log_probability
         self.complement_uniformity_weight = complement_uniformity_weight
         self.regularization_progress = 1.0
@@ -290,7 +298,9 @@ class OT_MIL(nn.Module):
             )
         return torch.exp(log_u[:, None] + log_kernel + log_v[None, :])
 
-    def _selection_gate(self, row_mass, features=None):
+    def _selection_gate(
+        self, row_mass, features=None, suppress_binary_common=False
+    ):
         if self.mass_faithful_transport:
             source_mass = 1.0 / row_mass.numel()
             evidence_score = (
@@ -303,7 +313,10 @@ class OT_MIL(nn.Module):
                 learned_score = self.evidence_scorer(features)
                 if self.class_conditional_gate:
                     if self.binary_likelihood_ratio:
-                        if self.binary_common_gate_weight > 0:
+                        if (
+                            self.binary_common_gate_weight > 0
+                            and not suppress_binary_common
+                        ):
                             common_score = (
                                 self.binary_common_gate_weight
                                 * learned_score[:, :1]
@@ -333,7 +346,7 @@ class OT_MIL(nn.Module):
                                 common_score = common_scale * common_score
                         else:
                             common_score = 0.0
-                            log_likelihood_ratio = learned_score
+                            log_likelihood_ratio = learned_score[:, -1:]
                         learned_score = torch.cat(
                             (
                                 common_score - log_likelihood_ratio,
@@ -419,6 +432,16 @@ class OT_MIL(nn.Module):
                 representations - full_representation
             )
         return full_logits + residual_logits
+
+    @staticmethod
+    def _probability_mixture_logits(first_logits, second_logits, second_weight):
+        probabilities = (
+            (1.0 - second_weight) * F.softmax(first_logits, dim=-1)
+            + second_weight * F.softmax(second_logits, dim=-1)
+        )
+        return probabilities.clamp_min(
+            torch.finfo(probabilities.dtype).eps
+        ).log()
 
     def _build_transport_representation(self, features, weighted_plan):
         tiny = torch.finfo(features.dtype).eps
@@ -513,6 +536,13 @@ class OT_MIL(nn.Module):
             torch.finfo(transport.dtype).eps
         )
         gate = self._selection_gate(row_mass, features)
+        contrast_gate = (
+            self._selection_gate(
+                row_mass, features, suppress_binary_common=True
+            )
+            if self.binary_dual_gate_mix > 0
+            else None
+        )
         common_gate_energy = features.new_zeros(())
         common_gate_scale = features.new_ones(())
         if self.binary_common_gate_weight > 0:
@@ -566,6 +596,24 @@ class OT_MIL(nn.Module):
                 class_mass
                 / row_mass.sum().clamp_min(torch.finfo(row_mass.dtype).eps)
             ).mean()
+            if contrast_gate is not None:
+                contrast_selected_repr = self._class_conditional_representations(
+                    features, transport, contrast_gate
+                )
+                contrast_complement_repr = (
+                    self._class_conditional_representations(
+                        features, transport, 1.0 - contrast_gate
+                    )
+                )
+                contrast_class_mass = (
+                    row_mass[:, None] * contrast_gate
+                ).sum(dim=0)
+                contrast_selected_ratio = (
+                    contrast_class_mass
+                    / row_mass.sum().clamp_min(
+                        torch.finfo(row_mass.dtype).eps
+                    )
+                ).mean()
         elif self.mass_faithful_transport:
             selected_repr = self._build_transport_representation(
                 features, transport * gate[:, None]
@@ -596,6 +644,28 @@ class OT_MIL(nn.Module):
             complement_logits = self._evidence_residual_logits(
                 complement_repr, full_repr, full_logits
             )
+            if contrast_gate is not None:
+                contrast_logits = self._evidence_residual_logits(
+                    contrast_selected_repr, full_repr, full_logits
+                )
+                contrast_complement_logits = self._evidence_residual_logits(
+                    contrast_complement_repr, full_repr, full_logits
+                )
+                common_logits = logits
+                common_complement_logits = complement_logits
+                logits = self._probability_mixture_logits(
+                    contrast_logits, common_logits, self.binary_dual_gate_mix
+                )
+                complement_logits = self._probability_mixture_logits(
+                    contrast_complement_logits,
+                    common_complement_logits,
+                    self.binary_dual_gate_mix,
+                )
+                selected_ratio = (
+                    (1.0 - self.binary_dual_gate_mix)
+                    * contrast_selected_ratio
+                    + self.binary_dual_gate_mix * selected_ratio
+                )
         elif self.class_conditional_gate:
             logits = self._class_conditional_logits(selected_repr)
             complement_logits = self._class_conditional_logits(complement_repr)
@@ -645,7 +715,16 @@ class OT_MIL(nn.Module):
             "full_logits": full_logits,
             "transport": transport,
             "selection_gate": (
-                gate.mean(dim=1) if self.class_conditional_gate else gate
+                (
+                    (
+                        (1.0 - self.binary_dual_gate_mix) * contrast_gate
+                        + self.binary_dual_gate_mix * gate
+                    )
+                    if contrast_gate is not None
+                    else gate
+                ).mean(dim=1)
+                if self.class_conditional_gate
+                else gate
             ),
             "selected_ratio": selected_ratio,
             "gate_mean": gate.mean(),
@@ -656,7 +735,15 @@ class OT_MIL(nn.Module):
             "sampled_indices": sampled_indices,
         }
         if self.class_conditional_gate:
-            result["class_selection_gates"] = gate
+            result["class_selection_gates"] = (
+                (1.0 - self.binary_dual_gate_mix) * contrast_gate
+                + self.binary_dual_gate_mix * gate
+                if contrast_gate is not None
+                else gate
+            )
+        if contrast_gate is not None:
+            result["contrast_logits"] = contrast_logits
+            result["common_logits"] = common_logits
         if rare_scores is not None:
             result["rare_instance_scores"] = rare_scores
         if return_controls:
@@ -666,6 +753,11 @@ class OT_MIL(nn.Module):
                 features.size(0), generator=generator, device="cpu"
             ).to(features.device)
             random_gate = gate.index_select(0, permutation)
+            random_contrast_gate = (
+                contrast_gate.index_select(0, permutation)
+                if contrast_gate is not None
+                else None
+            )
             if self.class_conditional_gate:
                 random_repr = self._class_conditional_representations(
                     features, transport, random_gate
@@ -682,6 +774,22 @@ class OT_MIL(nn.Module):
                 result["random_logits"] = self._evidence_residual_logits(
                     random_repr, full_repr, full_logits
                 )
+                if random_contrast_gate is not None:
+                    random_contrast_repr = (
+                        self._class_conditional_representations(
+                            features, transport, random_contrast_gate
+                        )
+                    )
+                    random_contrast_logits = self._evidence_residual_logits(
+                        random_contrast_repr, full_repr, full_logits
+                    )
+                    result["random_logits"] = (
+                        self._probability_mixture_logits(
+                            random_contrast_logits,
+                            result["random_logits"],
+                            self.binary_dual_gate_mix,
+                        )
+                    )
             elif self.class_conditional_gate:
                 result["random_logits"] = self._class_conditional_logits(
                     random_repr
@@ -706,7 +814,13 @@ class OT_MIL(nn.Module):
                 ] + self.rare_instance_weight * (
                     self._aggregate_rare_evidence(rare_scores, random_gate)
                 )
-            result["random_selected_ratio"] = random_gate.mean()
+            result["random_selected_ratio"] = (
+                (1.0 - self.binary_dual_gate_mix)
+                * random_contrast_gate.mean()
+                + self.binary_dual_gate_mix * random_gate.mean()
+                if random_contrast_gate is not None
+                else random_gate.mean()
+            )
         if return_WSI_feature:
             result["WSI_feature"] = selected_repr
         if return_WSI_attn:
