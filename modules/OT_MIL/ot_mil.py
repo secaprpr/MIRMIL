@@ -48,6 +48,7 @@ class OT_MIL(nn.Module):
         evidence_gate_weight=1.0,
         class_conditional_gate=False,
         residual_evidence_logits=False,
+        binary_likelihood_ratio=False,
         necessity_log_probability=False,
         complement_uniformity_weight=0.0,
     ):
@@ -88,6 +89,15 @@ class OT_MIL(nn.Module):
                 "Residual evidence logits cannot be combined with auxiliary "
                 "instance-logit branches"
             )
+        if binary_likelihood_ratio and num_classes != 2:
+            raise ValueError("Binary likelihood-ratio evidence requires two classes")
+        if binary_likelihood_ratio and not (
+            class_conditional_gate and residual_evidence_logits
+        ):
+            raise ValueError(
+                "Binary likelihood-ratio evidence requires class-conditional "
+                "gating and residual logits"
+            )
 
         self.hidden_dim = hidden_dim
         self.num_classes = num_classes
@@ -117,6 +127,7 @@ class OT_MIL(nn.Module):
         self.evidence_gate_weight = evidence_gate_weight
         self.class_conditional_gate = class_conditional_gate
         self.residual_evidence_logits = residual_evidence_logits
+        self.binary_likelihood_ratio = binary_likelihood_ratio
         self.necessity_log_probability = necessity_log_probability
         self.complement_uniformity_weight = complement_uniformity_weight
         self.regularization_progress = 1.0
@@ -134,7 +145,11 @@ class OT_MIL(nn.Module):
         self.evidence_scorer = (
             nn.Linear(
                 hidden_dim,
-                num_classes if class_conditional_gate else 1,
+                (
+                    1
+                    if binary_likelihood_ratio
+                    else num_classes if class_conditional_gate else 1
+                ),
             )
             if learned_evidence_gate
             else None
@@ -163,7 +178,10 @@ class OT_MIL(nn.Module):
             nn.Linear(hidden_dim, num_classes),
         )
         self.evidence_residual_classifier = (
-            nn.Linear(representation_dim, num_classes)
+            nn.Linear(
+                representation_dim,
+                1 if binary_likelihood_ratio else num_classes,
+            )
             if residual_evidence_logits
             else None
         )
@@ -244,6 +262,10 @@ class OT_MIL(nn.Module):
                     raise ValueError("features are required by the learned evidence gate")
                 learned_score = self.evidence_scorer(features)
                 if self.class_conditional_gate:
+                    if self.binary_likelihood_ratio:
+                        learned_score = torch.cat(
+                            (-learned_score, learned_score), dim=1
+                        )
                     evidence_score = evidence_score[:, None] + (
                         self.evidence_gate_weight * learned_score
                     )
@@ -304,10 +326,19 @@ class OT_MIL(nn.Module):
             residual_features = representations - full_representation.expand(
                 self.num_classes, -1
             )
-            residual_matrix = self.evidence_residual_classifier(
-                residual_features
-            )
-            residual_logits = residual_matrix.diagonal().unsqueeze(0)
+            if self.binary_likelihood_ratio:
+                log_odds_residual = self.evidence_residual_classifier(
+                    residual_features[1:2] - residual_features[0:1]
+                )
+                residual_logits = torch.cat(
+                    (-0.5 * log_odds_residual, 0.5 * log_odds_residual),
+                    dim=1,
+                )
+            else:
+                residual_matrix = self.evidence_residual_classifier(
+                    residual_features
+                )
+                residual_logits = residual_matrix.diagonal().unsqueeze(0)
         else:
             residual_logits = self.evidence_residual_classifier(
                 representations - full_representation

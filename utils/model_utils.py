@@ -203,6 +203,9 @@ def get_model_from_yaml(yaml_args):
             residual_evidence_logits=_model_option(
                 yaml_args, "residual_evidence_logits", False
             ),
+            binary_likelihood_ratio=_model_option(
+                yaml_args, "binary_likelihood_ratio", False
+            ),
             necessity_log_probability=_model_option(
                 yaml_args, "necessity_log_probability", False
             ),

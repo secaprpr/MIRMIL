@@ -141,6 +141,7 @@ class OTMILTest(unittest.TestCase):
         self.assertFalse(model.learned_evidence_gate)
         self.assertFalse(model.class_conditional_gate)
         self.assertFalse(model.residual_evidence_logits)
+        self.assertFalse(model.binary_likelihood_ratio)
 
     def test_mass_faithful_gate_uses_transport_retention(self):
         model = OT_MIL(
@@ -277,6 +278,54 @@ class OTMILTest(unittest.TestCase):
             model.evidence_residual_classifier.weight.grad.abs().sum().item(),
             0,
         )
+
+    def test_binary_likelihood_ratio_is_antisymmetric(self):
+        model = OT_MIL(
+            in_dim=8,
+            hidden_dim=4,
+            num_classes=2,
+            num_prototypes=2,
+            prototype_rank_dim=2,
+            dropout=0.0,
+            mass_faithful_transport=True,
+            learned_evidence_gate=True,
+            class_conditional_gate=True,
+            residual_evidence_logits=True,
+            binary_likelihood_ratio=True,
+        )
+        with torch.no_grad():
+            model.evidence_scorer.weight.fill_(0.25)
+            model.evidence_residual_classifier.weight.fill_(0.5)
+        features = torch.ones(3, 4)
+        row_mass = torch.full((3,), 1.0 / 3.0)
+        gates = model._selection_gate(row_mass, features)
+
+        self.assertTrue(
+            torch.allclose(gates.sum(dim=1), torch.ones(3), atol=1e-6)
+        )
+
+        representations = torch.randn(2, 14)
+        full_representation = torch.randn(1, 14)
+        full_logits = torch.randn(1, 2)
+        logits = model._evidence_residual_logits(
+            representations, full_representation, full_logits
+        )
+        residual = logits - full_logits
+        self.assertTrue(
+            torch.allclose(residual[:, 0], -residual[:, 1], atol=1e-6)
+        )
+
+    def test_binary_likelihood_ratio_rejects_invalid_modes(self):
+        with self.assertRaisesRegex(ValueError, "requires two classes"):
+            OT_MIL(
+                num_classes=3,
+                learned_evidence_gate=True,
+                class_conditional_gate=True,
+                residual_evidence_logits=True,
+                binary_likelihood_ratio=True,
+            )
+        with self.assertRaisesRegex(ValueError, "requires class-conditional"):
+            OT_MIL(num_classes=2, binary_likelihood_ratio=True)
 
     def test_rare_instance_branch_is_trainable(self):
         torch.manual_seed(19)
