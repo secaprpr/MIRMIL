@@ -200,7 +200,12 @@ class OT_MIL(nn.Module):
             nn.init.zeros_(self.evidence_scorer.weight)
             nn.init.zeros_(self.evidence_scorer.bias)
         if self.evidence_residual_classifier is not None:
-            nn.init.zeros_(self.evidence_residual_classifier.weight)
+            if self.binary_likelihood_ratio:
+                nn.init.normal_(
+                    self.evidence_residual_classifier.weight, std=1e-3
+                )
+            else:
+                nn.init.zeros_(self.evidence_residual_classifier.weight)
             nn.init.zeros_(self.evidence_residual_classifier.bias)
 
     def _sample_instances(self, x):

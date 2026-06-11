@@ -315,6 +315,29 @@ class OTMILTest(unittest.TestCase):
             torch.allclose(residual[:, 0], -residual[:, 1], atol=1e-6)
         )
 
+    def test_binary_likelihood_ratio_breaks_gate_symmetry(self):
+        torch.manual_seed(37)
+        model = OT_MIL(
+            in_dim=8,
+            hidden_dim=4,
+            num_classes=2,
+            num_prototypes=2,
+            prototype_rank_dim=2,
+            dropout=0.0,
+            mass_faithful_transport=True,
+            learned_evidence_gate=True,
+            class_conditional_gate=True,
+            residual_evidence_logits=True,
+            binary_likelihood_ratio=True,
+        )
+        output = model(torch.randn(1, 16, 8))
+        self.assertTrue(torch.allclose(output["logits"], output["full_logits"]))
+
+        torch.nn.functional.cross_entropy(
+            output["logits"], torch.tensor([1])
+        ).backward()
+        self.assertGreater(model.evidence_scorer.weight.grad.abs().sum(), 0)
+
     def test_binary_likelihood_ratio_rejects_invalid_modes(self):
         with self.assertRaisesRegex(ValueError, "requires two classes"):
             OT_MIL(
