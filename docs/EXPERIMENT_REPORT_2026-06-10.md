@@ -372,7 +372,7 @@ Final verification:
 
 ```bash
 python -m pytest -q
-# 42 passed
+# 52 passed
 ```
 
 ## TCGA-COAD Controlled Task Suite
@@ -453,6 +453,114 @@ python experiments/run_benchmark.py \
 The benchmark command was also run for MSI (`num-classes=2`) and HMCINGS
 (`num-classes=3`) using their corresponding shared-split CSV files.
 
+## Cross-Cohort Binary Versus Multiclass Validation
+
+To test whether the COAD task preference replicated outside one cohort, a
+second controlled task suite was built from official TCGA-UCEC UNI2-h
+features. Both cohorts use the same 1,536-dimensional encoder features, a
+shared patient split within each cohort, the same 4,096-instance cache,
+balanced sampling, 30 epochs, patience 8, and seeds 2024-2026.
+
+The pre-specified 2-by-2 matrix was:
+
+| Cohort | Binary molecular task | Four-class molecular task |
+| --- | --- | --- |
+| TCGA-COAD | MANTIS MSI/MSS | CMS1/CMS2/CMS3/CMS4 |
+| TCGA-UCEC | MANTIS MSI/MSS | POLE/MSI/CN-low/CN-high |
+
+UCEC labels came from the cBioPortal PanCancer Atlas study
+`ucec_tcga_pan_can_atlas_2018`. MANTIS scores below 0.4 were MSS, scores above
+0.6 were MSI, and the indeterminate interval was excluded. Of 566 feature
+files, 565 were primary-tumor slides. The final union contained 542 labelled
+slides from 484 patients.
+
+UCEC patient counts:
+
+| Task | Train | Validation | Test |
+| --- | ---: | ---: | ---: |
+| MSI: MSS/MSI | 198/65 | 66/20 | 68/21 |
+| Subtype: POLE/MSI/CN-low/CN-high | 29/84/83/88 | 9/26/28/28 | 9/27/27/30 |
+
+Some UCEC patients had multiple primary slides, so frozen-checkpoint
+predictions were also averaged within each patient. The following table uses
+patient-level metrics as the primary analysis:
+
+| Cohort/task | Model | Macro AUC | Accuracy | Balanced accuracy | Macro-F1 |
+| --- | --- | ---: | ---: | ---: | ---: |
+| COAD MSI | MO-MIL | **0.9465** | **0.8675** | **0.8539** | **0.8011** |
+| COAD MSI | OT-MIL | 0.9179 | 0.8112 | 0.7916 | 0.7404 |
+| COAD CMS | MO-MIL | 0.7579 | 0.5876 | 0.5525 | 0.5526 |
+| COAD CMS | OT-MIL | **0.7777** | **0.5989** | **0.5863** | **0.5958** |
+| UCEC MSI | MO-MIL | **0.7318** | **0.7790** | **0.6689** | **0.6758** |
+| UCEC MSI | OT-MIL | 0.6909 | 0.7640 | 0.6481 | 0.6491 |
+| UCEC subtype | MO-MIL | 0.7519 | **0.5591** | **0.4750** | **0.4728** |
+| UCEC subtype | OT-MIL | **0.7536** | 0.5305 | 0.4685 | 0.4523 |
+
+Patient-level macro-AUC differences, OT-MIL minus MO-MIL:
+
+| Task type | COAD | UCEC |
+| --- | ---: | ---: |
+| Binary | -0.0286 | -0.0409 |
+| Four-class | +0.0198 | +0.0017 |
+
+For every cohort and training seed, the paired task-type interaction
+
+```text
+(multiclass OT-MIL - multiclass MO-MIL)
+-
+(binary OT-MIL - binary MO-MIL)
+```
+
+was positive. The mean macro-AUC interaction was `+0.0455`. A hierarchical
+bootstrap that first resampled the two cohorts and then resampled seeds within
+each cohort gave a 95% interval of `[+0.0157, +0.0806]`. The corresponding
+balanced-accuracy interaction was `+0.0552`, with interval
+`[+0.0014, +0.1313]`. Macro-F1 was directionally positive at `+0.0551`, but
+its interval `[-0.0078, +0.1493]` crossed zero.
+
+These results support a relative task-type preference: the current OT-MIL is
+consistently less disadvantaged, and sometimes superior, on four-class
+molecular tasks than on binary molecular-axis tasks. They do not establish
+absolute multiclass superiority. In particular, UCEC subtype macro-AUC was
+essentially tied and its accuracy and macro-F1 favored MO-MIL. With only two
+independent cohorts, the conservative cohort-level one-sided sign-test
+p-value is 0.25. More independent cohorts are required before treating the
+interaction as a general law.
+
+UCEC preparation and benchmark:
+
+```bash
+experiments/download_uni2h_rcc.sh \
+  /mnt/d/datasets/UNI2-h_features none TCGA-UCEC
+
+experiments/extract_uni2h_projects.sh \
+  /mnt/d/datasets/UNI2-h_features TCGA-UCEC
+
+python experiments/prepare_ucec_multitask.py \
+  --feature-dir /mnt/d/datasets/UNI2-h_features/TCGA-UCEC \
+  --output-dir /home/sigirika/datasets/ucec_multitask_v1 \
+  --seed 2024 --search-iterations 20000
+
+python experiments/run_benchmark.py \
+  --split /home/sigirika/datasets/ucec_multitask_v1/cached_splits/UCEC_subtype_split.csv \
+  --dataset-name UCEC_SUBTYPE --num-classes 4 \
+  --log-root /home/sigirika/experiment_logs/ucec_formal_v1/subtype \
+  --models OT_MIL MO_MIL --seeds 2024 2025 2026 \
+  --epochs 30 --patience 8 --max-instances 4096 \
+  --in-dim 1536 --device 0 --num-workers 2 --balanced
+
+python experiments/aggregate_group_predictions.py \
+  --input-dir /home/sigirika/experiment_logs/ucec_formal_v1/eval_subtype \
+  --assignments /home/sigirika/datasets/ucec_multitask_v1/UCEC_subtype_assignments.csv \
+  --cache-manifest /home/sigirika/datasets/ucec_multitask_v1/cached_splits/UCEC_subtype_split.csv.manifest.json \
+  --output-dir /home/sigirika/experiment_logs/ucec_formal_v1/grouped_subtype
+
+python experiments/analyze_task_type_preference.py \
+  --cohort COAD=/home/sigirika/experiment_logs/coad_formal_v1/grouped_msi/grouped_results.csv,/home/sigirika/experiment_logs/coad_formal_v1/grouped_cms/grouped_results.csv \
+  --cohort UCEC=/home/sigirika/experiment_logs/ucec_formal_v1/grouped_msi/grouped_results.csv,/home/sigirika/experiment_logs/ucec_formal_v1/grouped_subtype/grouped_results.csv \
+  --metric macro_auc --iterations 10000 --seed 2024
+```
+
 ## Git History
 
 Research-stage commits:
@@ -495,6 +603,10 @@ Research-stage commits:
 - `fa01328` paired bootstrap for classification metrics
 - `badb471` shared patient-level TCGA-COAD multi-task preparation
 - `7b2aa93` concurrency-safe atomic feature-cache writes
+- `b2aa36e` reproducible TCGA-UCEC multi-task preparation
+- `1de3c5f` patient-level probability aggregation
+- `4cd5f7e` patient-level paired-bootstrap support
+- `8582069` hierarchical binary-versus-multiclass preference analysis
 
 ## Failures And Resolutions
 
@@ -527,6 +639,10 @@ Research-stage commits:
 - Parallel COAD cache builders initially raced on a shared `.tmp` filename.
   Temporary files are now uniquely named and atomically replaced; a
   concurrency regression test was added. No source feature was modified.
+- The first UCEC Hugging Face Xet download repeatedly encountered TLS
+  truncation and fell below 0.2 MB/s. The authenticated curl downloader
+  resumed the 41 GB archive across four interrupted transfers and completed
+  without restarting from zero.
 
 ## Research Assessment
 
@@ -551,6 +667,15 @@ morphology than to near-binary molecular axes. Because all three tasks share
 one cohort and their labels are biologically correlated, COAD contributes one
 dataset-level validation plus a task-profile analysis, not three independent
 validations.
+
+The independent UCEC suite replicates the relative binary-versus-four-class
+macro-AUC interaction, although it does not replicate a clear absolute
+multiclass win. Across COAD and UCEC, both binary task means favor MO-MIL,
+while both four-class macro-AUC means favor OT-MIL. The task-type interaction
+is positive under hierarchical bootstrap, but only two independent cohorts
+are available. The defensible conclusion is therefore a reproducible relative
+preference signal, not proof that class count or latent morphological
+heterogeneity is the causal mechanism.
 
 These results support continuing toward an AAAI submission, but not yet a
 broad superiority claim. The defensible claim is that OT-induced submeasure
