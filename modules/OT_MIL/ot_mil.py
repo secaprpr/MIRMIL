@@ -210,8 +210,6 @@ class OT_MIL(nn.Module):
             if class_prototype_routing
             else None
         )
-        if self.class_prototype_logits is not None:
-            nn.init.normal_(self.class_prototype_logits, std=1e-3)
         self.selection_threshold = nn.Parameter(torch.tensor(0.0))
         evidence_output_dim = num_classes if class_conditional_gate else 1
         if binary_likelihood_ratio:
@@ -268,6 +266,8 @@ class OT_MIL(nn.Module):
             else None
         )
         self.apply(_init_weights)
+        if self.class_prototype_logits is not None:
+            nn.init.normal_(self.class_prototype_logits, std=1e-3)
         if self.evidence_scorer is not None:
             nn.init.zeros_(self.evidence_scorer.weight)
             nn.init.zeros_(self.evidence_scorer.bias)

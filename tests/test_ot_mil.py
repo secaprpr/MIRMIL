@@ -574,6 +574,29 @@ class OTMILTest(unittest.TestCase):
                 class_prototype_separation_weight=0.1,
             )
 
+    def test_class_prototype_routing_does_not_shift_shared_initialization(self):
+        common = dict(
+            in_dim=8,
+            hidden_dim=4,
+            num_classes=3,
+            num_prototypes=4,
+            prototype_rank_dim=2,
+            dropout=0.0,
+            mass_faithful_transport=True,
+            learned_evidence_gate=True,
+            class_conditional_gate=True,
+            residual_evidence_logits=True,
+        )
+        torch.manual_seed(53)
+        baseline = OT_MIL(**common)
+        torch.manual_seed(53)
+        routed = OT_MIL(**common, class_prototype_routing=True)
+
+        baseline_state = baseline.state_dict()
+        routed_state = routed.state_dict()
+        for name, value in baseline_state.items():
+            self.assertTrue(torch.equal(value, routed_state[name]), name)
+
     def test_rare_instance_branch_is_trainable(self):
         torch.manual_seed(19)
         model = OT_MIL(
