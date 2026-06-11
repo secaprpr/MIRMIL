@@ -185,6 +185,21 @@ def get_model_from_yaml(yaml_args):
             rare_gate_weight=_model_option(
                 yaml_args, "rare_gate_weight", 0.0
             ),
+            mass_faithful_transport=_model_option(
+                yaml_args, "mass_faithful_transport", False
+            ),
+            learned_evidence_gate=_model_option(
+                yaml_args, "learned_evidence_gate", False
+            ),
+            evidence_gate_weight=_model_option(
+                yaml_args, "evidence_gate_weight", 1.0
+            ),
+            necessity_log_probability=_model_option(
+                yaml_args, "necessity_log_probability", False
+            ),
+            complement_uniformity_weight=_model_option(
+                yaml_args, "complement_uniformity_weight", 0.0
+            ),
         )
         return mil_model
     if model_name == 'AB_MIL':

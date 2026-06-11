@@ -42,6 +42,11 @@ class OT_MIL(nn.Module):
         rare_instance_topk=32,
         rare_instance_temperature=1.0,
         rare_gate_weight=0.0,
+        mass_faithful_transport=False,
+        learned_evidence_gate=False,
+        evidence_gate_weight=1.0,
+        necessity_log_probability=False,
+        complement_uniformity_weight=0.0,
     ):
         super().__init__()
         if num_prototypes < 1:
@@ -61,6 +66,8 @@ class OT_MIL(nn.Module):
             raise ValueError("Rare-instance parameters are invalid")
         if (rare_instance_weight > 0 or rare_gate_weight > 0) and num_classes != 2:
             raise ValueError("Rare-instance evidence currently requires two classes")
+        if evidence_gate_weight < 0 or complement_uniformity_weight < 0:
+            raise ValueError("Evidence-gate and complement weights must be non-negative")
 
         self.hidden_dim = hidden_dim
         self.num_classes = num_classes
@@ -84,6 +91,11 @@ class OT_MIL(nn.Module):
         self.rare_instance_topk = rare_instance_topk
         self.rare_instance_temperature = rare_instance_temperature
         self.rare_gate_weight = rare_gate_weight
+        self.mass_faithful_transport = mass_faithful_transport
+        self.learned_evidence_gate = learned_evidence_gate
+        self.evidence_gate_weight = evidence_gate_weight
+        self.necessity_log_probability = necessity_log_probability
+        self.complement_uniformity_weight = complement_uniformity_weight
         self.regularization_progress = 1.0
 
         self.projector = nn.Sequential(
@@ -96,6 +108,9 @@ class OT_MIL(nn.Module):
         nn.init.normal_(self.prototypes, std=0.02)
         self.prototype_logits = nn.Parameter(torch.zeros(num_prototypes))
         self.selection_threshold = nn.Parameter(torch.tensor(0.0))
+        self.evidence_scorer = (
+            nn.Linear(hidden_dim, 1) if learned_evidence_gate else None
+        )
 
         representation_dim = (
             num_prototypes * hidden_dim + num_prototypes + 2 * hidden_dim
@@ -118,6 +133,9 @@ class OT_MIL(nn.Module):
             else None
         )
         self.apply(_init_weights)
+        if self.evidence_scorer is not None:
+            nn.init.zeros_(self.evidence_scorer.weight)
+            nn.init.zeros_(self.evidence_scorer.bias)
 
     def _sample_instances(self, x):
         num_instances = x.size(0)
@@ -166,13 +184,25 @@ class OT_MIL(nn.Module):
             )
         return torch.exp(log_u[:, None] + log_kernel + log_v[None, :])
 
-    def _selection_gate(self, row_mass):
-        # Standardized log-mass removes UOT's global scaling ambiguity while
-        # retaining relative evidence concentration across patches.
-        log_mass = row_mass.clamp_min(torch.finfo(row_mass.dtype).eps).log()
-        evidence_score = (log_mass - log_mass.mean()) / log_mass.std(
-            unbiased=False
-        ).clamp_min(1e-4)
+    def _selection_gate(self, row_mass, features=None):
+        if self.mass_faithful_transport:
+            source_mass = 1.0 / row_mass.numel()
+            evidence_score = (
+                row_mass.clamp_min(torch.finfo(row_mass.dtype).eps)
+                / source_mass
+            ).log()
+            if self.evidence_scorer is not None:
+                if features is None:
+                    raise ValueError("features are required by the learned evidence gate")
+                evidence_score = evidence_score + self.evidence_gate_weight * (
+                    self.evidence_scorer(features).squeeze(-1)
+                )
+        else:
+            # Legacy mode retains only within-bag UOT mass rank.
+            log_mass = row_mass.clamp_min(torch.finfo(row_mass.dtype).eps).log()
+            evidence_score = (log_mass - log_mass.mean()) / log_mass.std(
+                unbiased=False
+            ).clamp_min(1e-4)
         threshold = self.selection_threshold
         if self.selection_fraction > 0.0 and evidence_score.numel() > 1:
             sparse_threshold = torch.quantile(
@@ -184,19 +214,19 @@ class OT_MIL(nn.Module):
             / max(self.gate_temperature, 1e-6)
         )
 
-    def _build_representation(self, features, conditional_plan, weights):
+    def _build_transport_representation(self, features, weighted_plan):
         tiny = torch.finfo(features.dtype).eps
-        weighted_plan = conditional_plan * weights[:, None]
         prototype_mass = weighted_plan.sum(dim=0)
         barycenters = (
             weighted_plan.transpose(0, 1) @ features
         ) / prototype_mass[:, None].clamp_min(tiny)
         normalized_mass = prototype_mass / prototype_mass.sum().clamp_min(tiny)
-        total_weight = weights.sum().clamp_min(tiny)
-        global_mean = (weights[:, None] * features).sum(dim=0) / total_weight
+        instance_mass = weighted_plan.sum(dim=1)
+        total_mass = instance_mass.sum().clamp_min(tiny)
+        global_mean = (instance_mass[:, None] * features).sum(dim=0) / total_mass
         global_variance = (
-            weights[:, None] * (features - global_mean).square()
-        ).sum(dim=0) / total_weight
+            instance_mass[:, None] * (features - global_mean).square()
+        ).sum(dim=0) / total_mass
         global_std = torch.sqrt(global_variance.clamp_min(tiny))
         return torch.cat(
             (
@@ -207,6 +237,10 @@ class OT_MIL(nn.Module):
             ),
             dim=0,
         ).unsqueeze(0)
+
+    def _build_representation(self, features, conditional_plan, weights):
+        weighted_plan = conditional_plan * weights[:, None]
+        return self._build_transport_representation(features, weighted_plan)
 
     def _aggregate_instance_evidence(self, features, weights):
         if self.instance_classifier is None:
@@ -267,7 +301,7 @@ class OT_MIL(nn.Module):
         conditional_plan = transport / row_mass[:, None].clamp_min(
             torch.finfo(transport.dtype).eps
         )
-        gate = self._selection_gate(row_mass)
+        gate = self._selection_gate(row_mass, features)
         rare_scores = None
         if self.rare_instance_classifier is not None:
             rare_scores = self._rare_instance_scores(features)
@@ -280,13 +314,28 @@ class OT_MIL(nn.Module):
                     + self.rare_gate_weight * rare_gate
                 )
 
-        selected_repr = self._build_representation(features, conditional_plan, gate)
-        complement_repr = self._build_representation(
-            features, conditional_plan, 1.0 - gate
-        )
-        full_repr = self._build_representation(
-            features, conditional_plan, torch.ones_like(gate)
-        )
+        if self.mass_faithful_transport:
+            selected_repr = self._build_transport_representation(
+                features, transport * gate[:, None]
+            )
+            complement_repr = self._build_transport_representation(
+                features, transport * (1.0 - gate)[:, None]
+            )
+            full_repr = self._build_transport_representation(features, transport)
+            selected_ratio = (
+                row_mass * gate
+            ).sum() / row_mass.sum().clamp_min(torch.finfo(row_mass.dtype).eps)
+        else:
+            selected_repr = self._build_representation(
+                features, conditional_plan, gate
+            )
+            complement_repr = self._build_representation(
+                features, conditional_plan, 1.0 - gate
+            )
+            full_repr = self._build_representation(
+                features, conditional_plan, torch.ones_like(gate)
+            )
+            selected_ratio = gate.mean()
         logits = self.classifier(selected_repr)
         complement_logits = self.classifier(complement_repr)
         full_logits = self.classifier(full_repr)
@@ -321,7 +370,8 @@ class OT_MIL(nn.Module):
             "full_logits": full_logits,
             "transport": transport,
             "selection_gate": gate,
-            "selected_ratio": gate.mean(),
+            "selected_ratio": selected_ratio,
+            "gate_mean": gate.mean(),
             "selection_threshold": self.selection_threshold,
             "prototype_usage": transport.sum(dim=0),
             "sampled_indices": sampled_indices,
@@ -335,9 +385,14 @@ class OT_MIL(nn.Module):
                 features.size(0), generator=generator, device="cpu"
             ).to(features.device)
             random_gate = gate.index_select(0, permutation)
-            random_repr = self._build_representation(
-                features, conditional_plan, random_gate
-            )
+            if self.mass_faithful_transport:
+                random_repr = self._build_transport_representation(
+                    features, transport * random_gate[:, None]
+                )
+            else:
+                random_repr = self._build_representation(
+                    features, conditional_plan, random_gate
+                )
             result["random_logits"] = self.classifier(random_repr)
             if self.instance_evidence_weight > 0:
                 result["random_logits"] = result[
@@ -373,14 +428,42 @@ class OT_MIL(nn.Module):
         )
 
         true_class = labels.view(-1, 1)
-        selected_score = output["logits"].gather(1, true_class).squeeze(1)
-        complement_score = output["complement_logits"].gather(
-            1, true_class
-        ).squeeze(1)
+        if self.necessity_log_probability:
+            selected_score = F.log_softmax(output["logits"], dim=-1).gather(
+                1, true_class
+            ).squeeze(1)
+            complement_score = F.log_softmax(
+                output["complement_logits"], dim=-1
+            ).gather(1, true_class).squeeze(1)
+        else:
+            selected_score = output["logits"].gather(
+                1, true_class
+            ).squeeze(1)
+            complement_score = output["complement_logits"].gather(
+                1, true_class
+            ).squeeze(1)
         necessity = F.relu(
             self.necessity_margin - selected_score + complement_score
         ).mean()
         minimality = output["selected_ratio"]
+        complement_probabilities = F.softmax(
+            output["complement_logits"], dim=-1
+        )
+        complement_uniformity = (
+            complement_probabilities
+            * (
+                complement_probabilities.clamp_min(
+                    torch.finfo(complement_probabilities.dtype).eps
+                ).log()
+                + torch.log(
+                    torch.tensor(
+                        self.num_classes,
+                        device=complement_probabilities.device,
+                        dtype=complement_probabilities.dtype,
+                    )
+                )
+            )
+        ).sum(dim=-1).mean()
 
         normalized_prototypes = F.normalize(self.prototypes, dim=-1)
         similarity = normalized_prototypes @ normalized_prototypes.transpose(0, 1)
@@ -398,6 +481,9 @@ class OT_MIL(nn.Module):
             + self.consistency_weight * consistency
             + regularization_progress * self.necessity_weight * necessity
             + regularization_progress * self.minimality_weight * minimality
+            + regularization_progress
+            * self.complement_uniformity_weight
+            * complement_uniformity
             + self.diversity_weight * diversity
         )
         return {
@@ -407,5 +493,6 @@ class OT_MIL(nn.Module):
             "consistency_loss": consistency.detach(),
             "necessity_loss": necessity.detach(),
             "minimality_loss": minimality.detach(),
+            "complement_uniformity_loss": complement_uniformity.detach(),
             "diversity_loss": diversity.detach(),
         }

@@ -137,6 +137,61 @@ class OTMILTest(unittest.TestCase):
         self.assertIsNone(model.instance_classifier)
         self.assertEqual(model.rare_instance_weight, 0.0)
         self.assertIsNone(model.rare_instance_classifier)
+        self.assertFalse(model.mass_faithful_transport)
+        self.assertFalse(model.learned_evidence_gate)
+
+    def test_mass_faithful_gate_uses_transport_retention(self):
+        model = OT_MIL(
+            in_dim=32,
+            hidden_dim=16,
+            num_classes=2,
+            num_prototypes=4,
+            dropout=0.0,
+            mass_faithful_transport=True,
+        )
+        row_mass = torch.tensor([1.0 / 6.0, 1.0 / 3.0, 2.0 / 3.0])
+        gate = model._selection_gate(row_mass)
+
+        self.assertTrue(torch.all(gate[1:] > gate[:-1]))
+        self.assertAlmostEqual(gate[1].item(), 0.5, places=6)
+
+    def test_learned_evidence_gate_receives_classification_gradient(self):
+        torch.manual_seed(23)
+        model = OT_MIL(
+            in_dim=32,
+            hidden_dim=16,
+            num_classes=2,
+            num_prototypes=4,
+            dropout=0.0,
+            sinkhorn_iterations=8,
+            mass_faithful_transport=True,
+            learned_evidence_gate=True,
+        )
+        output = model(torch.randn(1, 24, 32))
+        torch.nn.functional.cross_entropy(
+            output["logits"], torch.tensor([1])
+        ).backward()
+
+        self.assertIsNotNone(model.evidence_scorer.weight.grad)
+        self.assertGreater(model.evidence_scorer.weight.grad.abs().sum().item(), 0)
+
+    def test_probability_necessity_is_invariant_to_logit_shift(self):
+        model = OT_MIL(
+            in_dim=32,
+            hidden_dim=16,
+            num_classes=2,
+            num_prototypes=4,
+            necessity_log_probability=True,
+        )
+        output = model(torch.randn(1, 12, 32))
+        labels = torch.tensor([1])
+        original = model.compute_loss(output, labels)["necessity_loss"]
+        shifted = dict(output)
+        shifted["logits"] = output["logits"] + 100.0
+        shifted["complement_logits"] = output["complement_logits"] - 50.0
+        after_shift = model.compute_loss(shifted, labels)["necessity_loss"]
+
+        self.assertTrue(torch.allclose(original, after_shift, atol=1e-5))
 
     def test_rare_instance_branch_is_trainable(self):
         torch.manual_seed(19)

@@ -49,6 +49,13 @@ Model:
     rare_instance_topk: 32
     rare_instance_temperature: 1.0
     rare_gate_weight: 0.0
+    # OT-MIL v2: preserve transported mass in the selected submeasure and
+    # learn a discriminative log-likelihood correction to the UOT mass prior.
+    mass_faithful_transport: True
+    learned_evidence_gate: True
+    evidence_gate_weight: 1.0
+    necessity_log_probability: True
+    complement_uniformity_weight: 0.05
     necessity_margin: 1.0
     necessity_weight: 0.1
     minimality_weight: 0.01
