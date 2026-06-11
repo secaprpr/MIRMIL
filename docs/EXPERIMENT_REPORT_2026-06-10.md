@@ -372,8 +372,86 @@ Final verification:
 
 ```bash
 python -m pytest -q
-# 37 passed
+# 42 passed
 ```
+
+## TCGA-COAD Controlled Task Suite
+
+Official UNI2-h features were matched exactly to 442 label rows and 434
+patients. One metastatic slide marked `recommended_use_primary=No` was
+excluded, leaving 441 primary-tumor slides. A single patient-level
+260/87/87 train/validation/test assignment was optimized jointly across all
+task classes and reused for every task.
+
+The tasks are useful as a controlled task-complexity suite, but they are not
+independent datasets. Of the 323 patients with both MSI and HMCINGS labels,
+56/57 MSI patients were HM, while 217/217 CIN patients were MSS. CMS1 was
+also strongly enriched for MSI and HM. Therefore, these results measure model
+preference under different label granularities on one cohort rather than
+three external validations.
+
+Patient counts:
+
+| Task | Train | Validation | Test |
+| --- | ---: | ---: | ---: |
+| MSI: MSS/MSI | 207/48 | 73/14 | 69/14 |
+| CMS: 1/2/3/4 | 29/74/25/48 | 9/25/9/19 | 11/21/9/18 |
+| HMCINGS: CIN/GS/HM | 128/27/38 | 45/8/11 | 44/10/12 |
+
+Formal 30-epoch, patience-8, balanced-sampling results:
+
+| Task | Model | Macro AUC | Accuracy | Balanced accuracy | Macro-F1 |
+| --- | --- | ---: | ---: | ---: | ---: |
+| MSI | OT-MIL | 0.9184 +/- 0.0454 | 0.8095 | 0.7905 | 0.7382 |
+| MSI | MO-MIL | **0.9473 +/- 0.0050** | **0.8690** | **0.8548** | **0.8017** |
+| CMS | OT-MIL | **0.7777 +/- 0.0053** | **0.5989** | **0.5863** | **0.5958** |
+| CMS | MO-MIL | 0.7579 +/- 0.0185 | 0.5876 | 0.5525 | 0.5526 |
+| HMCINGS | OT-MIL | 0.8463 +/- 0.0525 | 0.7562 | 0.6642 | 0.6446 |
+| HMCINGS | MO-MIL | **0.8828 +/- 0.0283** | **0.7711** | **0.6716** | **0.6701** |
+
+OT-MIL exceeded MO-MIL on CMS in all three seeds: macro AUC +0.0198,
+balanced accuracy +0.0337, and macro-F1 +0.0432. The 10,000-iteration paired
+bootstrap probabilities that OT-MIL was better were 0.903, 0.872, and 0.919,
+respectively, although all 95% confidence intervals crossed zero because the
+CMS test set contains only 59 slides/patients.
+
+The three-seed probability ensemble preserved the CMS preference: macro AUC
+0.7896 versus 0.7740 and macro-F1 0.5922 versus 0.5489. On MSI, the OT-MIL
+ensemble improved macro-F1 over MO-MIL (0.8070 versus 0.7926) but not macro
+AUC (0.9082 versus 0.9520). HMCINGS continued to favor MO-MIL.
+
+OT-MIL selected roughly 49% of instances in all three tasks. The selected
+submeasure reduced true-class confidence when removed, especially on
+HMCINGS, but selected and equal-mass random subsets had similar AUC. This
+means the current evidence supports a task-dependent predictive benefit on
+CMS, but not yet a strong minimal-submeasure explanation claim.
+
+Preparation and formal comparison:
+
+```bash
+python experiments/prepare_coad_multitask.py \
+  --labels /mnt/d/datasets/UNI2-h_features/TCGA-COAD/label/TCGA_COAD_all_slide_internal_labels.csv \
+  --feature-dir /mnt/d/datasets/UNI2-h_features/TCGA-COAD \
+  --output-dir /home/sigirika/datasets/coad_multitask_v1 \
+  --seed 2024 --search-iterations 20000
+
+python experiments/cache_feature_subset.py \
+  --split /home/sigirika/datasets/coad_multitask_v1/COAD_cms_split.csv \
+  --output-dir /home/sigirika/datasets/coad_multitask_v1/cache4096 \
+  --output-split /home/sigirika/datasets/coad_multitask_v1/cached_splits/COAD_cms_split.csv \
+  --max-candidates 4096
+
+python experiments/run_benchmark.py \
+  --split /home/sigirika/datasets/coad_multitask_v1/cached_splits/COAD_cms_split.csv \
+  --dataset-name COAD_CMS --num-classes 4 \
+  --log-root /home/sigirika/experiment_logs/coad_formal_v1/cms \
+  --models OT_MIL MO_MIL --seeds 2024 2025 2026 \
+  --epochs 30 --patience 8 --max-instances 4096 \
+  --in-dim 1536 --device 0 --num-workers 2 --balanced
+```
+
+The benchmark command was also run for MSI (`num-classes=2`) and HMCINGS
+(`num-classes=3`) using their corresponding shared-split CSV files.
 
 ## Git History
 
@@ -415,6 +493,8 @@ Research-stage commits:
 - `1f05278` atomic UNI2-h archive extraction
 - `01ebb10` efficient batched UNI2-h H5 loading and caching
 - `fa01328` paired bootstrap for classification metrics
+- `badb471` shared patient-level TCGA-COAD multi-task preparation
+- `7b2aa93` concurrency-safe atomic feature-cache writes
 
 ## Failures And Resolutions
 
@@ -444,6 +524,9 @@ Research-stage commits:
   stopped accepting the previously working `wqy` public keys. Password
   authentication also rejected the supplied `wqy` and `qfh` credentials, so
   cache completion and follow-up experiments remain unverified.
+- Parallel COAD cache builders initially raced on a shared `.tmp` filename.
+  Temporary files are now uniquely named and atomically replaced; a
+  concurrency regression test was added. No source feature was modified.
 
 ## Research Assessment
 
@@ -459,6 +542,15 @@ UNI2-h features, AUC is statistically tied while OT-MIL improves accuracy,
 balanced accuracy, and macro-F1; macro-F1 improves in all three seeds, although
 its bootstrap confidence interval still crosses zero. Camelyon16 remains a
 clear negative result.
+
+TCGA-COAD adds a useful controlled preference result: OT-MIL consistently
+improves the four-class CMS task but loses on the strongly correlated binary
+MSI and three-class genomic-instability tasks. This sharpens the method claim:
+the current implementation appears better suited to heterogeneous multiclass
+morphology than to near-binary molecular axes. Because all three tasks share
+one cohort and their labels are biologically correlated, COAD contributes one
+dataset-level validation plus a task-profile analysis, not three independent
+validations.
 
 These results support continuing toward an AAAI submission, but not yet a
 broad superiority claim. The defensible claim is that OT-induced submeasure
