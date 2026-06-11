@@ -561,6 +561,83 @@ python experiments/analyze_task_type_preference.py \
   --metric macro_auc --iterations 10000 --seed 2024
 ```
 
+## Theory-Driven Binary Revision
+
+The original implementation normalized every UOT row by its transported
+mass before building the slide representation. UOT therefore acted mainly as
+prototype routing, while a standardized within-bag mass rank produced an
+approximately 50% gate. On frozen test sets, selected and equal-mass random
+subsets had nearly identical AUC.
+
+The revised binary model adds four mechanisms:
+
+1. mass-faithful submeasures built directly from `T * gate`;
+2. class-conditional evidence potentials added to the UOT retention prior;
+3. a zero-initialized residual evidence head anchored to full-bag logits;
+4. a shared 64-dimensional projection of each prototype barycenter, reducing
+   parameters from 1,601,623 to 819,479.
+
+All configuration selection used train/validation CSVs with empty test
+columns. The frozen configuration is `configs/OT_MIL_BINARY.yaml`.
+
+Validation-only ablations, seed 2024:
+
+| Variant | COAD MSI AUC | COAD CMS AUC |
+| --- | ---: | ---: |
+| Legacy OT-MIL | 0.9755 | 0.8400 |
+| Mass-faithful scalar gate | 0.9653 | 0.8271 |
+| Class-conditional submeasures | 0.9521 | 0.8228 |
+| Full-bag residual, rank 256 | 0.9569 | 0.8402 |
+| Full-bag residual, rank 64 | 0.9706 | **0.8436** |
+
+The rank-64 binary model also reduced three-seed COAD-MSI macro-F1
+variability from `0.7957 +/- 0.1441` to `0.8632 +/- 0.0008`.
+
+Frozen patient-level MSI results:
+
+| Cohort/model | Macro AUC | Balanced accuracy | Macro-F1 |
+| --- | ---: | ---: | ---: |
+| COAD legacy OT-MIL | 0.9179 | 0.7916 | 0.7404 |
+| COAD MO-MIL | **0.9465** | 0.8539 | 0.8011 |
+| COAD revised OT-MIL | 0.9286 | 0.7876 | 0.7887 |
+| UCEC legacy OT-MIL | 0.6909 | 0.6481 | 0.6491 |
+| UCEC MO-MIL | 0.7318 | 0.6689 | **0.6758** |
+| UCEC revised OT-MIL | **0.7491** | **0.6968** | 0.6733 |
+
+For UCEC, the paired three-seed macro-AUC difference versus MO-MIL was
+`+0.0173`, with a 95% patient bootstrap interval of
+`[-0.0348, +0.0693]`. COAD remained lower by `-0.0179`, with interval
+`[-0.0487, +0.0114]`. The revision therefore changes the binary result from
+two losses to one win and one loss, but does not establish universal
+superiority.
+
+Frozen slide-level selection diagnostics:
+
+| Cohort | Selected AUC | Full AUC | Random-gate AUC |
+| --- | ---: | ---: | ---: |
+| COAD MSI | **0.9293** | 0.9054 | 0.9048 |
+| UCEC MSI | **0.7402** | 0.7325 | 0.7329 |
+
+Unlike the legacy model, the learned submeasure now consistently improves
+over both the full representation and a permuted equal-mass gate.
+
+Representative commands:
+
+```bash
+python train_mil.py --yaml_path configs/OT_MIL_BINARY.yaml --options \
+  General.seed=2024 General.num_classes=2 General.num_epochs=25 \
+  Dataset.dataset_csv_path=/home/sigirika/experiment_splits/otmil_v2_tuning/UCEC_MSI_train_val.csv \
+  Dataset.DATASET_NAME=UCEC_MSI_LR \
+  Logs.log_root_dir=/home/sigirika/experiment_logs/otmil_v2_tuning/ucec_transfer \
+  Model.in_dim=1536 Model.max_instances=4096
+
+python experiments/evaluate_checkpoints.py \
+  --run-root /home/sigirika/experiment_logs/otmil_v2_tuning/ucec_transfer/UCEC_MSI_LR \
+  --output-dir /home/sigirika/experiment_logs/otmil_v2_frozen/ucec_msi \
+  --models OT_MIL --budgets 4096 --device 0 --num-workers 2 \
+  --split-override /home/sigirika/datasets/ucec_multitask_v1/cached_splits/UCEC_msi_split.csv
+```
+
 ## Git History
 
 Research-stage commits:
