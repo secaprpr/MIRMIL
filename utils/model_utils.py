@@ -215,6 +215,9 @@ def get_model_from_yaml(yaml_args):
             binary_common_gate_balance_power=_model_option(
                 yaml_args, "binary_common_gate_balance_power", 0.0
             ),
+            binary_common_gate_learnable_scale=_model_option(
+                yaml_args, "binary_common_gate_learnable_scale", False
+            ),
             necessity_log_probability=_model_option(
                 yaml_args, "necessity_log_probability", False
             ),

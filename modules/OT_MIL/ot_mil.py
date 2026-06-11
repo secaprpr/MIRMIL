@@ -52,6 +52,7 @@ class OT_MIL(nn.Module):
         binary_common_gate_weight=0.0,
         binary_common_gate_penalty_weight=0.0,
         binary_common_gate_balance_power=0.0,
+        binary_common_gate_learnable_scale=False,
         necessity_log_probability=False,
         complement_uniformity_weight=0.0,
     ):
@@ -119,6 +120,10 @@ class OT_MIL(nn.Module):
             raise ValueError(
                 "Binary common-gate balancing requires common-gate evidence"
             )
+        if binary_common_gate_learnable_scale and binary_common_gate_weight <= 0:
+            raise ValueError(
+                "Learnable binary common-gate scaling requires common-gate evidence"
+            )
 
         self.hidden_dim = hidden_dim
         self.num_classes = num_classes
@@ -154,6 +159,9 @@ class OT_MIL(nn.Module):
             binary_common_gate_penalty_weight
         )
         self.binary_common_gate_balance_power = binary_common_gate_balance_power
+        self.binary_common_gate_learnable_scale = (
+            binary_common_gate_learnable_scale
+        )
         self.necessity_log_probability = necessity_log_probability
         self.complement_uniformity_weight = complement_uniformity_weight
         self.regularization_progress = 1.0
@@ -174,6 +182,11 @@ class OT_MIL(nn.Module):
         self.evidence_scorer = (
             nn.Linear(hidden_dim, evidence_output_dim)
             if learned_evidence_gate
+            else None
+        )
+        self.binary_common_gate_logit = (
+            nn.Parameter(torch.tensor(0.0))
+            if binary_common_gate_learnable_scale
             else None
         )
         self.prototype_projector = (
@@ -296,6 +309,11 @@ class OT_MIL(nn.Module):
                                 * learned_score[:, :1]
                             )
                             log_likelihood_ratio = learned_score[:, 1:2]
+                            if self.binary_common_gate_logit is not None:
+                                common_score = (
+                                    torch.sigmoid(self.binary_common_gate_logit)
+                                    * common_score
+                                )
                             if self.binary_common_gate_balance_power > 0:
                                 tiny = torch.finfo(common_score.dtype).eps
                                 common_magnitude = (
@@ -503,11 +521,16 @@ class OT_MIL(nn.Module):
                 self.binary_common_gate_weight
                 * evidence_scores[:, 0]
             )
+            if self.binary_common_gate_logit is not None:
+                common_gate_scale = torch.sigmoid(
+                    self.binary_common_gate_logit
+                )
+                common_score = common_gate_scale * common_score
             if self.binary_common_gate_balance_power > 0:
                 tiny = torch.finfo(common_score.dtype).eps
                 common_magnitude = common_score.detach().abs().mean()
                 contrast_magnitude = evidence_scores[:, 1].detach().abs().mean()
-                common_gate_scale = (
+                balance_scale = (
                     (contrast_magnitude + tiny)
                     / (
                         common_magnitude
@@ -515,7 +538,8 @@ class OT_MIL(nn.Module):
                         + 2.0 * tiny
                     )
                 ).pow(self.binary_common_gate_balance_power)
-                common_score = common_gate_scale * common_score
+                common_gate_scale = common_gate_scale * balance_scale
+                common_score = balance_scale * common_score
             common_gate_energy = common_score.square().mean()
         rare_scores = None
         if self.rare_instance_classifier is not None:
