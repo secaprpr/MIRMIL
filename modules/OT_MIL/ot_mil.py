@@ -50,6 +50,7 @@ class OT_MIL(nn.Module):
         class_prototype_routing=False,
         class_prototype_separation_weight=0.0,
         class_prototype_information_weight=0.0,
+        class_prototype_init_strength=0.0,
         residual_evidence_logits=False,
         binary_likelihood_ratio=False,
         binary_common_gate_weight=0.0,
@@ -91,6 +92,7 @@ class OT_MIL(nn.Module):
             or binary_dual_endpoint_weight < 0
             or class_prototype_separation_weight < 0
             or class_prototype_information_weight < 0
+            or class_prototype_init_strength < 0
             or complement_uniformity_weight < 0
         ):
             raise ValueError("Evidence-gate and complement weights must be non-negative")
@@ -107,6 +109,10 @@ class OT_MIL(nn.Module):
         if class_prototype_information_weight > 0 and not class_prototype_routing:
             raise ValueError(
                 "Class-prototype information requires prototype routing"
+            )
+        if class_prototype_init_strength > 0 and not class_prototype_routing:
+            raise ValueError(
+                "Class-prototype initialization requires prototype routing"
             )
         if class_conditional_gate and (
             rare_instance_weight > 0 or rare_gate_weight > 0
@@ -189,6 +195,7 @@ class OT_MIL(nn.Module):
         self.class_prototype_information_weight = (
             class_prototype_information_weight
         )
+        self.class_prototype_init_strength = class_prototype_init_strength
         self.residual_evidence_logits = residual_evidence_logits
         self.binary_likelihood_ratio = binary_likelihood_ratio
         self.binary_common_gate_weight = binary_common_gate_weight
@@ -276,7 +283,16 @@ class OT_MIL(nn.Module):
         )
         self.apply(_init_weights)
         if self.class_prototype_logits is not None:
-            nn.init.normal_(self.class_prototype_logits, std=1e-3)
+            if self.class_prototype_init_strength > 0:
+                nn.init.zeros_(self.class_prototype_logits)
+                prototype_indices = torch.arange(num_prototypes)
+                assigned_classes = prototype_indices.remainder(num_classes)
+                with torch.no_grad():
+                    self.class_prototype_logits[
+                        assigned_classes, prototype_indices
+                    ] = self.class_prototype_init_strength
+            else:
+                nn.init.normal_(self.class_prototype_logits, std=1e-3)
         if self.evidence_scorer is not None:
             nn.init.zeros_(self.evidence_scorer.weight)
             nn.init.zeros_(self.evidence_scorer.bias)
