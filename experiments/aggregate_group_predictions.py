@@ -30,22 +30,38 @@ def load_cache_mapping(cache_manifest):
     }
 
 
-def build_group_mapping(assignments_path, cache_manifest, split="test"):
+def build_group_mapping(assignments_path, cache_manifest=None, split="test"):
     assignments = pd.read_csv(assignments_path)
-    required = {"feature_path", "case_id", "label", "split"}
-    missing = required - set(assignments.columns)
-    if missing:
-        raise ValueError(f"Missing assignment columns: {sorted(missing)}")
     assignments = assignments[assignments["split"] == split].copy()
-    source_to_cache = load_cache_mapping(cache_manifest)
-    assignments["slide_path"] = assignments["feature_path"].map(
-        lambda path: source_to_cache.get(os.path.abspath(path))
-    )
-    if assignments["slide_path"].isna().any():
-        first = assignments.loc[
-            assignments["slide_path"].isna(), "feature_path"
-        ].iloc[0]
-        raise ValueError(f"Feature is absent from cache manifest: {first}")
+
+    direct_columns = {"slide_path", "patient_id", "label", "split"}
+    cached_columns = {"feature_path", "case_id", "label", "split"}
+    if direct_columns.issubset(assignments.columns):
+        assignments["slide_path"] = assignments["slide_path"].map(
+            os.path.abspath
+        )
+        assignments["case_id"] = assignments["patient_id"].astype(str)
+    elif cached_columns.issubset(assignments.columns):
+        if cache_manifest is None:
+            raise ValueError(
+                "A cache manifest is required for feature_path assignments"
+            )
+        source_to_cache = load_cache_mapping(cache_manifest)
+        assignments["slide_path"] = assignments["feature_path"].map(
+            lambda path: source_to_cache.get(os.path.abspath(path))
+        )
+        if assignments["slide_path"].isna().any():
+            first = assignments.loc[
+                assignments["slide_path"].isna(), "feature_path"
+            ].iloc[0]
+            raise ValueError(f"Feature is absent from cache manifest: {first}")
+    else:
+        expected = sorted(direct_columns) + sorted(cached_columns)
+        raise ValueError(
+            "Assignments must contain either direct or cached mapping "
+            f"columns; expected: {expected}"
+        )
+
     if assignments["slide_path"].duplicated().any():
         raise ValueError("Duplicate cached slide paths in assignments")
     if assignments.groupby("case_id")["label"].nunique().max() > 1:
@@ -104,7 +120,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input-dir", required=True)
     parser.add_argument("--assignments", required=True)
-    parser.add_argument("--cache-manifest", required=True)
+    parser.add_argument(
+        "--cache-manifest",
+        help="Required only for feature_path/case_id assignments",
+    )
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--split", default="test")
     args = parser.parse_args()

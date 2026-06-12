@@ -97,3 +97,23 @@ def test_conflicting_group_labels_are_rejected(tmp_path):
 
     with pytest.raises(ValueError, match="conflicting labels"):
         build_group_mapping(assignments_path, manifest_path)
+
+
+def test_direct_slide_patient_assignments_need_no_manifest(tmp_path):
+    assignments = pd.DataFrame(
+        {
+            "slide_path": [tmp_path / "a.pt", tmp_path / "b.pt"],
+            "patient_id": ["patient_1", "patient_2"],
+            "label": [0, 1],
+            "split": ["test", "train"],
+        }
+    )
+    assignments_path = tmp_path / "assignments.csv"
+    assignments.to_csv(assignments_path, index=False)
+
+    mapping = build_group_mapping(assignments_path)
+
+    assert mapping["slide_path"].tolist() == [
+        str((tmp_path / "a.pt").resolve())
+    ]
+    assert mapping["case_id"].tolist() == ["patient_1"]
