@@ -206,6 +206,9 @@ def get_model_from_yaml(yaml_args):
             class_gate_competition_temperature=_model_option(
                 yaml_args, "class_gate_competition_temperature", 1.0
             ),
+            class_gate_competition_strength=_model_option(
+                yaml_args, "class_gate_competition_strength", 1.0
+            ),
             class_prototype_routing=_model_option(
                 yaml_args, "class_prototype_routing", False
             ),

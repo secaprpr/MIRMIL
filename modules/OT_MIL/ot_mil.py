@@ -49,6 +49,7 @@ class OT_MIL(nn.Module):
         class_conditional_gate=False,
         class_gate_competition=False,
         class_gate_competition_temperature=1.0,
+        class_gate_competition_strength=1.0,
         class_prototype_routing=False,
         class_prototype_separation_weight=0.0,
         class_prototype_information_weight=0.0,
@@ -75,6 +76,10 @@ class OT_MIL(nn.Module):
             raise ValueError("selection_fraction must be in [0, 1)")
         if not 0.0 <= binary_dual_gate_mix <= 1.0:
             raise ValueError("Binary dual-gate mixture must be in [0, 1]")
+        if not 0.0 <= class_gate_competition_strength <= 1.0:
+            raise ValueError(
+                "Class-gate competition strength must be in [0, 1]"
+            )
         if instance_evidence_weight < 0 or instance_evidence_temperature <= 0:
             raise ValueError("Instance evidence parameters must be positive")
         if class_gate_competition_temperature <= 0:
@@ -204,6 +209,9 @@ class OT_MIL(nn.Module):
         self.class_gate_competition = class_gate_competition
         self.class_gate_competition_temperature = (
             class_gate_competition_temperature
+        )
+        self.class_gate_competition_strength = (
+            class_gate_competition_strength
         )
         self.class_prototype_routing = class_prototype_routing
         self.class_prototype_separation_weight = (
@@ -455,7 +463,12 @@ class OT_MIL(nn.Module):
                 learned_score / self.class_gate_competition_temperature,
                 dim=1,
             )
-            allocation = self.num_classes * class_assignment
+            allocation = (
+                1.0 - self.class_gate_competition_strength
+                + self.class_gate_competition_strength
+                * self.num_classes
+                * class_assignment
+            )
             gate = 1.0 - (1.0 - gate).clamp_min(
                 torch.finfo(gate.dtype).eps
             ).pow(allocation)

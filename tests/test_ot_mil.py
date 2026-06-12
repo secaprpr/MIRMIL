@@ -645,6 +645,41 @@ class OTMILTest(unittest.TestCase):
             )
         with self.assertRaisesRegex(ValueError, "temperature must be positive"):
             OT_MIL(num_classes=3, class_gate_competition_temperature=0.0)
+        with self.assertRaisesRegex(ValueError, "strength must be"):
+            OT_MIL(num_classes=3, class_gate_competition_strength=1.1)
+
+    def test_zero_class_gate_competition_strength_is_exact_baseline(self):
+        common = dict(
+            in_dim=8,
+            hidden_dim=4,
+            num_classes=3,
+            num_prototypes=4,
+            prototype_rank_dim=2,
+            dropout=0.0,
+            mass_faithful_transport=True,
+            learned_evidence_gate=True,
+            class_conditional_gate=True,
+            residual_evidence_logits=True,
+        )
+        baseline = OT_MIL(**common)
+        competitive = OT_MIL(
+            **common,
+            class_gate_competition=True,
+            class_gate_competition_strength=0.0,
+        )
+        with torch.no_grad():
+            scores = torch.tensor([2.0, 0.0, -2.0])
+            baseline.evidence_scorer.bias.copy_(scores)
+            competitive.evidence_scorer.bias.copy_(scores)
+        features = torch.randn(10, 4)
+        row_mass = torch.full((10,), 0.1)
+
+        self.assertTrue(
+            torch.allclose(
+                baseline._selection_gate(row_mass, features),
+                competitive._selection_gate(row_mass, features),
+            )
+        )
 
     def test_class_prototype_routing_does_not_shift_shared_initialization(self):
         common = dict(
