@@ -50,6 +50,7 @@ class OT_MIL(nn.Module):
         class_gate_competition=False,
         class_gate_competition_temperature=1.0,
         class_gate_competition_strength=1.0,
+        class_mass_classification_weight=0.0,
         class_prototype_routing=False,
         class_prototype_separation_weight=0.0,
         class_prototype_information_weight=0.0,
@@ -101,6 +102,7 @@ class OT_MIL(nn.Module):
             or binary_common_gate_penalty_weight < 0
             or binary_common_gate_balance_power < 0
             or binary_dual_endpoint_weight < 0
+            or class_mass_classification_weight < 0
             or class_prototype_separation_weight < 0
             or class_prototype_information_weight < 0
             or class_prototype_init_strength < 0
@@ -115,6 +117,10 @@ class OT_MIL(nn.Module):
             raise ValueError(
                 "Class-gate competition requires multiclass "
                 "class-conditional gating"
+            )
+        if class_mass_classification_weight > 0 and not class_conditional_gate:
+            raise ValueError(
+                "Class-mass classification requires class-conditional gating"
             )
         if class_prototype_routing and not class_conditional_gate:
             raise ValueError(
@@ -212,6 +218,9 @@ class OT_MIL(nn.Module):
         )
         self.class_gate_competition_strength = (
             class_gate_competition_strength
+        )
+        self.class_mass_classification_weight = (
+            class_mass_classification_weight
         )
         self.class_prototype_routing = class_prototype_routing
         self.class_prototype_separation_weight = (
@@ -701,6 +710,9 @@ class OT_MIL(nn.Module):
             )
             full_repr = self._build_transport_representation(features, transport)
             class_mass = (row_mass[:, None] * gate).sum(dim=0)
+            normalized_class_mass = class_mass / class_mass.sum().clamp_min(
+                torch.finfo(class_mass.dtype).eps
+            )
             selected_ratio = (
                 class_mass
                 / row_mass.sum().clamp_min(torch.finfo(row_mass.dtype).eps)
@@ -839,6 +851,11 @@ class OT_MIL(nn.Module):
             "gate_mean": gate.mean(),
             "common_gate_energy": common_gate_energy,
             "common_gate_scale": common_gate_scale,
+            "class_selected_mass": (
+                normalized_class_mass
+                if self.class_conditional_gate
+                else None
+            ),
             "selection_threshold": self.selection_threshold,
             "prototype_usage": transport.sum(dim=0),
             "sampled_indices": sampled_indices,
@@ -951,6 +968,14 @@ class OT_MIL(nn.Module):
                 criterion(output["contrast_logits"], labels)
                 + criterion(output["common_logits"], labels)
             )
+        class_mass_classification = classification.new_zeros(())
+        if self.class_mass_classification_weight > 0:
+            class_mass_logits = output["class_selected_mass"].clamp_min(
+                torch.finfo(classification.dtype).eps
+            ).log().unsqueeze(0)
+            class_mass_classification = criterion(
+                class_mass_logits, labels
+            )
         full_classification = criterion(output["full_logits"], labels)
         consistency = F.kl_div(
             F.log_softmax(output["logits"], dim=-1),
@@ -1047,6 +1072,8 @@ class OT_MIL(nn.Module):
         total = (
             classification
             + self.binary_dual_endpoint_weight * endpoint_classification
+            + self.class_mass_classification_weight
+            * class_mass_classification
             + self.full_classification_weight * full_classification
             + self.consistency_weight * consistency
             + regularization_progress * self.necessity_weight * necessity
@@ -1069,6 +1096,9 @@ class OT_MIL(nn.Module):
             "loss": total,
             "classification_loss": classification.detach(),
             "endpoint_classification_loss": endpoint_classification.detach(),
+            "class_mass_classification_loss": (
+                class_mass_classification.detach()
+            ),
             "full_classification_loss": full_classification.detach(),
             "consistency_loss": consistency.detach(),
             "necessity_loss": necessity.detach(),

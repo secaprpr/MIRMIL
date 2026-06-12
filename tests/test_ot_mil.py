@@ -681,6 +681,37 @@ class OTMILTest(unittest.TestCase):
             )
         )
 
+    def test_class_mass_classification_directly_supervises_gate_mass(self):
+        model = OT_MIL(
+            in_dim=8,
+            hidden_dim=4,
+            num_classes=3,
+            num_prototypes=4,
+            prototype_rank_dim=2,
+            dropout=0.0,
+            mass_faithful_transport=True,
+            learned_evidence_gate=True,
+            class_conditional_gate=True,
+            class_mass_classification_weight=1.0,
+            residual_evidence_logits=True,
+        )
+        output = model(torch.randn(1, 12, 8))
+        labels = torch.tensor([1])
+        losses = model.compute_loss(output, labels)
+        expected = torch.nn.functional.cross_entropy(
+            output["class_selected_mass"].log().unsqueeze(0), labels
+        )
+        losses["loss"].backward()
+
+        self.assertTrue(
+            torch.allclose(losses["class_mass_classification_loss"], expected)
+        )
+        self.assertGreater(model.evidence_scorer.weight.grad.abs().sum(), 0)
+
+    def test_class_mass_classification_rejects_scalar_gate(self):
+        with self.assertRaisesRegex(ValueError, "requires class-conditional"):
+            OT_MIL(num_classes=3, class_mass_classification_weight=0.1)
+
     def test_class_prototype_routing_does_not_shift_shared_initialization(self):
         common = dict(
             in_dim=8,

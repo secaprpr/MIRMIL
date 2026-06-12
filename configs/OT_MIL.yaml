@@ -59,6 +59,7 @@ Model:
     class_gate_competition: False
     class_gate_competition_temperature: 1.0
     class_gate_competition_strength: 1.0
+    class_mass_classification_weight: 0.0
     class_prototype_routing: False
     class_prototype_separation_weight: 0.0
     class_prototype_information_weight: 0.0
