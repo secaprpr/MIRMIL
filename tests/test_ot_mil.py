@@ -584,6 +584,68 @@ class OTMILTest(unittest.TestCase):
                 class_prototype_init_strength=1.0,
             )
 
+    def test_class_gate_competition_preserves_uniform_gate_initialization(self):
+        common = dict(
+            in_dim=8,
+            hidden_dim=4,
+            num_classes=3,
+            num_prototypes=4,
+            prototype_rank_dim=2,
+            dropout=0.0,
+            mass_faithful_transport=True,
+            learned_evidence_gate=True,
+            class_conditional_gate=True,
+            residual_evidence_logits=True,
+        )
+        baseline = OT_MIL(**common)
+        competitive = OT_MIL(**common, class_gate_competition=True)
+        features = torch.randn(10, 4)
+        row_mass = torch.full((10,), 0.1)
+
+        self.assertTrue(
+            torch.allclose(
+                baseline._selection_gate(row_mass, features),
+                competitive._selection_gate(row_mass, features),
+            )
+        )
+
+    def test_class_gate_competition_allocates_evidence_between_classes(self):
+        model = OT_MIL(
+            in_dim=8,
+            hidden_dim=4,
+            num_classes=3,
+            num_prototypes=4,
+            prototype_rank_dim=2,
+            dropout=0.0,
+            mass_faithful_transport=True,
+            learned_evidence_gate=True,
+            class_conditional_gate=True,
+            class_gate_competition=True,
+            residual_evidence_logits=True,
+        )
+        with torch.no_grad():
+            model.evidence_scorer.bias.copy_(torch.tensor([3.0, 0.0, -3.0]))
+        gates = model._selection_gate(
+            torch.full((6,), 1.0 / 6.0), torch.ones(6, 4)
+        )
+
+        self.assertTrue(torch.all(gates[:, 0] > gates[:, 1]))
+        self.assertTrue(torch.all(gates[:, 1] > gates[:, 2]))
+        self.assertTrue(torch.all((gates >= 0) & (gates <= 1)))
+
+    def test_class_gate_competition_rejects_invalid_modes(self):
+        with self.assertRaisesRegex(ValueError, "requires multiclass"):
+            OT_MIL(num_classes=3, class_gate_competition=True)
+        with self.assertRaisesRegex(ValueError, "requires multiclass"):
+            OT_MIL(
+                num_classes=2,
+                learned_evidence_gate=True,
+                class_conditional_gate=True,
+                class_gate_competition=True,
+            )
+        with self.assertRaisesRegex(ValueError, "temperature must be positive"):
+            OT_MIL(num_classes=3, class_gate_competition_temperature=0.0)
+
     def test_class_prototype_routing_does_not_shift_shared_initialization(self):
         common = dict(
             in_dim=8,

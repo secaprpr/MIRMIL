@@ -47,6 +47,8 @@ class OT_MIL(nn.Module):
         learned_evidence_gate=False,
         evidence_gate_weight=1.0,
         class_conditional_gate=False,
+        class_gate_competition=False,
+        class_gate_competition_temperature=1.0,
         class_prototype_routing=False,
         class_prototype_separation_weight=0.0,
         class_prototype_information_weight=0.0,
@@ -75,6 +77,10 @@ class OT_MIL(nn.Module):
             raise ValueError("Binary dual-gate mixture must be in [0, 1]")
         if instance_evidence_weight < 0 or instance_evidence_temperature <= 0:
             raise ValueError("Instance evidence parameters must be positive")
+        if class_gate_competition_temperature <= 0:
+            raise ValueError(
+                "Class-gate competition temperature must be positive"
+            )
         if (
             rare_instance_weight < 0
             or rare_instance_topk < 1
@@ -98,6 +104,13 @@ class OT_MIL(nn.Module):
             raise ValueError("Evidence-gate and complement weights must be non-negative")
         if class_conditional_gate and not learned_evidence_gate:
             raise ValueError("Class-conditional gating requires a learned evidence gate")
+        if class_gate_competition and (
+            not class_conditional_gate or num_classes < 3
+        ):
+            raise ValueError(
+                "Class-gate competition requires multiclass "
+                "class-conditional gating"
+            )
         if class_prototype_routing and not class_conditional_gate:
             raise ValueError(
                 "Class-prototype routing requires class-conditional gating"
@@ -188,6 +201,10 @@ class OT_MIL(nn.Module):
         self.learned_evidence_gate = learned_evidence_gate
         self.evidence_gate_weight = evidence_gate_weight
         self.class_conditional_gate = class_conditional_gate
+        self.class_gate_competition = class_gate_competition
+        self.class_gate_competition_temperature = (
+            class_gate_competition_temperature
+        )
         self.class_prototype_routing = class_prototype_routing
         self.class_prototype_separation_weight = (
             class_prototype_separation_weight
@@ -429,10 +446,20 @@ class OT_MIL(nn.Module):
                 dim=0 if evidence_score.dim() == 2 else None,
             )
             threshold = threshold + sparse_threshold
-        return torch.sigmoid(
+        gate = torch.sigmoid(
             (evidence_score - threshold)
             / max(self.gate_temperature, 1e-6)
         )
+        if self.class_gate_competition:
+            class_assignment = F.softmax(
+                learned_score / self.class_gate_competition_temperature,
+                dim=1,
+            )
+            allocation = self.num_classes * class_assignment
+            gate = 1.0 - (1.0 - gate).clamp_min(
+                torch.finfo(gate.dtype).eps
+            ).pow(allocation)
+        return gate
 
     def _class_prototype_weights(self):
         if self.class_prototype_logits is None:

@@ -200,6 +200,12 @@ def get_model_from_yaml(yaml_args):
             class_conditional_gate=_model_option(
                 yaml_args, "class_conditional_gate", False
             ),
+            class_gate_competition=_model_option(
+                yaml_args, "class_gate_competition", False
+            ),
+            class_gate_competition_temperature=_model_option(
+                yaml_args, "class_gate_competition_temperature", 1.0
+            ),
             class_prototype_routing=_model_option(
                 yaml_args, "class_prototype_routing", False
             ),
