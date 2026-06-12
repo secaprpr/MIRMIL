@@ -573,6 +573,11 @@ class OTMILTest(unittest.TestCase):
                 num_classes=3,
                 class_prototype_separation_weight=0.1,
             )
+        with self.assertRaisesRegex(ValueError, "requires prototype routing"):
+            OT_MIL(
+                num_classes=3,
+                class_prototype_information_weight=0.1,
+            )
 
     def test_class_prototype_routing_does_not_shift_shared_initialization(self):
         common = dict(
@@ -596,6 +601,36 @@ class OTMILTest(unittest.TestCase):
         routed_state = routed.state_dict()
         for name, value in baseline_state.items():
             self.assertTrue(torch.equal(value, routed_state[name]), name)
+
+    def test_class_prototype_information_rewards_specialized_coverage(self):
+        model = OT_MIL(
+            in_dim=8,
+            hidden_dim=4,
+            num_classes=3,
+            num_prototypes=4,
+            prototype_rank_dim=2,
+            dropout=0.0,
+            mass_faithful_transport=True,
+            learned_evidence_gate=True,
+            class_conditional_gate=True,
+            class_prototype_routing=True,
+            class_prototype_information_weight=1.0,
+            residual_evidence_logits=True,
+        )
+        bag = torch.randn(1, 12, 8)
+        uniform_loss = model.compute_loss(
+            model(bag), torch.tensor([1])
+        )["class_prototype_information_loss"]
+        with torch.no_grad():
+            model.class_prototype_logits.fill_(-8.0)
+            model.class_prototype_logits[0, 0] = 8.0
+            model.class_prototype_logits[1, 1] = 8.0
+            model.class_prototype_logits[2, 2] = 8.0
+        specialized_loss = model.compute_loss(
+            model(bag), torch.tensor([1])
+        )["class_prototype_information_loss"]
+
+        self.assertLess(specialized_loss, uniform_loss - 0.5)
 
     def test_rare_instance_branch_is_trainable(self):
         torch.manual_seed(19)

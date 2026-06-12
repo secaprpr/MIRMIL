@@ -49,6 +49,7 @@ class OT_MIL(nn.Module):
         class_conditional_gate=False,
         class_prototype_routing=False,
         class_prototype_separation_weight=0.0,
+        class_prototype_information_weight=0.0,
         residual_evidence_logits=False,
         binary_likelihood_ratio=False,
         binary_common_gate_weight=0.0,
@@ -89,6 +90,7 @@ class OT_MIL(nn.Module):
             or binary_common_gate_balance_power < 0
             or binary_dual_endpoint_weight < 0
             or class_prototype_separation_weight < 0
+            or class_prototype_information_weight < 0
             or complement_uniformity_weight < 0
         ):
             raise ValueError("Evidence-gate and complement weights must be non-negative")
@@ -101,6 +103,10 @@ class OT_MIL(nn.Module):
         if class_prototype_separation_weight > 0 and not class_prototype_routing:
             raise ValueError(
                 "Class-prototype separation requires prototype routing"
+            )
+        if class_prototype_information_weight > 0 and not class_prototype_routing:
+            raise ValueError(
+                "Class-prototype information requires prototype routing"
             )
         if class_conditional_gate and (
             rare_instance_weight > 0 or rare_gate_weight > 0
@@ -179,6 +185,9 @@ class OT_MIL(nn.Module):
         self.class_prototype_routing = class_prototype_routing
         self.class_prototype_separation_weight = (
             class_prototype_separation_weight
+        )
+        self.class_prototype_information_weight = (
+            class_prototype_information_weight
         )
         self.residual_evidence_logits = residual_evidence_logits
         self.binary_likelihood_ratio = binary_likelihood_ratio
@@ -914,6 +923,7 @@ class OT_MIL(nn.Module):
         minimality = output["selected_ratio"]
         common_gate_energy = output["common_gate_energy"]
         class_prototype_separation = classification.new_zeros(())
+        class_prototype_information = classification.new_zeros(())
         if self.class_prototype_logits is not None:
             prototype_distributions = F.softmax(
                 self.class_prototype_logits, dim=1
@@ -930,6 +940,25 @@ class OT_MIL(nn.Module):
             class_prototype_separation = prototype_similarity[
                 off_diagonal_mask
             ].mean()
+            tiny = torch.finfo(prototype_distributions.dtype).eps
+            class_entropy = -(
+                prototype_distributions
+                * prototype_distributions.clamp_min(tiny).log()
+            ).sum(dim=1).mean()
+            average_distribution = prototype_distributions.mean(dim=0)
+            coverage_entropy = -(
+                average_distribution
+                * average_distribution.clamp_min(tiny).log()
+            ).sum()
+            class_prototype_information = (
+                class_entropy - coverage_entropy
+            ) / torch.log(
+                torch.tensor(
+                    self.num_prototypes,
+                    device=prototype_distributions.device,
+                    dtype=prototype_distributions.dtype,
+                )
+            )
         complement_probabilities = F.softmax(
             output["complement_logits"], dim=-1
         )
@@ -973,6 +1002,9 @@ class OT_MIL(nn.Module):
             * self.class_prototype_separation_weight
             * class_prototype_separation
             + regularization_progress
+            * self.class_prototype_information_weight
+            * class_prototype_information
+            + regularization_progress
             * self.complement_uniformity_weight
             * complement_uniformity
             + self.diversity_weight * diversity
@@ -988,6 +1020,9 @@ class OT_MIL(nn.Module):
             "common_gate_energy": common_gate_energy.detach(),
             "class_prototype_separation_loss": (
                 class_prototype_separation.detach()
+            ),
+            "class_prototype_information_loss": (
+                class_prototype_information.detach()
             ),
             "complement_uniformity_loss": complement_uniformity.detach(),
             "diversity_loss": diversity.detach(),

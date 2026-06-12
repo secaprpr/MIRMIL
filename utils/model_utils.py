@@ -206,6 +206,9 @@ def get_model_from_yaml(yaml_args):
             class_prototype_separation_weight=_model_option(
                 yaml_args, "class_prototype_separation_weight", 0.0
             ),
+            class_prototype_information_weight=_model_option(
+                yaml_args, "class_prototype_information_weight", 0.0
+            ),
             residual_evidence_logits=_model_option(
                 yaml_args, "residual_evidence_logits", False
             ),
