@@ -672,6 +672,173 @@ the Windows-side GPU had about 8 GB of unreported activity. A diagnostic
 rerun with `CUDA_LAUNCH_BLOCKING=1` was terminated by the command timeout
 after epoch 17. Both runs were excluded; a clean rerun completed normally.
 
+## Multiclass Diagnostic-Mass Revision
+
+The multiclass follow-up tested whether each class-conditional OT submeasure
+was itself diagnostic. In the previous low-rank residual model, class gates
+selected different patches, but their transported prototype-use vectors were
+nearly identical:
+
+| Validation cohort | Gate soft Jaccard | Prototype-use cosine |
+| --- | ---: | ---: |
+| COAD CMS | 0.4873 | 0.9850 |
+| UCEC subtype | 0.5140 | 0.9631 |
+
+Three attempted specialization mechanisms were rejected:
+
+1. learned class-prototype routing remained almost uniform unless initialized
+   with a strong balanced support prior;
+2. balanced prototype supports improved COAD threshold metrics and reduced
+   UCEC variance, but frozen-test macro-AUC fell to `0.7536` and `0.7331`;
+3. soft class competition created strong gate separation, but validation
+   gains were cohort-dependent.
+
+The retained mechanism adds no parameters. For each class, it computes the
+total selected OT mass
+
+`m_c = sum_i r_i g_ic`
+
+and applies an auxiliary cross-entropy loss to `log m_c`. This directly
+supervises the class-conditional submeasure instead of relying only on the
+downstream residual classifier. The validation-selected weight was `0.1`.
+All COAD/UCEC configuration selection used CSVs whose test columns were empty.
+
+Three-seed validation:
+
+| Cohort | v2 AUC | Diagnostic-mass AUC |
+| --- | ---: | ---: |
+| COAD CMS | 0.8308 +/- 0.0113 | **0.8449 +/- 0.0067** |
+| UCEC subtype | 0.7679 +/- 0.0218 | **0.7756 +/- 0.0246** |
+
+The paired AUC improvement was positive for all six cohort/seed pairs.
+Balanced accuracy and macro-F1 were mixed, so the validation claim is limited
+to ranking performance.
+
+Post-development patient-level audit did not generalize on those same
+cohorts. These test sets had already been used in earlier development, so
+they are not counted as fresh confirmatory evidence:
+
+| Cohort/model | Macro AUC | Balanced accuracy | Macro-F1 |
+| --- | ---: | ---: | ---: |
+| COAD original OT-MIL | **0.7777** | **0.5863** | **0.5958** |
+| COAD diagnostic-mass OT-MIL | 0.7634 +/- 0.0065 | 0.5757 | 0.5867 |
+| UCEC original OT-MIL | **0.7536** | **0.4685** | **0.4523** |
+| UCEC diagnostic-mass OT-MIL | 0.7427 +/- 0.0217 | 0.4466 | 0.4382 |
+
+No parameter was changed after these test results. The already frozen
+configuration was then evaluated on three-class TCGA-RCC UNI2-h. RCC training
+used a derived CSV with `561/185/0` train/validation/test entries; the original
+179-slide test column was opened only after three-seed validation.
+
+RCC validation improved for every seed and metric:
+
+| Variant | Macro AUC | Balanced accuracy | Macro-F1 |
+| --- | ---: | ---: | ---: |
+| v2 | 0.9854 +/- 0.0025 | 0.9295 | 0.9015 |
+| Diagnostic mass | **0.9887 +/- 0.0015** | **0.9419** | **0.9220** |
+
+RCC frozen test:
+
+| Model | Macro AUC | Accuracy | Balanced accuracy | Macro-F1 |
+| --- | ---: | ---: | ---: | ---: |
+| MO-MIL | 0.9904 +/- 0.0025 | 0.9441 | **0.9599** | 0.9378 |
+| Same-code v2 OT-MIL | 0.9882 +/- 0.0026 | 0.9497 | 0.9405 | 0.9367 |
+| Diagnostic-mass OT-MIL | **0.9937 +/- 0.0014** | **0.9646** | 0.9581 | **0.9565** |
+
+Against the same-code v2 baseline, paired stratified bootstrap gave:
+
+- macro-AUC `+0.00546`, 95% CI `[+0.00078, +0.01136]`;
+- macro-F1 `+0.01976`, 95% CI `[+0.00068, +0.04015]`.
+
+Against MO-MIL, diagnostic-mass OT-MIL improved mean macro-AUC by `+0.00331`
+and macro-F1 by `+0.01867`, but both confidence intervals narrowly crossed
+zero. The defensible conclusion is therefore dataset-dependent improvement:
+directly diagnostic class mass significantly improves the same-code OT-MIL
+baseline on morphologically separable RCC, but does not universally improve
+the more heterogeneous CMS and endometrial subtype tasks.
+
+## Same-Cohort Multiclass External Benchmarks
+
+Two additional same-cohort four-class tasks were prepared to test whether the
+RCC result generalized without constructing classes from unrelated TCGA
+projects:
+
+| Dataset | Classes | Patients | Slides | Source |
+| --- | --- | ---: | ---: | --- |
+| TCGA-STAD | CIN/MSI/GS/EBV | 322 | 345 | cBioPortal PanCancer Atlas `SUBTYPE` |
+| TCGA-BRCA | LumA/LumB/Basal/Her2 | 910 | 974 | cBioPortal PanCancer Atlas `SUBTYPE` |
+
+BRCA Normal-like samples were excluded a priori because this label can be
+sensitive to normal-tissue admixture. Both datasets used patient-stratified
+60/20/20 splits, deterministic UNI2-h caches capped at 4,096 patches, balanced
+training samplers, 25 epochs, macro-AUC early stopping with patience 6, and
+seeds 2024/2025/2026. Training CSVs had empty test columns. AB-MIL, MO-MIL,
+original OT-MIL, and diagnostic-mass OT-MIL used the same split and patch
+budget. The sealed test split was evaluated once after validation summaries
+were fixed.
+
+Patient-level test results, mean +/- sample standard deviation:
+
+| Dataset | Model | Macro AUC | Balanced accuracy | Macro-F1 |
+| --- | --- | ---: | ---: | ---: |
+| STAD | AB-MIL | **0.8943 +/- 0.0047** | **0.6334** | **0.6451** |
+| STAD | MO-MIL | 0.8640 +/- 0.0160 | 0.6114 | 0.6104 |
+| STAD | Original OT-MIL | 0.8298 +/- 0.0375 | 0.5789 | 0.5944 |
+| STAD | Diagnostic-mass OT-MIL | 0.8330 +/- 0.0174 | 0.5841 | 0.5931 |
+| BRCA PAM50 | AB-MIL | **0.8953 +/- 0.0022** | **0.6608** | **0.6544** |
+| BRCA PAM50 | MO-MIL | 0.8741 +/- 0.0126 | 0.6463 | 0.6412 |
+| BRCA PAM50 | Original OT-MIL | 0.8919 +/- 0.0204 | 0.6363 | 0.6264 |
+| BRCA PAM50 | Diagnostic-mass OT-MIL | 0.8924 +/- 0.0139 | 0.6428 | 0.6477 |
+
+STAD is a clear negative result: both OT variants trail AB-MIL and MO-MIL.
+On BRCA, diagnostic mass improves the original OT implementation's stability
+and threshold metrics, but does not exceed AB-MIL and gains only `0.0005`
+patient-level macro-AUC over original OT-MIL. Therefore class count alone
+does not explain the RCC result, and "OT-MIL prefers multiclass tasks" is not
+a supported general claim.
+
+The previously evaluated RCC+DLBC four-class construction is retained only as
+a cross-organ sanity check. DLBC versus renal carcinoma is confounded by
+organ/project identity and is too easy to count as primary subtype evidence.
+
+Preparation and benchmark commands:
+
+```bash
+python experiments/prepare_cbioportal_subtype.py \
+  --study-id stad_tcga_pan_can_atlas_2018 --attribute-id SUBTYPE \
+  --feature-dir /mnt/d/datasets/UNI2-h_features/TCGA-STAD \
+  --output-dir /home/sigirika/datasets/stad_subtype_uni2h \
+  --dataset-name STAD_SUBTYPE_UNI2H \
+  --label STAD_CIN=CIN --label STAD_MSI=MSI \
+  --label STAD_GS=GS --label STAD_EBV=EBV
+
+python experiments/prepare_cbioportal_subtype.py \
+  --study-id brca_tcga_pan_can_atlas_2018 --attribute-id SUBTYPE \
+  --feature-dir /mnt/d/datasets/UNI2-h_features/TCGA-BRCA \
+  --output-dir /home/sigirika/datasets/brca_pam50_uni2h \
+  --dataset-name BRCA_PAM50_UNI2H \
+  --label BRCA_LumA=LumA --label BRCA_LumB=LumB \
+  --label BRCA_Basal=Basal --label BRCA_Her2=Her2
+
+python experiments/run_benchmark.py \
+  --split DATASET_CACHE4096_train_val.csv \
+  --dataset-name DATASET --num-classes 4 --log-root LOG_ROOT \
+  --models AB_MIL MO_MIL OT_MIL_ORIGINAL OT_MIL_CLASS_MASS \
+  --seeds 2024 2025 2026 --epochs 25 --patience 6 \
+  --max-instances 4096 --in-dim 1536 --device 0 --num-workers 2
+```
+
+Representative multiclass command:
+
+```bash
+python train_mil.py --yaml_path configs/OT_MIL_MULTICLASS.yaml --options \
+  General.seed=2024 General.num_classes=3 General.num_epochs=25 \
+  Dataset.dataset_csv_path=/home/sigirika/experiment_splits/otmil_multiclass_v3/RCC_train_val.csv \
+  Dataset.DATASET_NAME=RCC_CLASS_MASS_0p1_S2024 \
+  Logs.log_root_dir=/home/sigirika/experiment_logs/otmil_multiclass_v3/rcc_external \
+  Model.in_dim=1536 Model.max_instances=4096
+```
+
 Representative validation command:
 
 ```bash
@@ -760,6 +927,23 @@ Research-stage commits:
   supervision
 - `d957a98`, `e1d3508` frozen dual-gate evaluation configuration and
   restoration of the validated v2 default
+- `1fda42c`, `21cd34a` class-specific prototype routing and initialization
+  fairness
+- `69de21f` reproducible low-rank multiclass configuration
+- `e237dd0`, `1449033` prototype-routing information objective and balanced
+  support initialization
+- `9aaeaca`, `7dc1177` frozen support evaluation and restoration after its
+  negative formal result
+- `2503542`, `2cc323b` soft multiclass evidence competition and continuous
+  competition strength
+- `159a1b9` direct supervision of class-conditional transported mass
+- `9d38f17`, `7a51f53`, `1c924d0` frozen diagnostic-mass evaluation,
+  protocol-preserving restoration, and retention of the validation-selected
+  configuration
+- `399cf51` reproducible cBioPortal subtype cohort preparation and resumable
+  Hugging Face downloads
+- `db557b4` standardized AB-MIL, MO-MIL, and OT-MIL benchmark variants
+- `f49a41b`, `bdbbf87` cached patient mapping and variant-safe evaluation
 
 ## Failures And Resolutions
 
@@ -796,6 +980,9 @@ Research-stage commits:
   truncation and fell below 0.2 MB/s. The authenticated curl downloader
   resumed the 41 GB archive across four interrupted transfers and completed
   without restarting from zero.
+- The 48.7 GB BRCA-IDC archive encountered repeated TLS EOF failures after
+  43.9 GB. The ranged downloader resumed the existing partial file and both
+  BRCA archives passed `gzip -t` before extraction.
 
 ## Research Assessment
 
@@ -807,19 +994,17 @@ The follow-up evidence supports improvement over MO-MIL on PANDA and
 TCGA-NSCLC. PANDA H512 is significant under paired bootstrap. TCGA-NSCLC has a
 higher three-seed mean, much lower variance, and better accuracy-based metrics,
 but its AUC confidence interval still crosses zero. On official TCGA-RCC
-UNI2-h features, AUC is statistically tied while OT-MIL improves accuracy,
-balanced accuracy, and macro-F1; macro-F1 improves in all three seeds, although
-its bootstrap confidence interval still crosses zero. Camelyon16 remains a
-clear negative result.
+UNI2-h features, direct class-mass supervision raises macro-AUC to `0.9937`
+and macro-F1 to `0.9565`. Its improvement over the same-code v2 baseline is
+significant for both metrics; its mean improvement over MO-MIL is positive but
+the confidence intervals narrowly cross zero. Camelyon16 remains a clear
+negative result.
 
-TCGA-COAD adds a useful controlled preference result: OT-MIL consistently
-improves the four-class CMS task but loses on the strongly correlated binary
-MSI and three-class genomic-instability tasks. This sharpens the method claim:
-the current implementation appears better suited to heterogeneous multiclass
-morphology than to near-binary molecular axes. Because all three tasks share
-one cohort and their labels are biologically correlated, COAD contributes one
-dataset-level validation plus a task-profile analysis, not three independent
-validations.
+TCGA-COAD adds a controlled task-profile result: OT-MIL improves the
+four-class CMS task but loses on the strongly correlated binary MSI and
+three-class genomic-instability tasks. Because these labels share one cohort
+and are biologically correlated, this is one dataset-level analysis, not
+three independent validations.
 
 The independent UCEC suite replicates the relative binary-versus-four-class
 macro-AUC interaction, although it does not replicate a clear absolute
@@ -830,10 +1015,18 @@ are available. The defensible conclusion is therefore a reproducible relative
 preference signal, not proof that class count or latent morphological
 heterogeneity is the causal mechanism.
 
-These results support continuing toward an AAAI submission, but not yet a
-broad superiority claim. The defensible claim is that OT-induced submeasure
-selection improves a large multiclass cohort and transfers positively to a
-patient-split TCGA subtype task, while rare-lesion sensitivity remains a known
-limitation. Submission readiness still requires official Mamba2 MO-MIL
-validation and preferably an external CPTAC evaluation. Camelyon16 can be
-retained as a limitation rather than a main benchmark.
+The new same-cohort STAD and BRCA-PAM50 benchmarks reject a broad
+"multiclass preference" claim. STAD favors AB-MIL by `0.0613` patient-level
+macro-AUC over diagnostic-mass OT-MIL. BRCA is closer, but AB-MIL remains
+best and diagnostic mass adds only `0.0005` macro-AUC over original OT-MIL.
+The strongest remaining result is the significant same-code improvement on
+morphologically separable RCC; it is a task-specific success, not evidence of
+general multiclass superiority.
+
+Continuing toward AAAI is reasonable only if the paper is reframed around
+diagnostic submeasure learning and its identifiable boundary conditions, or
+if a revised mechanism can recover STAD/BRCA performance without test-set
+tuning. Current evidence is not sufficient for a broad state-of-the-art
+claim. Submission readiness still requires stronger modern baselines,
+including official Mamba2 MO-MIL where feasible, and preferably an external
+CPTAC validation. Camelyon16 and STAD should remain explicit negative results.
