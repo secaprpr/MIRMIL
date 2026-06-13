@@ -117,3 +117,37 @@ def test_direct_slide_patient_assignments_need_no_manifest(tmp_path):
         str((tmp_path / "a.pt").resolve())
     ]
     assert mapping["case_id"].tolist() == ["patient_1"]
+
+
+def test_direct_slide_patient_assignments_use_cache_manifest(tmp_path):
+    source = tmp_path / "a.h5"
+    cached = tmp_path / "a.pt"
+    assignments = pd.DataFrame(
+        {
+            "slide_path": [source],
+            "patient_id": ["patient_1"],
+            "label": [2],
+            "split": ["test"],
+        }
+    )
+    assignments_path = tmp_path / "assignments.csv"
+    assignments.to_csv(assignments_path, index=False)
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "records": [
+                    {
+                        "source_path": str(source),
+                        "cached_path": str(cached),
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    mapping = build_group_mapping(assignments_path, manifest_path)
+
+    assert mapping["slide_path"].tolist() == [str(cached.resolve())]
+    assert mapping["case_id"].tolist() == ["patient_1"]

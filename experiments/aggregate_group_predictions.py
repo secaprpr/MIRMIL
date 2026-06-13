@@ -37,9 +37,17 @@ def build_group_mapping(assignments_path, cache_manifest=None, split="test"):
     direct_columns = {"slide_path", "patient_id", "label", "split"}
     cached_columns = {"feature_path", "case_id", "label", "split"}
     if direct_columns.issubset(assignments.columns):
-        assignments["slide_path"] = assignments["slide_path"].map(
-            os.path.abspath
-        )
+        assignments["slide_path"] = assignments["slide_path"].map(os.path.abspath)
+        if cache_manifest is not None:
+            source_to_cache = load_cache_mapping(cache_manifest)
+            assignments["slide_path"] = assignments["slide_path"].map(
+                source_to_cache.get
+            )
+            if assignments["slide_path"].isna().any():
+                raise ValueError(
+                    "At least one direct slide path is absent from the "
+                    "cache manifest"
+                )
         assignments["case_id"] = assignments["patient_id"].astype(str)
     elif cached_columns.issubset(assignments.columns):
         if cache_manifest is None:
@@ -122,7 +130,10 @@ def main():
     parser.add_argument("--assignments", required=True)
     parser.add_argument(
         "--cache-manifest",
-        help="Required only for feature_path/case_id assignments",
+        help=(
+            "Map source feature paths to cached prediction paths; required "
+            "for feature_path/case_id assignments"
+        ),
     )
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--split", default="test")
