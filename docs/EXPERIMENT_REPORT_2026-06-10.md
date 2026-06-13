@@ -2,11 +2,17 @@
 
 Date: 2026-06-10
 
+> Archive status: final research log, closed on 2026-06-13. For the concise
+> project conclusion and current status, read `../PROJECT_CLOSEOUT.md` first.
+> This file intentionally preserves the full experiment sequence, including
+> rejected variants and negative results.
+
 ## Scope
 
-This report records the transition from the OT-MIL prototype to a tested,
-reproducible implementation and its comparison with the repository's MO-MIL
-baseline on PANDA, Camelyon16, and TCGA-NSCLC.
+This report records the full transition from the OT-MIL prototype to a tested,
+reproducible implementation. It includes PANDA, Camelyon16, TCGA-NSCLC,
+TCGA-COAD, TCGA-UCEC, TCGA-RCC, TCGA-STAD, and TCGA-BRCA experiments,
+including rejected variants and negative results.
 
 The shared protocol uses:
 
