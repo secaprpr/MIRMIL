@@ -134,10 +134,26 @@ class WSI_Coord_Dataset(WSI_Dataset):
 
         if slide_path.endswith('.h5'):
             with h5py.File(slide_path, 'r') as h5_file:
-                feat = h5_file['features'][:]
+                feature_dataset = h5_file['features']
+                if feature_dataset.ndim == 3:
+                    feature_dataset = feature_dataset[0]
+                num_instances = feature_dataset.shape[0]
+                indices = self._sample_indices(num_instances)
+                feat = (
+                    feature_dataset[:]
+                    if indices is None
+                    else feature_dataset[indices]
+                )
                 feat = torch.from_numpy(feat)
                 if 'coords' in h5_file:
-                    coords = torch.from_numpy(np.array(h5_file['coords']))
+                    coord_dataset = h5_file['coords']
+                    if coord_dataset.ndim == 3:
+                        coord_dataset = coord_dataset[0]
+                    coords = torch.from_numpy(
+                        coord_dataset[:]
+                        if indices is None
+                        else coord_dataset[indices]
+                    )
         else:
             loaded = torch.load(slide_path)
             if isinstance(loaded, dict):
@@ -154,12 +170,30 @@ class WSI_Coord_Dataset(WSI_Dataset):
 
         if len(feat.shape) == 3:
             feat = feat.squeeze(0)
+        if not slide_path.endswith('.h5'):
+            indices = self._sample_indices(feat.shape[0])
+            if indices is not None:
+                index_tensor = torch.from_numpy(indices)
+                feat = feat[index_tensor]
+                if coords is not None:
+                    coords = coords[index_tensor]
         if coords is not None:
             if len(coords.shape) == 3:
                 coords = coords.squeeze(0)
             coords = coords.to(feat.device).float()
             if coords.shape[0] == feat.shape[0] and coords.shape[-1] >= 2:
-                feat = torch.cat([feat, coords[:, :2]], dim=-1)
+                coords = coords[:, :2]
+                scale = coords.abs().amax(dim=0).clamp_min(1.0)
+                coords = coords / scale
+                feat = torch.cat([feat, coords], dim=-1)
+            else:
+                raise ValueError(
+                    f"Coordinates do not match features in {slide_path}"
+                )
+        else:
+            raise ValueError(
+                f"coordinate_dim=2 requires coordinates in {slide_path}"
+            )
         return feat, label
 
     

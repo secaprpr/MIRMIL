@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-from utils.wsi_utils import WSI_Dataset
+from utils.wsi_utils import WSI_Coord_Dataset, WSI_Dataset
 
 
 class WSIDatasetSamplingTest(unittest.TestCase):
@@ -17,6 +17,10 @@ class WSIDatasetSamplingTest(unittest.TestCase):
         self.h5_path = os.path.join(self.temp_dir.name, "slide.h5")
         with h5py.File(self.h5_path, "w") as file:
             file.create_dataset("features", data=self.features)
+            file.create_dataset(
+                "coords",
+                data=np.arange(200, dtype=np.float32).reshape(100, 2),
+            )
         self.uni_h5_path = os.path.join(self.temp_dir.name, "uni_slide.h5")
         with h5py.File(self.uni_h5_path, "w") as file:
             file.create_dataset("features", data=self.features[None, ...])
@@ -72,6 +76,19 @@ class WSIDatasetSamplingTest(unittest.TestCase):
 
         self.assertEqual(features.shape, (10, 2))
         self.assertTrue(torch.equal(features, expected))
+
+    def test_coordinate_dataset_samples_and_normalizes_coordinates(self):
+        dataset = WSI_Coord_Dataset(
+            self._csv(self.h5_path),
+            "val",
+            max_instances=10,
+            sampling="uniform",
+        )
+
+        values, _ = dataset[0]
+
+        self.assertEqual(values.shape, (10, 4))
+        self.assertLessEqual(values[:, -2:].abs().max().item(), 1.0)
 
 
 if __name__ == "__main__":

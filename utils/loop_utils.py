@@ -107,6 +107,52 @@ def val_loop(device,num_classes,model,loader,criterion,retrun_WSI_feature = Fals
     return val_loss_log,val_metrics
 
 
+def mir_train_loop(device, model, loader, criterion, optimizer, scheduler):
+    start = time.time()
+    model.train()
+    totals = {
+        "loss": 0.0,
+        "classification_loss": 0.0,
+        "stability_loss": 0.0,
+        "lipschitz_loss": 0.0,
+    }
+    for bag, label in loader:
+        optimizer.zero_grad()
+        bag = bag.float().to(device)
+        label = label.long().to(device)
+        _, losses = model.compute_loss(bag, label, criterion)
+        losses["loss"].backward()
+        optimizer.step()
+        for key in totals:
+            totals[key] += float(losses[key].detach().item())
+    if scheduler is not None:
+        scheduler.step()
+    count = max(len(loader), 1)
+    components = {
+        key: value / count for key, value in totals.items() if key != "loss"
+    }
+    return totals["loss"] / count, time.time() - start, components
+
+
+def mir_val_loop(device, num_classes, model, loader, criterion):
+    model.eval()
+    losses = 0.0
+    labels = []
+    probabilities = []
+    with torch.no_grad():
+        for bag, label in loader:
+            bag = bag.float().to(device)
+            label = label.long().to(device)
+            logits = model(bag)["logits"]
+            losses += float(criterion(logits, label).item())
+            labels.append(label.cpu().numpy())
+            probabilities.append(
+                torch.softmax(logits.squeeze(0), dim=0).cpu().numpy()
+            )
+    metrics = cal_scores(probabilities, labels, num_classes)
+    return losses / max(len(loader), 1), metrics
+
+
 def ot_train_loop(device, model, loader, criterion, optimizer, scheduler):
     start = time.time()
     model.train()

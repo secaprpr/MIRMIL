@@ -1,0 +1,444 @@
+import math
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+def _activation(name):
+    if name == "relu":
+        return nn.ReLU()
+    if name == "gelu":
+        return nn.GELU()
+    if name == "silu":
+        return nn.SiLU()
+    raise ValueError(f"Unsupported activation: {name}")
+
+
+class MIR_MIL(nn.Module):
+    """Neural measure potential with closed-form measure influence response."""
+
+    def __init__(
+        self,
+        in_dim,
+        num_classes,
+        hidden_dim=256,
+        sketch_dim=128,
+        num_tail_scores=8,
+        tail_temperature=0.25,
+        potential_hidden_dim=128,
+        dropout=0.1,
+        act="gelu",
+        coordinate_dim=0,
+        stability_weight=0.0,
+        patch_dropout=0.0,
+        feature_noise_std=0.0,
+        coordinate_jitter_std=0.0,
+        lipschitz_weight=0.0,
+        lipschitz_target=1.0,
+        lipschitz_samples=64,
+    ):
+        super().__init__()
+        if in_dim <= 0 or num_classes < 2:
+            raise ValueError("in_dim must be positive and num_classes >= 2")
+        if coordinate_dim not in {0, 2}:
+            raise ValueError("coordinate_dim must be 0 or 2")
+        if num_tail_scores <= 0 or tail_temperature <= 0:
+            raise ValueError(
+                "num_tail_scores and tail_temperature must be positive"
+            )
+        self.in_dim = int(in_dim)
+        self.coordinate_dim = int(coordinate_dim)
+        self.input_dim = self.in_dim + self.coordinate_dim
+        self.num_classes = int(num_classes)
+        self.sketch_dim = int(sketch_dim)
+        self.num_tail_scores = int(num_tail_scores)
+        self.tail_temperature = float(tail_temperature)
+        self.stability_weight = float(stability_weight)
+        self.patch_dropout = float(patch_dropout)
+        self.feature_noise_std = float(feature_noise_std)
+        self.coordinate_jitter_std = float(coordinate_jitter_std)
+        self.lipschitz_weight = float(lipschitz_weight)
+        self.lipschitz_target = float(lipschitz_target)
+        self.lipschitz_samples = int(lipschitz_samples)
+
+        self.encoder = nn.Sequential(
+            nn.Linear(self.input_dim, hidden_dim),
+            _activation(act),
+            nn.Dropout(dropout),
+        )
+        self.response_basis = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            _activation(act),
+            nn.Linear(hidden_dim, self.sketch_dim),
+        )
+        self.tail_scorer = nn.Linear(hidden_dim, self.num_tail_scores)
+        state_dim = self.sketch_dim + self.num_tail_scores
+        self.potential = nn.Sequential(
+            nn.Linear(state_dim, potential_hidden_dim),
+            _activation(act),
+            nn.Dropout(dropout),
+            nn.Linear(potential_hidden_dim, self.num_classes),
+        )
+        self.apply(self._initialize)
+
+    @staticmethod
+    def _initialize(module):
+        if isinstance(module, nn.Linear):
+            nn.init.xavier_normal_(module.weight)
+            if module.bias is not None:
+                nn.init.zeros_(module.bias)
+
+    def _normalize_bag(self, bag):
+        if bag.ndim == 3:
+            if bag.shape[0] != 1:
+                raise ValueError("MIR_MIL expects batch size one")
+            bag = bag.squeeze(0)
+        if bag.ndim != 2 or bag.shape[0] == 0:
+            raise ValueError("bag must have shape [N, D] with N > 0")
+        if bag.shape[1] != self.input_dim:
+            raise ValueError(
+                f"Expected input dimension {self.input_dim}, got "
+                f"{bag.shape[1]}"
+            )
+        return bag
+
+    def _point_statistics(self, points):
+        encoded = self.encoder(points)
+        return self.response_basis(encoded), self.tail_scorer(encoded)
+
+    def state_from_weighted_points(self, points, weights=None):
+        points = self._normalize_bag(points)
+        basis, tail_scores = self._point_statistics(points)
+        if weights is None:
+            weights = torch.full(
+                (points.shape[0],),
+                1.0 / points.shape[0],
+                dtype=points.dtype,
+                device=points.device,
+            )
+        else:
+            weights = weights.to(device=points.device, dtype=points.dtype)
+            if weights.ndim != 1 or weights.shape[0] != points.shape[0]:
+                raise ValueError("weights must have shape [N]")
+            if torch.any(weights < 0):
+                raise ValueError("weights must be non-negative")
+            weights = weights / weights.sum().clamp_min(
+                torch.finfo(points.dtype).eps
+            )
+
+        composition = torch.sum(weights[:, None] * basis, dim=0)
+        log_weights = torch.log(
+            weights.clamp_min(torch.finfo(points.dtype).tiny)
+        )
+        tail_state = self.tail_temperature * torch.logsumexp(
+            tail_scores / self.tail_temperature + log_weights[:, None],
+            dim=0,
+        )
+        state = torch.cat([composition, tail_state], dim=0)
+        return state, basis, tail_scores, weights
+
+    def forward(self, bag, return_state=False):
+        state, basis, tail_scores, weights = self.state_from_weighted_points(
+            bag
+        )
+        logits = self.potential(state.unsqueeze(0))
+        output = {"logits": logits}
+        if return_state:
+            output.update(
+                {
+                    "state": state,
+                    "basis": basis,
+                    "tail_scores": tail_scores,
+                    "weights": weights,
+                }
+            )
+        return output
+
+    def explained_score(self, logits, target_class):
+        logits = logits.squeeze(0)
+        target_class = int(target_class)
+        if not 0 <= target_class < self.num_classes:
+            raise ValueError("target_class is out of range")
+        other = torch.cat(
+            [logits[:target_class], logits[target_class + 1 :]], dim=0
+        )
+        return logits[target_class] - torch.logsumexp(other, dim=0)
+
+    def _state_gradient(self, state, target_class, create_graph=False):
+        logits = self.potential(state.unsqueeze(0))
+        score = self.explained_score(logits, target_class)
+        gradient = torch.autograd.grad(
+            score,
+            state,
+            create_graph=create_graph,
+            retain_graph=True,
+        )[0]
+        return score, gradient
+
+    def measure_influence_response(
+        self,
+        bag,
+        target_class=None,
+        create_graph=False,
+    ):
+        state, basis, tail_scores, weights = self.state_from_weighted_points(
+            bag
+        )
+        logits = self.potential(state.unsqueeze(0))
+        if target_class is None:
+            target_class = int(logits.argmax(dim=1).item())
+        score = self.explained_score(logits, target_class)
+        gradient = torch.autograd.grad(
+            score,
+            state,
+            create_graph=create_graph,
+            retain_graph=True,
+        )[0]
+        composition = state[: self.sketch_dim]
+        composition_gradient = gradient[: self.sketch_dim]
+        tail_gradient = gradient[self.sketch_dim :]
+
+        log_normalizers = torch.logsumexp(
+            tail_scores / self.tail_temperature
+            + torch.log(
+                weights.clamp_min(torch.finfo(weights.dtype).tiny)
+            )[:, None],
+            dim=0,
+        )
+        density_ratio = torch.exp(
+            tail_scores / self.tail_temperature - log_normalizers[None, :]
+        )
+        composition_response = (
+            (basis - composition[None, :]) * composition_gradient[None, :]
+        ).sum(dim=1)
+        tail_response = (
+            self.tail_temperature
+            * (density_ratio - 1.0)
+            * tail_gradient[None, :]
+        ).sum(dim=1)
+        return {
+            "logits": logits,
+            "score": score,
+            "target_class": target_class,
+            "response": composition_response + tail_response,
+            "composition_response": composition_response,
+            "tail_response": tail_response,
+        }
+
+    def functional_derivative(
+        self,
+        evaluation_points,
+        reference_points,
+        reference_weights=None,
+        target_class=None,
+    ):
+        reference_state, _, reference_tail, reference_weights = (
+            self.state_from_weighted_points(
+                reference_points, reference_weights
+            )
+        )
+        logits = self.potential(reference_state.unsqueeze(0))
+        if target_class is None:
+            target_class = int(logits.argmax(dim=1).item())
+        score = self.explained_score(logits, target_class)
+        gradient = torch.autograd.grad(
+            score, reference_state, retain_graph=True
+        )[0]
+        evaluation_points = self._normalize_bag(evaluation_points)
+        basis, tail_scores = self._point_statistics(evaluation_points)
+        composition_gradient = gradient[: self.sketch_dim]
+        tail_gradient = gradient[self.sketch_dim :]
+        log_normalizers = torch.logsumexp(
+            reference_tail / self.tail_temperature
+            + torch.log(
+                reference_weights.clamp_min(
+                    torch.finfo(reference_weights.dtype).tiny
+                )
+            )[:, None],
+            dim=0,
+        )
+        density_ratio = torch.exp(
+            tail_scores / self.tail_temperature - log_normalizers[None, :]
+        )
+        return (
+            basis * composition_gradient[None, :]
+        ).sum(dim=1) + (
+            self.tail_temperature
+            * density_ratio
+            * tail_gradient[None, :]
+        ).sum(
+            dim=1
+        )
+
+    def integrated_functional_attribution(
+        self,
+        bag,
+        baseline_bag,
+        target_class=None,
+        steps=32,
+    ):
+        bag = self._normalize_bag(bag)
+        baseline_bag = self._normalize_bag(baseline_bag)
+        if steps < 2:
+            raise ValueError("steps must be at least 2")
+
+        with torch.enable_grad():
+            if target_class is None:
+                target_class = int(
+                    self.forward(bag)["logits"].argmax(dim=1).item()
+                )
+            support = torch.cat([bag, baseline_bag], dim=0)
+            target_values = []
+            baseline_values = []
+            grid = torch.linspace(
+                0.0,
+                1.0,
+                steps,
+                device=bag.device,
+                dtype=bag.dtype,
+            )
+            for t in grid:
+                weights = torch.cat(
+                    [
+                        torch.full(
+                            (bag.shape[0],),
+                            t / bag.shape[0],
+                            device=bag.device,
+                            dtype=bag.dtype,
+                        ),
+                        torch.full(
+                            (baseline_bag.shape[0],),
+                            (1.0 - t) / baseline_bag.shape[0],
+                            device=bag.device,
+                            dtype=bag.dtype,
+                        ),
+                    ]
+                )
+                values = self.functional_derivative(
+                    support,
+                    support,
+                    weights,
+                    target_class,
+                )
+                target_values.append(values[: bag.shape[0]])
+                baseline_values.append(values[bag.shape[0] :])
+            target_values = torch.stack(target_values)
+            baseline_values = torch.stack(baseline_values)
+            target_integrated = torch.trapezoid(
+                target_values, grid, dim=0
+            )
+            baseline_integrated = torch.trapezoid(
+                baseline_values, grid, dim=0
+            )
+            decomposition = (
+                target_integrated.mean() - baseline_integrated.mean()
+            )
+            bag_score = self.explained_score(
+                self.forward(bag)["logits"], target_class
+            )
+            baseline_score = self.explained_score(
+                self.forward(baseline_bag)["logits"], target_class
+            )
+        return {
+            "target_class": target_class,
+            "bag_attribution": target_integrated,
+            "baseline_attribution": baseline_integrated,
+            "decomposition": decomposition,
+            "score_difference": bag_score - baseline_score,
+        }
+
+    def finite_difference_response(
+        self,
+        bag,
+        point,
+        target_class,
+        epsilon=1e-3,
+    ):
+        bag = self._normalize_bag(bag)
+        point = point.reshape(1, -1)
+        support = torch.cat([bag, point], dim=0)
+        weights = torch.cat(
+            [
+                torch.full(
+                    (bag.shape[0],),
+                    (1.0 - epsilon) / bag.shape[0],
+                    device=bag.device,
+                    dtype=bag.dtype,
+                ),
+                torch.tensor(
+                    [epsilon], device=bag.device, dtype=bag.dtype
+                ),
+            ]
+        )
+        perturbed_state, _, _, _ = self.state_from_weighted_points(
+            support, weights
+        )
+        perturbed_score = self.explained_score(
+            self.potential(perturbed_state.unsqueeze(0)), target_class
+        )
+        base_score = self.explained_score(
+            self.forward(bag)["logits"], target_class
+        )
+        return (perturbed_score - base_score) / epsilon
+
+    def augment_bag(self, bag):
+        bag = self._normalize_bag(bag)
+        augmented = bag
+        if self.patch_dropout > 0 and bag.shape[0] > 1:
+            keep = torch.rand(bag.shape[0], device=bag.device)
+            keep = keep >= self.patch_dropout
+            if not keep.any():
+                keep[torch.randint(bag.shape[0], (1,), device=bag.device)] = True
+            augmented = augmented[keep]
+        augmented = augmented.clone()
+        if self.feature_noise_std > 0:
+            augmented[:, : self.in_dim] += (
+                torch.randn_like(augmented[:, : self.in_dim])
+                * self.feature_noise_std
+            )
+        if self.coordinate_dim and self.coordinate_jitter_std > 0:
+            augmented[:, -self.coordinate_dim :] += (
+                torch.randn_like(augmented[:, -self.coordinate_dim :])
+                * self.coordinate_jitter_std
+            )
+        return augmented
+
+    def lipschitz_penalty(self, bag):
+        if self.lipschitz_weight <= 0:
+            return bag.new_zeros(())
+        bag = self._normalize_bag(bag)
+        count = min(self.lipschitz_samples, bag.shape[0])
+        indices = torch.randperm(bag.shape[0], device=bag.device)[:count]
+        points = bag[indices].detach().requires_grad_(True)
+        basis, _ = self._point_statistics(points)
+        probe = torch.randn_like(basis)
+        probe = probe / probe.norm(dim=1, keepdim=True).clamp_min(1e-8)
+        scalar = (basis * probe).sum()
+        gradients = torch.autograd.grad(
+            scalar, points, create_graph=True
+        )[0]
+        norms = gradients.norm(dim=1)
+        return F.relu(norms - self.lipschitz_target).square().mean()
+
+    def compute_loss(self, bag, label, criterion):
+        output = self.forward(bag)
+        classification_loss = criterion(output["logits"], label)
+        stability_loss = bag.new_zeros(())
+        if self.stability_weight > 0:
+            augmented_logits = self.forward(self.augment_bag(bag))["logits"]
+            stability_loss = F.mse_loss(
+                output["logits"], augmented_logits
+            )
+        lipschitz_loss = self.lipschitz_penalty(bag)
+        loss = (
+            classification_loss
+            + self.stability_weight * stability_loss
+            + self.lipschitz_weight * lipschitz_loss
+        )
+        return output, {
+            "loss": loss,
+            "classification_loss": classification_loss,
+            "stability_loss": stability_loss,
+            "lipschitz_loss": lipschitz_loss,
+        }

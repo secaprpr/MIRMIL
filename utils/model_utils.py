@@ -144,6 +144,43 @@ def save_log(args,epoch_info_log,best_epoch,process_pipeline):
     
 def get_model_from_yaml(yaml_args):
     model_name = yaml_args.General.MODEL_NAME
+    if model_name == 'MIR_MIL':
+        from modules.MIR_MIL.mir_mil import MIR_MIL
+        return MIR_MIL(
+            in_dim=yaml_args.Model.in_dim,
+            num_classes=yaml_args.General.num_classes,
+            hidden_dim=yaml_args.Model.hidden_dim,
+            sketch_dim=yaml_args.Model.sketch_dim,
+            num_tail_scores=yaml_args.Model.num_tail_scores,
+            tail_temperature=yaml_args.Model.tail_temperature,
+            potential_hidden_dim=yaml_args.Model.potential_hidden_dim,
+            dropout=yaml_args.Model.dropout,
+            act=yaml_args.Model.act,
+            coordinate_dim=_model_option(
+                yaml_args, "coordinate_dim", 0
+            ),
+            stability_weight=_model_option(
+                yaml_args, "stability_weight", 0.0
+            ),
+            patch_dropout=_model_option(
+                yaml_args, "patch_dropout", 0.0
+            ),
+            feature_noise_std=_model_option(
+                yaml_args, "feature_noise_std", 0.0
+            ),
+            coordinate_jitter_std=_model_option(
+                yaml_args, "coordinate_jitter_std", 0.0
+            ),
+            lipschitz_weight=_model_option(
+                yaml_args, "lipschitz_weight", 0.0
+            ),
+            lipschitz_target=_model_option(
+                yaml_args, "lipschitz_target", 1.0
+            ),
+            lipschitz_samples=_model_option(
+                yaml_args, "lipschitz_samples", 64
+            ),
+        )
     if model_name == 'OT_MIL':
         from modules.OT_MIL.ot_mil import OT_MIL
         mil_model = OT_MIL(

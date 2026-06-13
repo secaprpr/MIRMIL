@@ -7,6 +7,9 @@ def process(args,yaml_path,options):
     if args.General.MODEL_NAME == 'OT_MIL':
         from .OT_MIL.process_ot_mil import process_OT_MIL
         process_OT_MIL(args)
+    elif args.General.MODEL_NAME == 'MIR_MIL':
+        from .MIR_MIL.process_mir_mil import process_MIR_MIL
+        process_MIR_MIL(args)
     elif args.General.MODEL_NAME == 'MEAN_MIL':
         from .MEAN_MIL.process_mean_mil import process_MEAN_MIL
         process_MEAN_MIL(args)

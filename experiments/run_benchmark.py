@@ -8,6 +8,11 @@ from datetime import datetime, timezone
 
 
 MODEL_SPECS = {
+    "MIR_MIL": {
+        "config": "configs/MIR_MIL.yaml",
+        "model": "MIR_MIL",
+        "options": [],
+    },
     "AB_MIL": {
         "config": "configs/AB_MIL.yaml",
         "model": "AB_MIL",

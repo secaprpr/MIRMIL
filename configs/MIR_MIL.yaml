@@ -1,0 +1,67 @@
+General:
+    MODEL_NAME: MIR_MIL
+    seed: 2024
+    num_classes: 2
+    num_epochs: 30
+    device: 0
+    num_workers: 4
+    best_model_metric: macro_auc
+    earlystop:
+        use: True
+        patience: 8
+        metric: macro_auc
+
+Dataset:
+    DATASET_NAME: your_dataset_name
+    dataset_csv_path: /path/to/your/dataset.csv
+    balanced_sampler:
+        use: True
+        replacement: True
+
+Logs:
+    log_root_dir: /path/to/your/log_dir
+
+Model:
+    in_dim: 1024
+    coordinate_dim: 0
+    hidden_dim: 256
+    sketch_dim: 128
+    num_tail_scores: 8
+    tail_temperature: 0.25
+    potential_hidden_dim: 128
+    dropout: 0.1
+    act: gelu
+    max_instances: 4096
+    sampling: random
+
+    stability_weight: 0.1
+    patch_dropout: 0.1
+    feature_noise_std: 0.01
+    coordinate_jitter_std: 0.01
+    lipschitz_weight: 0.0
+    lipschitz_target: 1.0
+    lipschitz_samples: 64
+
+    criterion: ce
+    optimizer:
+        which: adamw
+        adam_config:
+            lr: 0.0002
+            weight_decay: 0.00001
+        adamw_config:
+            lr: 0.0002
+            weight_decay: 0.00001
+    scheduler:
+        warmup: 2
+        which: cosine
+        step_config:
+            step_size: 10
+            gamma: 0.5
+        multi_step_config:
+            milestones: [20, 35]
+            gamma: 0.5
+        exponential_config:
+            gamma: 0.95
+        cosine_config:
+            T_max: 28
+            eta_min: 0.000001

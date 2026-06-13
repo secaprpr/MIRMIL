@@ -50,15 +50,17 @@ class ExperimentUtilsTest(unittest.TestCase):
             max_instances=4096,
         )
         ab_command = build_command(args, "AB_MIL", 2024)
+        mir_command = build_command(args, "MIR_MIL", 2024)
         ot_command = build_command(args, "OT_MIL_CLASS_MASS", 2024)
         mo_command = build_command(args, "MO_MIL", 2024)
 
-        for command in (ab_command, ot_command, mo_command):
+        for command in (ab_command, mir_command, ot_command, mo_command):
             self.assertIn("Model.max_instances=4096", command)
             self.assertIn("Model.sampling=random", command)
             self.assertIn("General.num_epochs=30", command)
             self.assertIn("Dataset.balanced_sampler.use=true", command)
         self.assertIn("General.experiment_variant=AB_MIL", ab_command)
+        self.assertIn("General.experiment_variant=MIR_MIL", mir_command)
         self.assertIn(
             "General.experiment_variant=OT_MIL_CLASS_MASS", ot_command
         )
