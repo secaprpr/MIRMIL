@@ -67,3 +67,12 @@ Treat this repository as a completed research artifact and a source of reusable
 OT-MIL components, not as a finished state-of-the-art method. Any future paper
 should begin with a new hypothesis and fresh external test sets rather than
 continuing to tune the current benchmark suite.
+
+## MIR-MIL Successor Prototype
+
+A separate successor prototype based on Measure Influence Response is
+implemented in `modules/MIR_MIL/`. Unlike OT-MIL, it models a neural functional
+of the empirical tissue measure and derives patch attribution from its
+functional derivative. See
+`docs/MIR-MIL_IMPLEMENTATION.md` for the method mapping, mathematical tests,
+smoke-run evidence, and faithfulness evaluation command.
