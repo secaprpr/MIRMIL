@@ -110,6 +110,29 @@ These results support the local contamination-response formula and numerical
 centering. They do not show that high-response patches are clinically correct
 or that MIR-MIL improves classification.
 
+### Convergence Follow-up
+
+The initial 30-epoch runs reached their best validation macro-AUC at epochs
+26, 28, and 26. Because these optima were close to the training cap, a
+validation-only convergence follow-up used a 60-epoch cap, patience 10, and a
+cosine schedule with `T_max=58`. The sealed test split remained hidden.
+
+| Seed | Best epoch | Stop epoch | Best validation AUC | BAcc | Macro-F1 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 2024 | 35 | 45 | 0.90124 | 0.59310 | 0.59803 |
+| 2025 | 32 | 42 | 0.90075 | 0.61004 | 0.61321 |
+| 2026 | 43 | 53 | 0.90412 | 0.61166 | 0.61141 |
+
+The mean best epoch moved from 26.7 to 36.7, and mean validation macro-AUC
+increased from `0.89862` to `0.90204`. Therefore the original 30-epoch budget
+was too short for MIR-MIL. A 60-epoch cap with patience 10 is sufficient to
+observe natural stopping in the current setup; all seeds stopped between
+epochs 42 and 53.
+
+These longer-run checkpoints have not been evaluated on the sealed test set.
+The convergence result should be treated as validation evidence for selecting
+the future training budget, not as a revised test benchmark.
+
 ## Training
 
 ```bash
