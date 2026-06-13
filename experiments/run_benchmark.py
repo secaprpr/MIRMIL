@@ -7,9 +7,27 @@ import sys
 from datetime import datetime, timezone
 
 
-MODEL_CONFIGS = {
-    "OT_MIL": "configs/OT_MIL.yaml",
-    "MO_MIL": "configs/MO_MIL.yaml",
+MODEL_SPECS = {
+    "AB_MIL": {
+        "config": "configs/AB_MIL.yaml",
+        "model": "AB_MIL",
+        "options": [],
+    },
+    "MO_MIL": {
+        "config": "configs/MO_MIL.yaml",
+        "model": "MO_MIL",
+        "options": [],
+    },
+    "OT_MIL_ORIGINAL": {
+        "config": "configs/OT_MIL_MULTICLASS.yaml",
+        "model": "OT_MIL",
+        "options": ["Model.class_mass_classification_weight=0.0"],
+    },
+    "OT_MIL_CLASS_MASS": {
+        "config": "configs/OT_MIL_MULTICLASS.yaml",
+        "model": "OT_MIL",
+        "options": ["Model.class_mass_classification_weight=0.1"],
+    },
 }
 
 
@@ -30,7 +48,8 @@ def git_commit():
         return None
 
 
-def build_command(args, model, seed):
+def build_command(args, variant, seed):
+    spec = MODEL_SPECS[variant]
     options = [
         f"General.seed={seed}",
         f"General.num_classes={args.num_classes}",
@@ -46,14 +65,16 @@ def build_command(args, model, seed):
         f"Model.in_dim={args.in_dim}",
         f"Model.max_instances={args.max_instances}",
         "Model.sampling=random",
+        f"General.experiment_variant={variant}",
     ]
-    if model == "OT_MIL":
+    options.extend(spec["options"])
+    if spec["model"] == "OT_MIL":
         options.append(f"Model.scheduler.cosine_config.T_max={max(args.epochs - 2, 1)}")
     return [
         args.python,
         "train_mil.py",
         "--yaml_path",
-        MODEL_CONFIGS[model],
+        spec["config"],
         "--options",
         *options,
     ]
@@ -65,7 +86,12 @@ def main():
     parser.add_argument("--dataset-name", required=True)
     parser.add_argument("--num-classes", type=int, required=True)
     parser.add_argument("--log-root", required=True)
-    parser.add_argument("--models", nargs="+", choices=MODEL_CONFIGS, default=list(MODEL_CONFIGS))
+    parser.add_argument(
+        "--models",
+        nargs="+",
+        choices=MODEL_SPECS,
+        default=list(MODEL_SPECS),
+    )
     parser.add_argument("--seeds", nargs="+", type=int, default=[2024, 2025, 2026])
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--patience", type=int, default=8)

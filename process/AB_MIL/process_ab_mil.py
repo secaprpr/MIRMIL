@@ -10,9 +10,26 @@ from tqdm import tqdm
     
 def process_AB_MIL(args):
 
-    train_dataset = WSI_Dataset(args.Dataset.dataset_csv_path,'train')
-    val_dataset = WSI_Dataset(args.Dataset.dataset_csv_path,'val')
-    test_dataset = WSI_Dataset(args.Dataset.dataset_csv_path,'test')
+    max_instances = getattr(args.Model, "max_instances", 0)
+    sampling = getattr(args.Model, "sampling", "random")
+    train_dataset = WSI_Dataset(
+        args.Dataset.dataset_csv_path,
+        'train',
+        max_instances=max_instances,
+        sampling=sampling,
+    )
+    val_dataset = WSI_Dataset(
+        args.Dataset.dataset_csv_path,
+        'val',
+        max_instances=max_instances,
+        sampling='uniform',
+    )
+    test_dataset = WSI_Dataset(
+        args.Dataset.dataset_csv_path,
+        'test',
+        max_instances=max_instances,
+        sampling='uniform',
+    )
     process_pipeline = get_process_pipeline(val_dataset,test_dataset) 
     args.General.process_pipeline = process_pipeline
     
@@ -105,7 +122,6 @@ def process_AB_MIL(args):
             
         
         
-
 
 
 

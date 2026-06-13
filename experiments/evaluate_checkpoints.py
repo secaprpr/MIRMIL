@@ -73,6 +73,12 @@ def json_safe(value):
     return value
 
 
+def experiment_variant(args):
+    if "experiment_variant" in args.General:
+        return str(args.General.experiment_variant)
+    return str(args.General.MODEL_NAME)
+
+
 def evaluate_run(run_dir, budget, device, num_workers, split_override=None):
     config_path, checkpoint_path = find_run_files(run_dir)
     args = read_yaml(config_path)
@@ -142,6 +148,7 @@ def evaluate_run(run_dir, budget, device, num_workers, split_override=None):
     result = {
         "run_dir": os.path.abspath(run_dir),
         "model": args.General.MODEL_NAME,
+        "variant": experiment_variant(args),
         "seed": int(args.General.seed),
         "budget": int(budget),
         "num_slides": len(dataset),
@@ -179,6 +186,7 @@ def evaluate_run(run_dir, budget, device, num_workers, split_override=None):
             "slide_path": slide_path,
             "label": label,
             "model": args.General.MODEL_NAME,
+            "variant": experiment_variant(args),
             "seed": int(args.General.seed),
             "budget": int(budget),
         }
