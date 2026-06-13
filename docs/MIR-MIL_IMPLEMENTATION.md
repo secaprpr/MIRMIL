@@ -1,6 +1,6 @@
 # MIR-MIL Implementation
 
-Status: initial reproducible prototype, June 13, 2026.
+Status: reproducible PANDA prototype, June 14, 2026.
 
 MIR-MIL implements the revised Measure Influence Response method as a model
 separate from OT-MIL. It does not use Sinkhorn transport.
@@ -61,6 +61,55 @@ The standalone evaluator was also run on three validation slides and 48
 sampled patches. It produced Pearson `0.9999998`, Spearman `1.0`, mean absolute
 error `0.00198`, and top-5 overlap `1.0`.
 
+The complete automated suite contains 103 passing tests.
+
+## PANDA Experiment
+
+The formal experiment uses the repository's fixed six-class PANDA split and
+ResNet-50 patch-feature cache:
+
+- split SHA-256:
+  `49a305255880bc9b93a0a1be82214d657aef2e99b7a7b5c083dda7ec68dcdf6a`;
+- 5,763 training, 1,921 validation, and 1,920 sealed test slides;
+- seeds 2024, 2025, and 2026;
+- 512 patches per slide, balanced sampling, 30 epochs, patience 8;
+- identical split, feature dimension, patch budget, and seed set to the
+  historical MO-MIL and OT-MIL runs.
+
+Training used a derived split with empty test columns. Frozen checkpoints were
+evaluated on the sealed test split once after all three runs completed.
+
+| Model | Macro-AUC | Accuracy | Balanced accuracy | Macro-F1 |
+| --- | ---: | ---: | ---: | ---: |
+| MO-MIL | 0.8996 +/- 0.0038 | 0.6363 | 0.5868 | 0.5887 |
+| OT-MIL | **0.9051 +/- 0.0037** | **0.6462** | **0.6043** | **0.6032** |
+| MIR-MIL | 0.8984 +/- 0.0008 | 0.6398 | 0.5969 | 0.5963 |
+
+For paired stratified bootstrap with 10,000 iterations:
+
+- MIR-MIL minus MO-MIL macro-AUC was `-0.00123`, with 95% CI
+  `[-0.00450, 0.00205]`;
+- MIR-MIL minus MO-MIL balanced accuracy was `+0.01014`, with 95% CI
+  `[-0.00191, 0.02251]`;
+- MIR-MIL minus OT-MIL macro-AUC was `-0.00678`, with 95% CI
+  `[-0.00998, -0.00366]`.
+
+Thus MIR-MIL is statistically indistinguishable from MO-MIL in macro-AUC but
+is significantly worse than OT-MIL in macro-AUC under this protocol.
+
+Faithfulness was audited independently for each seed on 100 sealed test slides
+and 64 sampled patches per slide at epsilon `1e-4`:
+
+| Seed | Pearson | Spearman | FD MAE | Top-10 overlap | Centered mean |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 2024 | 0.999997 | 0.999980 | 0.00928 | 0.999 | 8.03e-8 |
+| 2025 | 0.999996 | 0.999979 | 0.00855 | 1.000 | 7.82e-8 |
+| 2026 | 0.999992 | 0.999977 | 0.00996 | 0.999 | 6.80e-8 |
+
+These results support the local contamination-response formula and numerical
+centering. They do not show that high-response patches are clinically correct
+or that MIR-MIL improves classification.
+
 ## Training
 
 ```bash
@@ -84,6 +133,18 @@ python experiments/run_benchmark.py \
   --seeds 2024 2025 2026 \
   --epochs 25 --patience 6 \
   --max-instances 4096 --in-dim 1536
+```
+
+The PANDA command was:
+
+```bash
+python experiments/run_benchmark.py \
+  --split /home/sigirika/experiment_splits/mir_mil_v1/PANDA_R50_CACHE_train_val.csv \
+  --dataset-name PANDA_R50_CACHE --num-classes 6 \
+  --log-root /home/sigirika/experiment_logs/mir_mil_v1/panda_512 \
+  --models MIR_MIL --seeds 2024 2025 2026 \
+  --epochs 30 --patience 8 --max-instances 512 \
+  --in-dim 1024 --device 0 --num-workers 4
 ```
 
 ## Faithfulness Evaluation
@@ -115,5 +176,7 @@ does not yet establish:
 - rare-lesion robustness;
 - clinical or causal interpretation.
 
-Those claims require fresh, sealed experiments and annotation-based
-faithfulness evaluation.
+The PANDA experiment is fresh and sealed, but does not support a
+classification-superiority claim. Localization superiority, rare-lesion
+robustness, and clinical interpretation still require annotation-based
+evaluation and targeted ablations.
