@@ -68,6 +68,7 @@ class ExperimentUtilsTest(unittest.TestCase):
             "Model.class_mass_classification_weight=0.1", ot_command
         )
         self.assertIn("Model.scheduler.cosine_config.T_max=28", ot_command)
+        self.assertIn("Model.scheduler.cosine_config.T_max=28", mir_command)
 
     def test_group_split_prevents_patient_leakage(self):
         frame = pd.DataFrame(

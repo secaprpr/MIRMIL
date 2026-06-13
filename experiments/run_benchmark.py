@@ -73,8 +73,11 @@ def build_command(args, variant, seed):
         f"General.experiment_variant={variant}",
     ]
     options.extend(spec["options"])
-    if spec["model"] == "OT_MIL":
-        options.append(f"Model.scheduler.cosine_config.T_max={max(args.epochs - 2, 1)}")
+    if spec["model"] in {"MIR_MIL", "OT_MIL"}:
+        options.append(
+            f"Model.scheduler.cosine_config.T_max="
+            f"{max(args.epochs - 2, 1)}"
+        )
     return [
         args.python,
         "train_mil.py",
