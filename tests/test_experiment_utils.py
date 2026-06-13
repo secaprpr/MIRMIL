@@ -8,8 +8,12 @@ from experiments.prepare_split import (
     deterministic_group_stratified_split,
     deterministic_stratified_split,
 )
-from experiments.evaluate_checkpoints import file_sha256 as evaluation_file_sha256
+from experiments.evaluate_checkpoints import (
+    experiment_variant,
+    file_sha256 as evaluation_file_sha256,
+)
 from experiments.run_benchmark import build_command, file_sha256
+from utils.yaml_utils import read_yaml, update_config_from_options
 
 
 class ExperimentUtilsTest(unittest.TestCase):
@@ -119,6 +123,14 @@ class ExperimentUtilsTest(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(first, evaluation_hash)
         self.assertEqual(len(first), 64)
+
+    def test_benchmark_variant_survives_saved_config(self):
+        args = read_yaml("configs/OT_MIL_MULTICLASS.yaml")
+        update_config_from_options(
+            args,
+            ["General.experiment_variant=OT_MIL_CLASS_MASS"],
+        )
+        self.assertEqual(experiment_variant(args), "OT_MIL_CLASS_MASS")
 
 
 if __name__ == "__main__":

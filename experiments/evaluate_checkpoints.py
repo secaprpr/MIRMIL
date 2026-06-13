@@ -254,7 +254,7 @@ def main():
             )
             results.append(result)
             prediction_name = (
-                f"{result['model']}_seed{result['seed']}_budget{budget}.csv"
+                f"{result['variant']}_seed{result['seed']}_budget{budget}.csv"
             )
             pd.DataFrame(predictions).to_csv(
                 os.path.join(args.output_dir, prediction_name), index=False
@@ -269,13 +269,13 @@ def main():
             print(json.dumps(result, indent=2))
 
     result_frame = pd.DataFrame(results).sort_values(
-        ["budget", "model", "seed"]
+        ["budget", "variant", "seed"]
     )
     result_frame.to_csv(
         os.path.join(args.output_dir, "budget_results.csv"), index=False
     )
     aggregate = (
-        result_frame.groupby(["budget", "model"])
+        result_frame.groupby(["budget", "variant"])
         .agg(
             macro_auc_mean=("macro_auc", "mean"),
             macro_auc_std=("macro_auc", "std"),
