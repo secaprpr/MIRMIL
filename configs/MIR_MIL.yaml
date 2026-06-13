@@ -41,6 +41,7 @@ Model:
     lipschitz_weight: 0.0
     lipschitz_target: 1.0
     lipschitz_samples: 64
+    ordinal_weight: 0.0
 
     criterion: ce
     optimizer:

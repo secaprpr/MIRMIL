@@ -42,6 +42,9 @@ class ExperimentUtilsTest(unittest.TestCase):
             device=0,
             num_workers=4,
             patience=8,
+            best_model_metric="macro_auc",
+            earlystop_metric="macro_auc",
+            model_option=[],
             dataset_name="CAMELYON16",
             split="/tmp/split.csv",
             balanced=True,
@@ -69,6 +72,8 @@ class ExperimentUtilsTest(unittest.TestCase):
         )
         self.assertIn("Model.scheduler.cosine_config.T_max=28", ot_command)
         self.assertIn("Model.scheduler.cosine_config.T_max=28", mir_command)
+        self.assertIn("General.best_model_metric=macro_auc", mir_command)
+        self.assertIn("General.earlystop.metric=macro_auc", mir_command)
 
     def test_group_split_prevents_patient_leakage(self):
         frame = pd.DataFrame(

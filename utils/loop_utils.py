@@ -113,6 +113,7 @@ def mir_train_loop(device, model, loader, criterion, optimizer, scheduler):
     totals = {
         "loss": 0.0,
         "classification_loss": 0.0,
+        "ordinal_loss": 0.0,
         "stability_loss": 0.0,
         "lipschitz_loss": 0.0,
     }

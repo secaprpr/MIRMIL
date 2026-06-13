@@ -61,8 +61,10 @@ def build_command(args, variant, seed):
         f"General.num_epochs={args.epochs}",
         f"General.device={args.device}",
         f"General.num_workers={args.num_workers}",
+        f"General.best_model_metric={args.best_model_metric}",
         "General.earlystop.use=true",
         f"General.earlystop.patience={args.patience}",
+        f"General.earlystop.metric={args.earlystop_metric}",
         f"Dataset.DATASET_NAME={args.dataset_name}",
         f"Dataset.dataset_csv_path={os.path.abspath(args.split)}",
         f"Dataset.balanced_sampler.use={str(args.balanced).lower()}",
@@ -73,6 +75,7 @@ def build_command(args, variant, seed):
         f"General.experiment_variant={variant}",
     ]
     options.extend(spec["options"])
+    options.extend(args.model_option)
     if spec["model"] in {"MIR_MIL", "OT_MIL"}:
         options.append(
             f"Model.scheduler.cosine_config.T_max="
@@ -103,6 +106,14 @@ def main():
     parser.add_argument("--seeds", nargs="+", type=int, default=[2024, 2025, 2026])
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--patience", type=int, default=8)
+    parser.add_argument("--best-model-metric", default="macro_auc")
+    parser.add_argument("--earlystop-metric", default="macro_auc")
+    parser.add_argument(
+        "--model-option",
+        action="append",
+        default=[],
+        help="Repeat KEY=VALUE to pass an additional model option",
+    )
     parser.add_argument("--max-instances", type=int, default=4096)
     parser.add_argument("--in-dim", type=int, default=1024)
     parser.add_argument("--device", type=int, default=0)
@@ -130,6 +141,9 @@ def main():
         "seeds": args.seeds,
         "epochs": args.epochs,
         "patience": args.patience,
+        "best_model_metric": args.best_model_metric,
+        "earlystop_metric": args.earlystop_metric,
+        "model_options": args.model_option,
         "max_instances": args.max_instances,
         "balanced": args.balanced,
         "commands": commands,

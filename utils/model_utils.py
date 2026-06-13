@@ -180,6 +180,9 @@ def get_model_from_yaml(yaml_args):
             lipschitz_samples=_model_option(
                 yaml_args, "lipschitz_samples", 64
             ),
+            ordinal_weight=_model_option(
+                yaml_args, "ordinal_weight", 0.0
+            ),
         )
     if model_name == 'OT_MIL':
         from modules.OT_MIL.ot_mil import OT_MIL

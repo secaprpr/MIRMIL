@@ -37,6 +37,7 @@ class MIR_MIL(nn.Module):
         lipschitz_weight=0.0,
         lipschitz_target=1.0,
         lipschitz_samples=64,
+        ordinal_weight=0.0,
     ):
         super().__init__()
         if in_dim <= 0 or num_classes < 2:
@@ -61,6 +62,9 @@ class MIR_MIL(nn.Module):
         self.lipschitz_weight = float(lipschitz_weight)
         self.lipschitz_target = float(lipschitz_target)
         self.lipschitz_samples = int(lipschitz_samples)
+        self.ordinal_weight = float(ordinal_weight)
+        if self.ordinal_weight < 0:
+            raise ValueError("ordinal_weight must be non-negative")
 
         self.encoder = nn.Sequential(
             nn.Linear(self.input_dim, hidden_dim),
@@ -424,6 +428,7 @@ class MIR_MIL(nn.Module):
     def compute_loss(self, bag, label, criterion):
         output = self.forward(bag)
         classification_loss = criterion(output["logits"], label)
+        ordinal_loss = self.ordinal_cdf_loss(output["logits"], label)
         stability_loss = bag.new_zeros(())
         if self.stability_weight > 0:
             augmented_logits = self.forward(self.augment_bag(bag))["logits"]
@@ -433,12 +438,24 @@ class MIR_MIL(nn.Module):
         lipschitz_loss = self.lipschitz_penalty(bag)
         loss = (
             classification_loss
+            + self.ordinal_weight * ordinal_loss
             + self.stability_weight * stability_loss
             + self.lipschitz_weight * lipschitz_loss
         )
         return output, {
             "loss": loss,
             "classification_loss": classification_loss,
+            "ordinal_loss": ordinal_loss,
             "stability_loss": stability_loss,
             "lipschitz_loss": lipschitz_loss,
         }
+
+    def ordinal_cdf_loss(self, logits, label):
+        probabilities = torch.softmax(logits, dim=1)
+        predicted_cdf = probabilities.cumsum(dim=1)[:, :-1]
+        thresholds = torch.arange(
+            self.num_classes - 1,
+            device=logits.device,
+        ).unsqueeze(0)
+        target_cdf = (label.unsqueeze(1) <= thresholds).to(logits.dtype)
+        return F.mse_loss(predicted_cdf, target_cdf)

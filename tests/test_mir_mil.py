@@ -117,6 +117,35 @@ def test_stability_loss_backpropagates():
     )
 
 
+def test_ordinal_cdf_loss_respects_class_distance():
+    model = make_model(num_classes=4)
+    label = torch.tensor([0])
+    adjacent = torch.tensor(
+        [[0.0, 5.0, 0.0, 0.0]], dtype=torch.double
+    )
+    distant = torch.tensor(
+        [[0.0, 0.0, 0.0, 5.0]], dtype=torch.double
+    )
+
+    assert (
+        model.ordinal_cdf_loss(adjacent, label)
+        < model.ordinal_cdf_loss(distant, label)
+    )
+
+
+def test_zero_ordinal_weight_preserves_total_loss():
+    model = make_model(num_classes=4, ordinal_weight=0.0).float()
+    bag = torch.randn(1, 12, 6)
+    label = torch.tensor([2])
+    criterion = torch.nn.CrossEntropyLoss()
+
+    _, losses = model.compute_loss(bag, label, criterion)
+
+    torch.testing.assert_close(
+        losses["loss"], losses["classification_loss"]
+    )
+
+
 def test_model_is_constructed_from_repository_yaml():
     args = read_yaml("configs/MIR_MIL.yaml")
     model = get_model_from_yaml(args)
