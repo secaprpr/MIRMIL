@@ -10,6 +10,7 @@ General:
         use: True
         patience: 8
         metric: macro_auc
+        min_delta: 0.0
 
 Dataset:
     DATASET_NAME: your_dataset_name
@@ -79,3 +80,4 @@ Model:
         cosine_config:
             T_max: 28
             eta_min: 0.000001
+            clamp_after_t_max: False

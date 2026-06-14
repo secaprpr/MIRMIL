@@ -44,6 +44,9 @@ class ExperimentUtilsTest(unittest.TestCase):
             patience=8,
             best_model_metric="macro_auc",
             earlystop_metric="macro_auc",
+            earlystop_min_delta=0.001,
+            scheduler_t_max=40,
+            clamp_cosine=True,
             model_option=[],
             dataset_name="CAMELYON16",
             split="/tmp/split.csv",
@@ -70,10 +73,15 @@ class ExperimentUtilsTest(unittest.TestCase):
         self.assertIn(
             "Model.class_mass_classification_weight=0.1", ot_command
         )
-        self.assertIn("Model.scheduler.cosine_config.T_max=28", ot_command)
-        self.assertIn("Model.scheduler.cosine_config.T_max=28", mir_command)
+        self.assertIn("Model.scheduler.cosine_config.T_max=40", ot_command)
+        self.assertIn("Model.scheduler.cosine_config.T_max=40", mir_command)
+        self.assertIn(
+            "Model.scheduler.cosine_config.clamp_after_t_max=true",
+            mir_command,
+        )
         self.assertIn("General.best_model_metric=macro_auc", mir_command)
         self.assertIn("General.earlystop.metric=macro_auc", mir_command)
+        self.assertIn("General.earlystop.min_delta=0.001", mir_command)
 
     def test_group_split_prevents_patient_leakage(self):
         frame = pd.DataFrame(

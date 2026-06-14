@@ -91,6 +91,11 @@ def cal_is_stopping(args,epoch_info_log,process_pipeline):
     patience = int(args.General.earlystop.patience)
     print('patience:',patience)
     judge_metric = args.General.earlystop.metric
+    min_delta = float(
+        args.General.earlystop.min_delta
+        if 'min_delta' in args.General.earlystop
+        else 0.0
+    )
     
     if epoch_info_log['epoch'][-1] <= patience:
         return False
@@ -99,11 +104,10 @@ def cal_is_stopping(args,epoch_info_log,process_pipeline):
     judge_metric_list = epoch_info_log[judge_metric]
     if judge_metric == 'val_loss':
         judge_metric_list = -np.array(judge_metric_list)
-    last_epoch = epoch_info_log['epoch'][-1]
-    for i in range(last_epoch,last_epoch-patience,-1):
-        if judge_metric_list[last_epoch-patience-1] <= judge_metric_list[i-1]:
-            return False
-    return True
+    metric_values = np.asarray(judge_metric_list, dtype=float)
+    previous_best = np.nanmax(metric_values[:-patience])
+    recent_best = np.nanmax(metric_values[-patience:])
+    return recent_best <= previous_best + min_delta
 
 def early_stop(args,epoch_info_log,process_pipeline,epoch,mil_model,best_epoch):
     is_stop = cal_is_stopping(args,epoch_info_log,process_pipeline)

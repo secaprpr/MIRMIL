@@ -65,6 +65,7 @@ def build_command(args, variant, seed):
         "General.earlystop.use=true",
         f"General.earlystop.patience={args.patience}",
         f"General.earlystop.metric={args.earlystop_metric}",
+        f"General.earlystop.min_delta={args.earlystop_min_delta}",
         f"Dataset.DATASET_NAME={args.dataset_name}",
         f"Dataset.dataset_csv_path={os.path.abspath(args.split)}",
         f"Dataset.balanced_sampler.use={str(args.balanced).lower()}",
@@ -77,9 +78,18 @@ def build_command(args, variant, seed):
     options.extend(spec["options"])
     options.extend(args.model_option)
     if spec["model"] in {"MIR_MIL", "OT_MIL"}:
+        scheduler_t_max = (
+            args.scheduler_t_max
+            if args.scheduler_t_max is not None
+            else max(args.epochs - 2, 1)
+        )
         options.append(
             f"Model.scheduler.cosine_config.T_max="
-            f"{max(args.epochs - 2, 1)}"
+            f"{scheduler_t_max}"
+        )
+        options.append(
+            "Model.scheduler.cosine_config.clamp_after_t_max="
+            f"{str(args.clamp_cosine).lower()}"
         )
     return [
         args.python,
@@ -108,6 +118,13 @@ def main():
     parser.add_argument("--patience", type=int, default=8)
     parser.add_argument("--best-model-metric", default="macro_auc")
     parser.add_argument("--earlystop-metric", default="macro_auc")
+    parser.add_argument("--earlystop-min-delta", type=float, default=0.0)
+    parser.add_argument("--scheduler-t-max", type=int)
+    parser.add_argument(
+        "--clamp-cosine",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
     parser.add_argument(
         "--model-option",
         action="append",
@@ -143,6 +160,9 @@ def main():
         "patience": args.patience,
         "best_model_metric": args.best_model_metric,
         "earlystop_metric": args.earlystop_metric,
+        "earlystop_min_delta": args.earlystop_min_delta,
+        "scheduler_t_max": args.scheduler_t_max,
+        "clamp_cosine": args.clamp_cosine,
         "model_options": args.model_option,
         "max_instances": args.max_instances,
         "balanced": args.balanced,

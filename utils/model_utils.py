@@ -2,6 +2,7 @@ import torch
 import os
 import pandas as pd
 import glob
+import math
 import torch
 from torch.optim.lr_scheduler import _LRScheduler
 from .process_utils import get_act
@@ -29,6 +30,25 @@ class WarmUpLR(_LRScheduler):
         """
         progress = min((self.last_epoch + 1) / self.warmup_epochs, 1.0)
         return [base_lr * progress for base_lr in self.base_lrs]
+
+
+class ClampedCosineAnnealingLR(_LRScheduler):
+    """Cosine decay that stays at eta_min after its scheduled horizon."""
+
+    def __init__(self, optimizer, T_max, eta_min=0.0, last_epoch=-1):
+        if T_max <= 0:
+            raise ValueError(f"Expected positive T_max, got {T_max}")
+        self.T_max = T_max
+        self.eta_min = eta_min
+        super().__init__(optimizer, last_epoch)
+
+    def get_lr(self):
+        step = min(self.last_epoch, self.T_max)
+        cosine = (1.0 + math.cos(math.pi * step / self.T_max)) / 2.0
+        return [
+            self.eta_min + (base_lr - self.eta_min) * cosine
+            for base_lr in self.base_lrs
+        ]
 
 
 def get_criterion(criterion):
@@ -91,7 +111,19 @@ def get_scheduler(args,optimizer,base_lr):
     elif sch == 'cosine':
         T_max = args.Model.scheduler.cosine_config.T_max
         eta_min = args.Model.scheduler.cosine_config.eta_min
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=T_max, eta_min=eta_min)
+        clamp_after_t_max = (
+            args.Model.scheduler.cosine_config.clamp_after_t_max
+            if 'clamp_after_t_max' in args.Model.scheduler.cosine_config
+            else False
+        )
+        scheduler_class = (
+            ClampedCosineAnnealingLR
+            if clamp_after_t_max
+            else torch.optim.lr_scheduler.CosineAnnealingLR
+        )
+        scheduler = scheduler_class(
+            optimizer, T_max=T_max, eta_min=eta_min
+        )
         return scheduler,warmup_scheduler
     elif sch == 'none':
         return None,warmup_scheduler
