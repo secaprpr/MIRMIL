@@ -213,6 +213,25 @@ def test_residual_prototype_starts_from_base_potential():
     torch.testing.assert_close(logits, base_logits)
 
 
+def test_residual_prototype_preserves_shared_initialization():
+    base = make_model(num_classes=4)
+    residual = make_model(
+        num_classes=4,
+        potential_type="residual_prototype",
+        prototype_embedding_dim=6,
+        prototypes_per_class=3,
+    )
+
+    for base_parameter, residual_parameter in zip(
+        base.encoder.parameters(), residual.encoder.parameters()
+    ):
+        torch.testing.assert_close(base_parameter, residual_parameter)
+    for base_parameter, residual_parameter in zip(
+        base.potential.parameters(), residual.potential.base.parameters()
+    ):
+        torch.testing.assert_close(base_parameter, residual_parameter)
+
+
 def test_residual_prototype_preserves_mir_response_properties():
     model = make_model(
         num_classes=4,

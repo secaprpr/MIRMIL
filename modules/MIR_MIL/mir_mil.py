@@ -58,7 +58,11 @@ class MixturePrototypePotential(nn.Module):
                 embedding_dim,
             )
         )
-        nn.init.normal_(self.prototypes, std=1.0 / math.sqrt(embedding_dim))
+        # Keep auxiliary prototype creation from shifting shared-model RNG.
+        with torch.random.fork_rng():
+            nn.init.normal_(
+                self.prototypes, std=1.0 / math.sqrt(embedding_dim)
+            )
 
     def forward(self, state):
         embedding = F.normalize(self.projector(state), dim=-1)
@@ -129,19 +133,20 @@ class ResidualPrototypePotential(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, num_classes),
         )
-        self.residual = MixturePrototypePotential(
-            state_dim=state_dim,
-            num_classes=num_classes,
-            embedding_dim=prototype_embedding_dim,
-            prototypes_per_class=prototypes_per_class,
-            temperature=prototype_temperature,
-            mixture_temperature=prototype_mixture_temperature,
-            hidden_dim=hidden_dim,
-            dropout=dropout,
-            act=act,
-            diversity_margin=prototype_diversity_margin,
-            separation_margin=prototype_separation_margin,
-        )
+        with torch.random.fork_rng():
+            self.residual = MixturePrototypePotential(
+                state_dim=state_dim,
+                num_classes=num_classes,
+                embedding_dim=prototype_embedding_dim,
+                prototypes_per_class=prototypes_per_class,
+                temperature=prototype_temperature,
+                mixture_temperature=prototype_mixture_temperature,
+                hidden_dim=hidden_dim,
+                dropout=dropout,
+                act=act,
+                diversity_margin=prototype_diversity_margin,
+                separation_margin=prototype_separation_margin,
+            )
         self.residual_scale = nn.Parameter(
             torch.full((num_classes,), float(initial_scale))
         )
