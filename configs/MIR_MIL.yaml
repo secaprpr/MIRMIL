@@ -42,6 +42,14 @@ Model:
     lipschitz_target: 1.0
     lipschitz_samples: 64
     ordinal_weight: 0.0
+    potential_type: mlp
+    prototype_embedding_dim: 64
+    prototypes_per_class: 4
+    prototype_temperature: 0.2
+    prototype_mixture_temperature: 1.0
+    prototype_regularization_weight: 0.0
+    prototype_diversity_margin: 0.0
+    prototype_separation_margin: 0.0
 
     criterion: ce
     optimizer:

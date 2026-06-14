@@ -116,6 +116,7 @@ def mir_train_loop(device, model, loader, criterion, optimizer, scheduler):
         "ordinal_loss": 0.0,
         "stability_loss": 0.0,
         "lipschitz_loss": 0.0,
+        "prototype_loss": 0.0,
     }
     for bag, label in loader:
         optimizer.zero_grad()

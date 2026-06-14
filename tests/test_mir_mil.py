@@ -146,6 +146,56 @@ def test_zero_ordinal_weight_preserves_total_loss():
     )
 
 
+def test_mixture_prototype_potential_preserves_mir_properties():
+    model = make_model(
+        num_classes=4,
+        potential_type="mixture_prototype",
+        prototype_embedding_dim=6,
+        prototypes_per_class=3,
+        prototype_regularization_weight=0.1,
+    )
+    bag = torch.randn(10, 6, dtype=torch.double)
+    response = model.measure_influence_response(bag, target_class=2)
+
+    assert response["logits"].shape == (1, 4)
+    torch.testing.assert_close(
+        response["response"].mean(),
+        torch.zeros((), dtype=torch.double),
+        atol=1e-10,
+        rtol=1e-10,
+    )
+    finite = torch.stack(
+        [
+            model.finite_difference_response(
+                bag, point, target_class=2, epsilon=1e-6
+            )
+            for point in bag
+        ]
+    )
+    torch.testing.assert_close(
+        response["response"], finite, atol=3e-5, rtol=3e-5
+    )
+
+
+def test_mixture_prototype_regularization_backpropagates():
+    model = make_model(
+        num_classes=4,
+        potential_type="mixture_prototype",
+        prototype_embedding_dim=6,
+        prototypes_per_class=3,
+        prototype_regularization_weight=0.1,
+    ).float()
+    bag = torch.randn(1, 12, 6)
+    label = torch.tensor([2])
+    criterion = torch.nn.CrossEntropyLoss()
+
+    _, losses = model.compute_loss(bag, label, criterion)
+    losses["loss"].backward()
+
+    assert losses["prototype_loss"] > 0
+    assert model.potential.prototypes.grad is not None
+
+
 def test_model_is_constructed_from_repository_yaml():
     args = read_yaml("configs/MIR_MIL.yaml")
     model = get_model_from_yaml(args)

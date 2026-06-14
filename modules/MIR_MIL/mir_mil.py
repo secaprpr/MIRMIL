@@ -15,6 +15,95 @@ def _activation(name):
     raise ValueError(f"Unsupported activation: {name}")
 
 
+class MixturePrototypePotential(nn.Module):
+    """Class energy from a smooth mixture of measure-state prototypes."""
+
+    def __init__(
+        self,
+        state_dim,
+        num_classes,
+        embedding_dim,
+        prototypes_per_class,
+        temperature,
+        mixture_temperature,
+        hidden_dim,
+        dropout,
+        act,
+        diversity_margin,
+        separation_margin,
+    ):
+        super().__init__()
+        if embedding_dim <= 0 or prototypes_per_class <= 0:
+            raise ValueError(
+                "embedding_dim and prototypes_per_class must be positive"
+            )
+        if temperature <= 0 or mixture_temperature <= 0:
+            raise ValueError("prototype temperatures must be positive")
+        self.num_classes = int(num_classes)
+        self.prototypes_per_class = int(prototypes_per_class)
+        self.temperature = float(temperature)
+        self.mixture_temperature = float(mixture_temperature)
+        self.diversity_margin = float(diversity_margin)
+        self.separation_margin = float(separation_margin)
+        self.projector = nn.Sequential(
+            nn.Linear(state_dim, hidden_dim),
+            _activation(act),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, embedding_dim),
+        )
+        self.prototypes = nn.Parameter(
+            torch.empty(
+                self.num_classes,
+                self.prototypes_per_class,
+                embedding_dim,
+            )
+        )
+        nn.init.normal_(self.prototypes, std=1.0 / math.sqrt(embedding_dim))
+
+    def forward(self, state):
+        embedding = F.normalize(self.projector(state), dim=-1)
+        prototypes = F.normalize(self.prototypes, dim=-1)
+        similarities = torch.einsum(
+            "bd,ckd->bck", embedding, prototypes
+        )
+        scaled = similarities / self.temperature
+        logits = self.mixture_temperature * torch.logsumexp(
+            scaled / self.mixture_temperature,
+            dim=-1,
+        )
+        logits = logits - self.mixture_temperature * math.log(
+            self.prototypes_per_class
+        )
+        return logits
+
+    def regularization(self):
+        prototypes = F.normalize(self.prototypes, dim=-1)
+        loss = prototypes.new_zeros(())
+        if self.prototypes_per_class > 1:
+            within = torch.einsum(
+                "ckd,cld->ckl", prototypes, prototypes
+            )
+            mask = ~torch.eye(
+                self.prototypes_per_class,
+                dtype=torch.bool,
+                device=prototypes.device,
+            )
+            loss = loss + F.relu(
+                within[:, mask] - self.diversity_margin
+            ).square().mean()
+        centers = F.normalize(prototypes.mean(dim=1), dim=-1)
+        between = centers @ centers.T
+        class_mask = ~torch.eye(
+            self.num_classes,
+            dtype=torch.bool,
+            device=prototypes.device,
+        )
+        loss = loss + F.relu(
+            between[class_mask] - self.separation_margin
+        ).square().mean()
+        return loss
+
+
 class MIR_MIL(nn.Module):
     """Neural measure potential with closed-form measure influence response."""
 
@@ -38,6 +127,14 @@ class MIR_MIL(nn.Module):
         lipschitz_target=1.0,
         lipschitz_samples=64,
         ordinal_weight=0.0,
+        potential_type="mlp",
+        prototype_embedding_dim=64,
+        prototypes_per_class=4,
+        prototype_temperature=0.2,
+        prototype_mixture_temperature=1.0,
+        prototype_regularization_weight=0.0,
+        prototype_diversity_margin=0.0,
+        prototype_separation_margin=0.0,
     ):
         super().__init__()
         if in_dim <= 0 or num_classes < 2:
@@ -65,6 +162,14 @@ class MIR_MIL(nn.Module):
         self.ordinal_weight = float(ordinal_weight)
         if self.ordinal_weight < 0:
             raise ValueError("ordinal_weight must be non-negative")
+        self.potential_type = str(potential_type)
+        self.prototype_regularization_weight = float(
+            prototype_regularization_weight
+        )
+        if self.prototype_regularization_weight < 0:
+            raise ValueError(
+                "prototype_regularization_weight must be non-negative"
+            )
 
         self.encoder = nn.Sequential(
             nn.Linear(self.input_dim, hidden_dim),
@@ -78,12 +183,31 @@ class MIR_MIL(nn.Module):
         )
         self.tail_scorer = nn.Linear(hidden_dim, self.num_tail_scores)
         state_dim = self.sketch_dim + self.num_tail_scores
-        self.potential = nn.Sequential(
-            nn.Linear(state_dim, potential_hidden_dim),
-            _activation(act),
-            nn.Dropout(dropout),
-            nn.Linear(potential_hidden_dim, self.num_classes),
-        )
+        if self.potential_type == "mlp":
+            self.potential = nn.Sequential(
+                nn.Linear(state_dim, potential_hidden_dim),
+                _activation(act),
+                nn.Dropout(dropout),
+                nn.Linear(potential_hidden_dim, self.num_classes),
+            )
+        elif self.potential_type == "mixture_prototype":
+            self.potential = MixturePrototypePotential(
+                state_dim=state_dim,
+                num_classes=self.num_classes,
+                embedding_dim=prototype_embedding_dim,
+                prototypes_per_class=prototypes_per_class,
+                temperature=prototype_temperature,
+                mixture_temperature=prototype_mixture_temperature,
+                hidden_dim=potential_hidden_dim,
+                dropout=dropout,
+                act=act,
+                diversity_margin=prototype_diversity_margin,
+                separation_margin=prototype_separation_margin,
+            )
+        else:
+            raise ValueError(
+                f"Unsupported potential_type: {self.potential_type}"
+            )
         self.apply(self._initialize)
 
     @staticmethod
@@ -436,11 +560,15 @@ class MIR_MIL(nn.Module):
                 output["logits"], augmented_logits
             )
         lipschitz_loss = self.lipschitz_penalty(bag)
+        prototype_loss = bag.new_zeros(())
+        if isinstance(self.potential, MixturePrototypePotential):
+            prototype_loss = self.potential.regularization()
         loss = (
             classification_loss
             + self.ordinal_weight * ordinal_loss
             + self.stability_weight * stability_loss
             + self.lipschitz_weight * lipschitz_loss
+            + self.prototype_regularization_weight * prototype_loss
         )
         return output, {
             "loss": loss,
@@ -448,6 +576,7 @@ class MIR_MIL(nn.Module):
             "ordinal_loss": ordinal_loss,
             "stability_loss": stability_loss,
             "lipschitz_loss": lipschitz_loss,
+            "prototype_loss": prototype_loss,
         }
 
     def ordinal_cdf_loss(self, logits, label):

@@ -183,6 +183,30 @@ def get_model_from_yaml(yaml_args):
             ordinal_weight=_model_option(
                 yaml_args, "ordinal_weight", 0.0
             ),
+            potential_type=_model_option(
+                yaml_args, "potential_type", "mlp"
+            ),
+            prototype_embedding_dim=_model_option(
+                yaml_args, "prototype_embedding_dim", 64
+            ),
+            prototypes_per_class=_model_option(
+                yaml_args, "prototypes_per_class", 4
+            ),
+            prototype_temperature=_model_option(
+                yaml_args, "prototype_temperature", 0.2
+            ),
+            prototype_mixture_temperature=_model_option(
+                yaml_args, "prototype_mixture_temperature", 1.0
+            ),
+            prototype_regularization_weight=_model_option(
+                yaml_args, "prototype_regularization_weight", 0.0
+            ),
+            prototype_diversity_margin=_model_option(
+                yaml_args, "prototype_diversity_margin", 0.0
+            ),
+            prototype_separation_margin=_model_option(
+                yaml_args, "prototype_separation_margin", 0.0
+            ),
         )
     if model_name == 'OT_MIL':
         from modules.OT_MIL.ot_mil import OT_MIL
