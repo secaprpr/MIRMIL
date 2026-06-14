@@ -241,7 +241,7 @@ def test_residual_prototype_starts_from_base_potential():
         prototype_residual_initial_scale=0.0,
     )
     bag = torch.randn(10, 6, dtype=torch.double)
-    state, _, _, _ = model.state_from_weighted_points(bag)
+    state = model.state_from_weighted_points(bag)[0]
 
     logits = model.potential(state.unsqueeze(0))
     base_logits = model.potential.base(state.unsqueeze(0))
@@ -295,6 +295,56 @@ def test_residual_prototype_preserves_mir_response_properties():
     )
     torch.testing.assert_close(
         response["response"], finite, atol=3e-5, rtol=3e-5
+    )
+
+
+def test_local_route_response_matches_finite_difference():
+    model = make_model(
+        num_local_routes=3,
+        local_route_dim=4,
+        local_route_temperature=0.4,
+    )
+    bag = torch.randn(10, 6, dtype=torch.double)
+    response = model.measure_influence_response(bag, target_class=2)
+    finite = torch.stack(
+        [
+            model.finite_difference_response(
+                bag, point, target_class=2, epsilon=1e-6
+            )
+            for point in bag
+        ]
+    )
+
+    assert response["local_response"].abs().max() > 0
+    torch.testing.assert_close(
+        response["local_response"].mean(),
+        torch.zeros((), dtype=torch.double),
+        atol=1e-10,
+        rtol=1e-10,
+    )
+    torch.testing.assert_close(
+        response["response"], finite, atol=4e-5, rtol=4e-5
+    )
+
+
+def test_local_route_integrated_attribution_is_complete():
+    model = make_model(
+        num_local_routes=3,
+        local_route_dim=4,
+        local_route_temperature=0.4,
+    )
+    bag = torch.randn(8, 6, dtype=torch.double)
+    baseline = torch.randn(7, 6, dtype=torch.double)
+
+    result = model.integrated_functional_attribution(
+        bag, baseline, target_class=0, steps=257
+    )
+
+    torch.testing.assert_close(
+        result["decomposition"],
+        result["score_difference"],
+        atol=4e-5,
+        rtol=4e-5,
     )
 
 

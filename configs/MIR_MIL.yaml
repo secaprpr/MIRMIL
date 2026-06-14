@@ -29,6 +29,9 @@ Model:
     moment_order: 1
     num_tail_scores: 8
     tail_temperature: 0.25
+    num_local_routes: 0
+    local_route_dim: 32
+    local_route_temperature: 0.25
     potential_hidden_dim: 128
     dropout: 0.1
     act: gelu

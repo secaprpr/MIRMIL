@@ -154,6 +154,15 @@ def get_model_from_yaml(yaml_args):
             moment_order=_model_option(yaml_args, "moment_order", 1),
             num_tail_scores=yaml_args.Model.num_tail_scores,
             tail_temperature=yaml_args.Model.tail_temperature,
+            num_local_routes=_model_option(
+                yaml_args, "num_local_routes", 0
+            ),
+            local_route_dim=_model_option(
+                yaml_args, "local_route_dim", 32
+            ),
+            local_route_temperature=_model_option(
+                yaml_args, "local_route_temperature", 0.25
+            ),
             potential_hidden_dim=yaml_args.Model.potential_hidden_dim,
             dropout=yaml_args.Model.dropout,
             act=yaml_args.Model.act,
