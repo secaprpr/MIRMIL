@@ -61,6 +61,23 @@ class TrainingControlTest(unittest.TestCase):
         self.assertAlmostEqual(learning_rates[3], 0.1)
         self.assertEqual(learning_rates[3:], [0.1] * 5)
 
+    def test_clamped_cosine_preserves_native_warmup_interaction(self):
+        def initial_learning_rate(scheduler_class):
+            parameter = torch.nn.Parameter(torch.tensor(1.0))
+            optimizer = torch.optim.AdamW([parameter], lr=2e-4)
+            scheduler_class(optimizer, T_max=138, eta_min=1e-6)
+            from utils.model_utils import WarmUpLR
+
+            WarmUpLR(optimizer, 2, 2e-4)
+            optimizer.step()
+            return optimizer.param_groups[0]["lr"]
+
+        native_lr = initial_learning_rate(
+            torch.optim.lr_scheduler.CosineAnnealingLR
+        )
+        clamped_lr = initial_learning_rate(ClampedCosineAnnealingLR)
+        self.assertEqual(clamped_lr, native_lr)
+
 
 if __name__ == "__main__":
     unittest.main()
