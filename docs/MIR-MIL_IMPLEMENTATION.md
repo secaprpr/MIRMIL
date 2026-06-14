@@ -362,3 +362,56 @@ PANDA and STAD now provide positive cross-task evidence, but neither alone
 supports a general SOTA claim. Localization superiority, rare-lesion
 robustness, and clinical interpretation still require annotation-based
 evaluation and targeted ablations.
+
+## Unified Adaptive Multiscale Evaluation
+
+To keep the architecture identical across datasets, MIR now always uses four
+local measure routes. A global-state gate controls a local residual potential
+for each sample and class. Dataset-specific choices are limited to training
+hyperparameters such as learning rate, regularization, patch budget, and early
+stopping. The adaptive potential preserves the closed-form MIR response; the
+finite-difference and attribution tests pass.
+
+The first fixed-structure evaluation used UNI2-h features and patient-grouped
+splits. Model selection used only macro-AUC on the visible validation set.
+Sealed test columns were opened once after three-seed confirmation.
+
+| Task | Split | Macro AUC | Accuracy | Balanced accuracy | Macro-F1 |
+| --- | --- | ---: | ---: | ---: | ---: |
+| COAD CMS | validation | 0.8220 +/- 0.0058 | - | 0.5956 | 0.6046 |
+| COAD CMS | sealed test | 0.7566 +/- 0.0077 | 0.5311 | 0.5209 | 0.5208 |
+| RCC | validation | 0.9930 +/- 0.0003 | - | 0.9569 | 0.9314 |
+| RCC | sealed test | 0.9948 +/- 0.0012 | 0.9646 | 0.9719 | 0.9606 |
+
+BRCA-PAM50 screening did not qualify for sealed evaluation. The initial
+4,096-patch run reached validation macro-AUC 0.8551, while a stronger
+regularization run with 1,024 patches reached only 0.8431. Historical AB-MIL
+validation runs on the same split reached 0.8681-0.8738.
+
+The COAD result is an important negative control: its apparent validation gain
+over historical OT-MIL did not transfer to the 59-patient sealed test set.
+RCC is stable but saturated. Relative to the historical MO-MIL test result,
+unified MIR improves macro-AUC by about 0.44 points, accuracy by 2.05 points,
+balanced accuracy by 1.20 points, and macro-F1 by 2.28 points. It therefore
+does not satisfy the desired three-point margin.
+
+Representative commands:
+
+```bash
+python experiments/run_benchmark.py \
+  --split /home/sigirika/experiment_splits/otmil_multiclass_v3/RCC_train_val.csv \
+  --dataset-name MIR_UNIFIED_RCC --num-classes 3 \
+  --log-root /home/sigirika/experiment_logs/mir_mil_v6/rcc_confirm \
+  --models MIR_MIL --seeds 2025 2026 --epochs 45 --patience 12 \
+  --earlystop-min-delta 0.001 --scheduler-t-max 43 --clamp-cosine \
+  --max-instances 4096 --in-dim 1536 --device 0 --num-workers 2 \
+  --model-option Model.optimizer.adamw_config.lr=0.0001 \
+  --model-option Model.optimizer.adamw_config.weight_decay=0.0001 \
+  --model-option Model.dropout=0.2
+
+python experiments/evaluate_checkpoints.py \
+  --run-root /home/sigirika/experiment_logs/mir_mil_v6/rcc_confirm \
+  --output-dir /home/sigirika/experiment_logs/mir_mil_v6/rcc_frozen_test_seed2025_2026 \
+  --models MIR_MIL --budgets 4096 --device 0 --num-workers 2 \
+  --split-override /home/sigirika/datasets/tcga_rcc_uni2h/TCGA_RCC_UNI2H_CACHE4096_split.csv
+```
