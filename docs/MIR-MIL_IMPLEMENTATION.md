@@ -187,6 +187,60 @@ not establish general SOTA or ICLR-level novelty. The ordinal term is a
 task-appropriate auxiliary geometry for ordered labels and must be disabled
 or replaced by another label geometry on unordered tasks.
 
+### Local Routed Measure Follow-up
+
+STAD molecular subtype classification exposed a limitation of the original
+state: global composition and smooth maxima can indicate that an unusual
+region exists, but do not retain the representation of that region. Two
+generic alternatives did not solve this:
+
+- replacing the potential with class-wise prototype mixtures reached at most
+  `0.8297` validation macro-AUC;
+- adding a global second central moment reached `0.8165`;
+- the original MLP potential reached `0.8396` under the same seed-2024
+  protocol.
+
+MIR-MIL now optionally adds local routed measures. For route \(j\), a learned
+score defines a density ratio \(q_j(x)\), and the state retains the conditional
+local mean
+
+\[
+m_j(\mu)=\frac{\int \exp(s_j(x)/\tau)\ell(x)\,d\mu(x)}
+{\int \exp(s_j(x)/\tau)\,d\mu(x)}.
+\]
+
+Its contamination response is exactly
+
+\[
+q_j(x)\left(\ell(x)-m_j(\mu)\right),
+\]
+
+so the local contribution remains centered and differentiable. Unit tests
+verify finite-difference agreement and integrated-path completeness. Setting
+`num_local_routes=0` recovers the previous model.
+
+On the fixed STAD validation split, four routes of dimension 32 improved all
+three seeds:
+
+| Model | Macro-AUC | Accuracy | BAcc | Macro-F1 |
+| --- | ---: | ---: | ---: | ---: |
+| MIR global state | 0.8248 +/- 0.0217 | 0.6418 | 0.5724 | 0.5579 |
+| MIR + 4 local routes | **0.8696 +/- 0.0071** | **0.7662** | **0.7047** | **0.6978** |
+
+The route count was selected before opening the sealed test. Frozen
+checkpoints then produced:
+
+| Model | Macro-AUC | Accuracy | BAcc | Macro-F1 |
+| --- | ---: | ---: | ---: | ---: |
+| Historical AB-MIL | **0.8803** | 0.7150 | 0.6180 | 0.6328 |
+| MIR + 4 local routes | 0.8622 | **0.7343** | 0.6127 | 0.6244 |
+
+The local routes therefore improve MIR substantially and exceed AB-MIL in
+accuracy, but do not establish STAD SOTA because macro-AUC remains lower.
+Route diagnostics do not indicate collapse: mean pairwise route-weight cosine
+overlap was `0.069`, normalized entropy was `0.643`, and each route covered
+about 300 effective patches on average.
+
 ## Training
 
 ```bash
@@ -247,13 +301,13 @@ differences, plus checkpoint/split provenance hashes.
 The implementation establishes mathematical and numerical reproducibility. It
 does not yet establish:
 
-- superior classification performance;
+- consistent SOTA classification performance across datasets;
 - better localization than attention, IG, occlusion, or pathology-specific
   explanation methods;
 - rare-lesion robustness;
 - clinical or causal interpretation.
 
-The PANDA experiment is fresh and sealed, but does not support a
-classification-superiority claim. Localization superiority, rare-lesion
+PANDA and STAD now provide positive cross-task evidence, but neither alone
+supports a general SOTA claim. Localization superiority, rare-lesion
 robustness, and clinical interpretation still require annotation-based
 evaluation and targeted ablations.
