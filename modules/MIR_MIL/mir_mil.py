@@ -158,6 +158,63 @@ class ResidualPrototypePotential(nn.Module):
         return self.residual.regularization()
 
 
+class AdaptiveMultiscalePotential(nn.Module):
+    """Global potential with a sample-adaptive local residual."""
+
+    def __init__(
+        self,
+        global_state_dim,
+        local_state_dim,
+        num_classes,
+        hidden_dim,
+        dropout,
+        act,
+        gate_initial_bias,
+        local_initial_scale,
+    ):
+        super().__init__()
+        if global_state_dim <= 0 or local_state_dim <= 0:
+            raise ValueError(
+                "global_state_dim and local_state_dim must be positive"
+            )
+        self.global_state_dim = int(global_state_dim)
+        self.local_state_dim = int(local_state_dim)
+        self.gate_initial_bias = float(gate_initial_bias)
+        self.global_potential = nn.Sequential(
+            nn.Linear(self.global_state_dim, hidden_dim),
+            _activation(act),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, num_classes),
+        )
+        self.local_potential = nn.Sequential(
+            nn.Linear(self.local_state_dim, hidden_dim),
+            _activation(act),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, num_classes),
+        )
+        self.local_gate = nn.Linear(self.global_state_dim, num_classes)
+        self.local_scale = nn.Parameter(
+            torch.full((num_classes,), float(local_initial_scale))
+        )
+
+    def reset_gate(self):
+        nn.init.zeros_(self.local_gate.weight)
+        nn.init.constant_(self.local_gate.bias, self.gate_initial_bias)
+
+    def forward(self, state):
+        global_state = state[:, : self.global_state_dim]
+        local_state = state[:, self.global_state_dim :]
+        if local_state.shape[1] != self.local_state_dim:
+            raise ValueError(
+                f"Expected local state dimension {self.local_state_dim}, "
+                f"got {local_state.shape[1]}"
+            )
+        gate = torch.sigmoid(self.local_gate(global_state))
+        return self.global_potential(global_state) + (
+            gate * self.local_scale * self.local_potential(local_state)
+        )
+
+
 class MIR_MIL(nn.Module):
     """Neural measure potential with closed-form measure influence response."""
 
@@ -194,6 +251,8 @@ class MIR_MIL(nn.Module):
         prototype_diversity_margin=0.0,
         prototype_separation_margin=0.0,
         prototype_residual_initial_scale=0.0,
+        multiscale_gate_initial_bias=-2.0,
+        multiscale_local_initial_scale=0.1,
     ):
         super().__init__()
         if in_dim <= 0 or num_classes < 2:
@@ -308,11 +367,32 @@ class MIR_MIL(nn.Module):
                 prototype_separation_margin=prototype_separation_margin,
                 initial_scale=prototype_residual_initial_scale,
             )
+        elif self.potential_type == "adaptive_multiscale":
+            if self.num_local_routes <= 0:
+                raise ValueError(
+                    "adaptive_multiscale requires num_local_routes > 0"
+                )
+            self.potential = AdaptiveMultiscalePotential(
+                global_state_dim=(
+                    self.composition_state_dim + self.num_tail_scores
+                ),
+                local_state_dim=(
+                    self.num_local_routes * self.local_route_dim
+                ),
+                num_classes=self.num_classes,
+                hidden_dim=potential_hidden_dim,
+                dropout=dropout,
+                act=act,
+                gate_initial_bias=multiscale_gate_initial_bias,
+                local_initial_scale=multiscale_local_initial_scale,
+            )
         else:
             raise ValueError(
                 f"Unsupported potential_type: {self.potential_type}"
             )
         self.apply(self._initialize)
+        if isinstance(self.potential, AdaptiveMultiscalePotential):
+            self.potential.reset_gate()
 
     @staticmethod
     def _initialize(module):

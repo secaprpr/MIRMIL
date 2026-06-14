@@ -261,6 +261,12 @@ def get_model_from_yaml(yaml_args):
             prototype_residual_initial_scale=_model_option(
                 yaml_args, "prototype_residual_initial_scale", 0.0
             ),
+            multiscale_gate_initial_bias=_model_option(
+                yaml_args, "multiscale_gate_initial_bias", -2.0
+            ),
+            multiscale_local_initial_scale=_model_option(
+                yaml_args, "multiscale_local_initial_scale", 0.1
+            ),
         )
     if model_name == 'OT_MIL':
         from modules.OT_MIL.ot_mil import OT_MIL
