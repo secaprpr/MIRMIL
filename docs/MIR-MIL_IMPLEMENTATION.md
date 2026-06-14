@@ -155,6 +155,37 @@ patience 12, accuracy checkpoint selection, and the original three seeds:
 | 2026 | 74 | 0.6757 | 0.9072 | 0.6427 | 0.6410 |
 | Mean | - | **0.6714** | 0.9036 | 0.6344 | 0.6333 |
 
+Two seeds reached their best accuracy close to the 80-epoch cap, so this
+protocol did not establish convergence. A follow-up decoupled the optimization
+horizon from the safety cap: cosine `T_max=138`, an 180-epoch cap, patience 20,
+accuracy `min_delta=0.001`, and a scheduler that remains at `eta_min` after
+`T_max`. The first 140 epochs exactly reproduce the corresponding native
+cosine trajectory.
+
+| Seed | Best epoch | Stop epoch | Validation accuracy | Macro-AUC | BAcc | Macro-F1 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 2024 | 127 | 147 | 0.7022 | 0.9085 | 0.6682 | 0.6682 |
+| 2025 | 48 | 68 | 0.6658 | 0.9013 | 0.6282 | 0.6265 |
+| 2026 | 68 | 88 | 0.6830 | 0.9072 | 0.6460 | 0.6482 |
+| Mean | - | - | **0.6837** | 0.9057 | 0.6475 | 0.6476 |
+
+All three seeds now stop naturally. The practical recommendation is therefore
+an 180-epoch safety cap rather than a fixed training length; observed stopping
+occurred between epochs 68 and 147. Relative to the 80-epoch validation
+protocol, mean accuracy increased by `1.23` percentage points.
+
+An initial implementation of clamped cosine directly subclassed PyTorch's
+scheduler. It interacted incorrectly with the existing warmup scheduler and
+changed the first-epoch trajectory; its epoch-88 result was discarded. The
+replacement wraps the native cosine scheduler and only suppresses steps after
+`T_max`. Unit tests verify both the warmup trajectory and the absence of
+post-horizon reheating.
+
+This convergence follow-up has not opened the sealed test set. It also does
+not by itself strengthen the comparison with baselines: strong baselines must
+receive an equivalent convergence audit before the longer MIR-MIL validation
+result can support a comparative claim.
+
 After freezing this protocol, sealed-test evaluation produced:
 
 | Model | Macro-AUC | Accuracy | BAcc | Macro-F1 |
