@@ -50,6 +50,7 @@ Model:
     prototype_regularization_weight: 0.0
     prototype_diversity_margin: 0.0
     prototype_separation_margin: 0.0
+    prototype_residual_initial_scale: 0.0
 
     criterion: ce
     optimizer:

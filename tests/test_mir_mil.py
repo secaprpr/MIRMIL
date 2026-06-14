@@ -196,6 +196,53 @@ def test_mixture_prototype_regularization_backpropagates():
     assert model.potential.prototypes.grad is not None
 
 
+def test_residual_prototype_starts_from_base_potential():
+    model = make_model(
+        num_classes=4,
+        potential_type="residual_prototype",
+        prototype_embedding_dim=6,
+        prototypes_per_class=3,
+        prototype_residual_initial_scale=0.0,
+    )
+    bag = torch.randn(10, 6, dtype=torch.double)
+    state, _, _, _ = model.state_from_weighted_points(bag)
+
+    logits = model.potential(state.unsqueeze(0))
+    base_logits = model.potential.base(state.unsqueeze(0))
+
+    torch.testing.assert_close(logits, base_logits)
+
+
+def test_residual_prototype_preserves_mir_response_properties():
+    model = make_model(
+        num_classes=4,
+        potential_type="residual_prototype",
+        prototype_embedding_dim=6,
+        prototypes_per_class=3,
+        prototype_residual_initial_scale=0.1,
+    )
+    bag = torch.randn(10, 6, dtype=torch.double)
+    response = model.measure_influence_response(bag, target_class=2)
+    finite = torch.stack(
+        [
+            model.finite_difference_response(
+                bag, point, target_class=2, epsilon=1e-6
+            )
+            for point in bag
+        ]
+    )
+
+    torch.testing.assert_close(
+        response["response"].mean(),
+        torch.zeros((), dtype=torch.double),
+        atol=1e-10,
+        rtol=1e-10,
+    )
+    torch.testing.assert_close(
+        response["response"], finite, atol=3e-5, rtol=3e-5
+    )
+
+
 def test_model_is_constructed_from_repository_yaml():
     args = read_yaml("configs/MIR_MIL.yaml")
     model = get_model_from_yaml(args)

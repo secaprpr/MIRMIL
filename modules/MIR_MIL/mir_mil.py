@@ -104,6 +104,55 @@ class MixturePrototypePotential(nn.Module):
         return loss
 
 
+class ResidualPrototypePotential(nn.Module):
+    """MLP potential with an optional class-wise prototype residual."""
+
+    def __init__(
+        self,
+        state_dim,
+        num_classes,
+        hidden_dim,
+        dropout,
+        act,
+        prototype_embedding_dim,
+        prototypes_per_class,
+        prototype_temperature,
+        prototype_mixture_temperature,
+        prototype_diversity_margin,
+        prototype_separation_margin,
+        initial_scale,
+    ):
+        super().__init__()
+        self.base = nn.Sequential(
+            nn.Linear(state_dim, hidden_dim),
+            _activation(act),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, num_classes),
+        )
+        self.residual = MixturePrototypePotential(
+            state_dim=state_dim,
+            num_classes=num_classes,
+            embedding_dim=prototype_embedding_dim,
+            prototypes_per_class=prototypes_per_class,
+            temperature=prototype_temperature,
+            mixture_temperature=prototype_mixture_temperature,
+            hidden_dim=hidden_dim,
+            dropout=dropout,
+            act=act,
+            diversity_margin=prototype_diversity_margin,
+            separation_margin=prototype_separation_margin,
+        )
+        self.residual_scale = nn.Parameter(
+            torch.full((num_classes,), float(initial_scale))
+        )
+
+    def forward(self, state):
+        return self.base(state) + self.residual_scale * self.residual(state)
+
+    def regularization(self):
+        return self.residual.regularization()
+
+
 class MIR_MIL(nn.Module):
     """Neural measure potential with closed-form measure influence response."""
 
@@ -135,6 +184,7 @@ class MIR_MIL(nn.Module):
         prototype_regularization_weight=0.0,
         prototype_diversity_margin=0.0,
         prototype_separation_margin=0.0,
+        prototype_residual_initial_scale=0.0,
     ):
         super().__init__()
         if in_dim <= 0 or num_classes < 2:
@@ -203,6 +253,23 @@ class MIR_MIL(nn.Module):
                 act=act,
                 diversity_margin=prototype_diversity_margin,
                 separation_margin=prototype_separation_margin,
+            )
+        elif self.potential_type == "residual_prototype":
+            self.potential = ResidualPrototypePotential(
+                state_dim=state_dim,
+                num_classes=self.num_classes,
+                hidden_dim=potential_hidden_dim,
+                dropout=dropout,
+                act=act,
+                prototype_embedding_dim=prototype_embedding_dim,
+                prototypes_per_class=prototypes_per_class,
+                prototype_temperature=prototype_temperature,
+                prototype_mixture_temperature=(
+                    prototype_mixture_temperature
+                ),
+                prototype_diversity_margin=prototype_diversity_margin,
+                prototype_separation_margin=prototype_separation_margin,
+                initial_scale=prototype_residual_initial_scale,
             )
         else:
             raise ValueError(
@@ -561,7 +628,7 @@ class MIR_MIL(nn.Module):
             )
         lipschitz_loss = self.lipschitz_penalty(bag)
         prototype_loss = bag.new_zeros(())
-        if isinstance(self.potential, MixturePrototypePotential):
+        if hasattr(self.potential, "regularization"):
             prototype_loss = self.potential.regularization()
         loss = (
             classification_loss
