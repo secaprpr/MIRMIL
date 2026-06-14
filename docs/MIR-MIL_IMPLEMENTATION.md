@@ -181,12 +181,11 @@ replacement wraps the native cosine scheduler and only suppresses steps after
 `T_max`. Unit tests verify both the warmup trajectory and the absence of
 post-horizon reheating.
 
-This convergence follow-up has not opened the sealed test set. It also does
-not by itself strengthen the comparison with baselines: strong baselines must
-receive an equivalent convergence audit before the longer MIR-MIL validation
-result can support a comparative claim.
+After freezing this protocol, the same 1,920-slide sealed test split was
+opened once with deterministic uniform 512-patch sampling. The split SHA256
+was `49a305255880bc9b93a0a1be82214d657aef2e99b7a7b5c083dda7ec68dcdf6a`.
 
-After freezing this protocol, sealed-test evaluation produced:
+The historical 80-epoch ordinal checkpoints produced:
 
 | Model | Macro-AUC | Accuracy | BAcc | Macro-F1 |
 | --- | ---: | ---: | ---: | ---: |
@@ -194,23 +193,44 @@ After freezing this protocol, sealed-test evaluation produced:
 | OT-MIL | 0.9051 | 0.6462 | 0.6043 | 0.6032 |
 | MIR-MIL + ordinal geometry | **0.9055** | **0.6568** | **0.6203** | **0.6176** |
 
-Paired stratified bootstrap with 10,000 iterations found:
+The converged MIR-MIL checkpoints produced:
 
-- versus MO-MIL, MIR improved macro-AUC by `0.00590`
-  (`95% CI [0.00214, 0.00961]`) and accuracy by `0.02049`
-  (`95% CI [0.00903, 0.03160]`);
-- versus OT-MIL, macro-AUC was statistically tied at `+0.00035`
-  (`95% CI [-0.00327, 0.00388]`);
-- versus OT-MIL, BAcc improved by `0.01593`
-  (`95% CI [0.00294, 0.02871]`) and macro-F1 by `0.01438`
-  (`95% CI [0.00130, 0.02731]`);
-- the accuracy gain over OT-MIL was `0.01059`, but its 95% CI
-  `[-0.00035, 0.02153]` narrowly crossed zero.
+| Seed | Macro-AUC | Accuracy | BAcc | Macro-F1 |
+| --- | ---: | ---: | ---: | ---: |
+| 2024 | 0.9138 | 0.6885 | 0.6567 | 0.6575 |
+| 2025 | 0.9059 | 0.6500 | 0.6187 | 0.6145 |
+| 2026 | 0.9100 | 0.6635 | 0.6293 | 0.6319 |
+| Mean | **0.9099** | **0.6674** | **0.6349** | **0.6346** |
 
-The new checkpoints retained finite-difference faithfulness on 100 sealed
-test slides per seed: Pearson was `0.999987-0.999996`, Spearman was about
-`0.99998`, top-10 overlap was at least `0.999`, and the centered response
-mean remained on the order of `1e-7`.
+Relative to the 80-epoch checkpoints, convergence improved mean macro-AUC by
+`0.00438`, accuracy by `1.06` percentage points, BAcc by `1.47` points, and
+macro-F1 by `1.70` points.
+
+Paired stratified bootstrap with 10,000 iterations against the existing
+frozen baseline predictions found:
+
+- versus MO-MIL, macro-AUC improved by `0.01028`
+  (`95% CI [0.00632, 0.01425]`) and accuracy by `0.03108`
+  (`95% CI [0.01962, 0.04288]`);
+- versus MO-MIL, BAcc improved by `0.04815`
+  (`95% CI [0.03471, 0.06177]`) and macro-F1 by `0.04595`
+  (`95% CI [0.03249, 0.05980]`);
+- versus OT-MIL, macro-AUC improved by `0.00474`
+  (`95% CI [0.00086, 0.00854]`) and accuracy by `0.02118`
+  (`95% CI [0.00990, 0.03247]`);
+- versus OT-MIL, BAcc improved by `0.03059`
+  (`95% CI [0.01726, 0.04365]`) and macro-F1 by `0.03137`
+  (`95% CI [0.01798, 0.04465]`).
+
+These intervals establish improvement over the evaluated frozen baseline
+checkpoints. They are not yet an equal-convergence-budget comparison: MO-MIL
+and OT-MIL have not been rerun under the longer stopping protocol.
+
+The 80-epoch ordinal checkpoints retained finite-difference faithfulness on
+100 sealed test slides per seed: Pearson was `0.999987-0.999996`, Spearman was
+about `0.99998`, top-10 overlap was at least `0.999`, and the centered response
+mean remained on the order of `1e-7`. The converged checkpoints still require
+the same audit.
 
 This establishes the interim PANDA target of mean accuracy above 65% and
 significant BAcc/F1 gains over the repository's strongest baseline. It does
