@@ -26,6 +26,7 @@ Model:
     coordinate_dim: 0
     hidden_dim: 256
     sketch_dim: 128
+    moment_order: 1
     num_tail_scores: 8
     tail_temperature: 0.25
     potential_hidden_dim: 128

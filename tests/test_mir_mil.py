@@ -66,6 +66,25 @@ def test_closed_form_response_matches_finite_difference():
     )
 
 
+def test_second_order_response_matches_finite_difference():
+    model = make_model(moment_order=2)
+    bag = torch.randn(9, 6, dtype=torch.double)
+    result = model.measure_influence_response(bag, target_class=2)
+    finite = torch.stack(
+        [
+            model.finite_difference_response(
+                bag, point, target_class=2, epsilon=1e-6
+            )
+            for point in bag
+        ]
+    )
+
+    assert result["variance_response"].abs().max() > 0
+    torch.testing.assert_close(
+        result["response"], finite, atol=3e-5, rtol=3e-5
+    )
+
+
 def test_integrated_functional_attribution_is_complete():
     model = make_model()
     bag = torch.randn(8, 6, dtype=torch.double)
@@ -80,6 +99,23 @@ def test_integrated_functional_attribution_is_complete():
         result["score_difference"],
         atol=2e-5,
         rtol=2e-5,
+    )
+
+
+def test_second_order_integrated_attribution_is_complete():
+    model = make_model(moment_order=2)
+    bag = torch.randn(8, 6, dtype=torch.double)
+    baseline = torch.randn(7, 6, dtype=torch.double)
+
+    result = model.integrated_functional_attribution(
+        bag, baseline, target_class=0, steps=257
+    )
+
+    torch.testing.assert_close(
+        result["decomposition"],
+        result["score_difference"],
+        atol=3e-5,
+        rtol=3e-5,
     )
 
 

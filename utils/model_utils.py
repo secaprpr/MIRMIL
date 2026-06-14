@@ -151,6 +151,7 @@ def get_model_from_yaml(yaml_args):
             num_classes=yaml_args.General.num_classes,
             hidden_dim=yaml_args.Model.hidden_dim,
             sketch_dim=yaml_args.Model.sketch_dim,
+            moment_order=_model_option(yaml_args, "moment_order", 1),
             num_tail_scores=yaml_args.Model.num_tail_scores,
             tail_temperature=yaml_args.Model.tail_temperature,
             potential_hidden_dim=yaml_args.Model.potential_hidden_dim,

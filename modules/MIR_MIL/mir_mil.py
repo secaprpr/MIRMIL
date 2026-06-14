@@ -167,6 +167,7 @@ class MIR_MIL(nn.Module):
         num_classes,
         hidden_dim=256,
         sketch_dim=128,
+        moment_order=1,
         num_tail_scores=8,
         tail_temperature=0.25,
         potential_hidden_dim=128,
@@ -205,6 +206,10 @@ class MIR_MIL(nn.Module):
         self.input_dim = self.in_dim + self.coordinate_dim
         self.num_classes = int(num_classes)
         self.sketch_dim = int(sketch_dim)
+        self.moment_order = int(moment_order)
+        if self.moment_order not in {1, 2}:
+            raise ValueError("moment_order must be 1 or 2")
+        self.composition_state_dim = self.sketch_dim * self.moment_order
         self.num_tail_scores = int(num_tail_scores)
         self.tail_temperature = float(tail_temperature)
         self.stability_weight = float(stability_weight)
@@ -237,7 +242,7 @@ class MIR_MIL(nn.Module):
             nn.Linear(hidden_dim, self.sketch_dim),
         )
         self.tail_scorer = nn.Linear(hidden_dim, self.num_tail_scores)
-        state_dim = self.sketch_dim + self.num_tail_scores
+        state_dim = self.composition_state_dim + self.num_tail_scores
         if self.potential_type == "mlp":
             self.potential = nn.Sequential(
                 nn.Linear(state_dim, potential_hidden_dim),
@@ -328,6 +333,15 @@ class MIR_MIL(nn.Module):
             )
 
         composition = torch.sum(weights[:, None] * basis, dim=0)
+        composition_state = [composition]
+        if self.moment_order == 2:
+            composition_state.append(
+                torch.sum(
+                    weights[:, None]
+                    * (basis - composition[None, :]).square(),
+                    dim=0,
+                )
+            )
         log_weights = torch.log(
             weights.clamp_min(torch.finfo(points.dtype).tiny)
         )
@@ -335,7 +349,7 @@ class MIR_MIL(nn.Module):
             tail_scores / self.tail_temperature + log_weights[:, None],
             dim=0,
         )
-        state = torch.cat([composition, tail_state], dim=0)
+        state = torch.cat([*composition_state, tail_state], dim=0)
         return state, basis, tail_scores, weights
 
     def forward(self, bag, return_state=False):
@@ -397,7 +411,24 @@ class MIR_MIL(nn.Module):
         )[0]
         composition = state[: self.sketch_dim]
         composition_gradient = gradient[: self.sketch_dim]
-        tail_gradient = gradient[self.sketch_dim :]
+        offset = self.sketch_dim
+        variance_response = torch.zeros(
+            basis.shape[0], dtype=basis.dtype, device=basis.device
+        )
+        if self.moment_order == 2:
+            variance = state[offset : offset + self.sketch_dim]
+            variance_gradient = gradient[
+                offset : offset + self.sketch_dim
+            ]
+            variance_response = (
+                (
+                    (basis - composition[None, :]).square()
+                    - variance[None, :]
+                )
+                * variance_gradient[None, :]
+            ).sum(dim=1)
+            offset += self.sketch_dim
+        tail_gradient = gradient[offset:]
 
         log_normalizers = torch.logsumexp(
             tail_scores / self.tail_temperature
@@ -421,8 +452,11 @@ class MIR_MIL(nn.Module):
             "logits": logits,
             "score": score,
             "target_class": target_class,
-            "response": composition_response + tail_response,
+            "response": (
+                composition_response + variance_response + tail_response
+            ),
             "composition_response": composition_response,
+            "variance_response": variance_response,
             "tail_response": tail_response,
         }
 
@@ -447,8 +481,20 @@ class MIR_MIL(nn.Module):
         )[0]
         evaluation_points = self._normalize_bag(evaluation_points)
         basis, tail_scores = self._point_statistics(evaluation_points)
+        composition = reference_state[: self.sketch_dim]
         composition_gradient = gradient[: self.sketch_dim]
-        tail_gradient = gradient[self.sketch_dim :]
+        offset = self.sketch_dim
+        variance_derivative = basis.new_zeros(basis.shape[0])
+        if self.moment_order == 2:
+            variance_gradient = gradient[
+                offset : offset + self.sketch_dim
+            ]
+            variance_derivative = (
+                (basis.square() - 2.0 * composition[None, :] * basis)
+                * variance_gradient[None, :]
+            ).sum(dim=1)
+            offset += self.sketch_dim
+        tail_gradient = gradient[offset:]
         log_normalizers = torch.logsumexp(
             reference_tail / self.tail_temperature
             + torch.log(
@@ -463,7 +509,7 @@ class MIR_MIL(nn.Module):
         )
         return (
             basis * composition_gradient[None, :]
-        ).sum(dim=1) + (
+        ).sum(dim=1) + variance_derivative + (
             self.tail_temperature
             * density_ratio
             * tail_gradient[None, :]
