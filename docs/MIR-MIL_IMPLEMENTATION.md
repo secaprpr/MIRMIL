@@ -133,6 +133,60 @@ These longer-run checkpoints have not been evaluated on the sealed test set.
 The convergence result should be treated as validation evidence for selecting
 the future training budget, not as a revised test benchmark.
 
+### Ordinal Geometry Follow-up
+
+PANDA ISUP grades are ordered. MIR-MIL therefore supports an optional
+one-dimensional squared Wasserstein loss, implemented as the squared distance
+between predicted and target cumulative class distributions. The default
+weight is zero, so unordered classification behavior is unchanged.
+
+A validation-only seed-2024 sweep compared ordinal weights `0.1`, `0.3`, and
+`1.0`. Weights `0.1` and `0.3` reached `66.53%` and `66.48%` validation
+accuracy, while weight `1.0` fell back to `64.60%`. Weight `0.3` was selected
+before opening the sealed test because it retained the higher macro-AUC.
+
+The frozen confirmation protocol used weight `0.3`, an 80-epoch cap,
+patience 12, accuracy checkpoint selection, and the original three seeds:
+
+| Seed | Best epoch | Validation accuracy | Macro-AUC | BAcc | Macro-F1 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 2024 | 77 | 0.6804 | 0.9046 | 0.6456 | 0.6447 |
+| 2025 | 36 | 0.6580 | 0.8989 | 0.6148 | 0.6142 |
+| 2026 | 74 | 0.6757 | 0.9072 | 0.6427 | 0.6410 |
+| Mean | - | **0.6714** | 0.9036 | 0.6344 | 0.6333 |
+
+After freezing this protocol, sealed-test evaluation produced:
+
+| Model | Macro-AUC | Accuracy | BAcc | Macro-F1 |
+| --- | ---: | ---: | ---: | ---: |
+| MO-MIL | 0.8996 | 0.6363 | 0.5868 | 0.5887 |
+| OT-MIL | 0.9051 | 0.6462 | 0.6043 | 0.6032 |
+| MIR-MIL + ordinal geometry | **0.9055** | **0.6568** | **0.6203** | **0.6176** |
+
+Paired stratified bootstrap with 10,000 iterations found:
+
+- versus MO-MIL, MIR improved macro-AUC by `0.00590`
+  (`95% CI [0.00214, 0.00961]`) and accuracy by `0.02049`
+  (`95% CI [0.00903, 0.03160]`);
+- versus OT-MIL, macro-AUC was statistically tied at `+0.00035`
+  (`95% CI [-0.00327, 0.00388]`);
+- versus OT-MIL, BAcc improved by `0.01593`
+  (`95% CI [0.00294, 0.02871]`) and macro-F1 by `0.01438`
+  (`95% CI [0.00130, 0.02731]`);
+- the accuracy gain over OT-MIL was `0.01059`, but its 95% CI
+  `[-0.00035, 0.02153]` narrowly crossed zero.
+
+The new checkpoints retained finite-difference faithfulness on 100 sealed
+test slides per seed: Pearson was `0.999987-0.999996`, Spearman was about
+`0.99998`, top-10 overlap was at least `0.999`, and the centered response
+mean remained on the order of `1e-7`.
+
+This establishes the interim PANDA target of mean accuracy above 65% and
+significant BAcc/F1 gains over the repository's strongest baseline. It does
+not establish general SOTA or ICLR-level novelty. The ordinal term is a
+task-appropriate auxiliary geometry for ordered labels and must be disabled
+or replaced by another label geometry on unordered tasks.
+
 ## Training
 
 ```bash
