@@ -479,3 +479,68 @@ python experiments/run_benchmark.py \
   --model-option Model.multiscale_local_initial_scale=0.5 \
   --model-option Model.label_smoothing=0.0
 ```
+
+## BRCA and COAD Optimization Follow-up
+
+This phase continued to use visible validation data only. The COAD sealed test
+was not reopened, and BRCA still has no sealed-test evaluation.
+
+Several generic extensions were implemented with closed-form response tests:
+
+- class-owned local route groups;
+- learned shared/class-conditional mixtures and class residuals;
+- optional exponential moving average validation;
+- a full-rank anchor measure route;
+- an anchor-primary potential with global and low-rank MIR residuals.
+
+All variants preserve permutation invariance and the centered contamination
+response. Finite-difference and path-completeness tests cover the new measure
+states. The complete repository test suite contains 136 passing tests.
+
+For COAD CMS, the corrected hybrid potential used 12 routes of dimension 32
+and initialized the class-conditional mixture at 0.1. It improved both the
+three-fold visible-pool result and the original visible split:
+
+| COAD visible protocol | Macro-AUC | BAcc | Macro-F1 | Accuracy |
+| --- | ---: | ---: | ---: | ---: |
+| MO-MIL, original split | 0.8231 +/- 0.0073 | 0.5299 | 0.5182 | 0.6183 |
+| OT-MIL, original split | 0.8340 +/- 0.0150 | **0.6365** | **0.6379** | 0.6613 |
+| MIR shared routes | 0.8349 +/- 0.0110 | 0.6035 | 0.6126 | 0.6559 |
+| MIR hybrid routes | **0.8368 +/- 0.0204** | 0.6243 | 0.6376 | **0.6720** |
+
+The AUC gain over OT-MIL is 0.28 percentage points, so COAD now exceeds the
+evaluated baseline mean but does not support a practically large superiority
+claim. In patient-grouped three-fold cross-validation, hybrid MIR reached
+`0.86685` AUC versus `0.86648` for shared-route MIR, while improving BAcc and
+macro-F1 by about 2.3 and 2.5 points.
+
+BRCA-PAM50 exposed a different bottleneck. Increasing each route state from
+32 to 128 dimensions improved the previously weakest seed, but did not exceed
+AB-MIL after three-seed confirmation:
+
+| BRCA visible validation | Macro-AUC | BAcc | Macro-F1 | Accuracy |
+| --- | ---: | ---: | ---: | ---: |
+| MO-MIL | 0.8652 +/- 0.0017 | 0.6252 | 0.6237 | 0.6735 |
+| MIR, 12 x 32 routes | 0.8646 +/- 0.0047 | 0.6574 | **0.6683** | 0.7058 |
+| MIR, 12 x 128 routes | **0.8669 +/- 0.0045** | **0.6644** | 0.6612 | **0.7058** |
+| AB-MIL | 0.8707 +/- 0.0029 | 0.6815 | 0.6834 | 0.7313 |
+
+Thus MIR exceeds MO-MIL by 3.2-4.5 points on BRCA thresholded metrics and by
+0.18 AUC points with the wider route state, but remains 0.38 AUC points below
+AB-MIL. Higher learning rate, weight decay, route temperature, route count,
+EMA, class residuals, and full-rank anchor variants did not survive
+multi-seed or worst-seed screening. A single-seed peak is not treated as an
+improvement.
+
+Representative COAD confirmation command:
+
+```bash
+python experiments/run_benchmark.py \
+  --split /home/sigirika/experiment_splits/otmil_v2_tuning/COAD_CMS_train_val.csv \
+  --dataset-name MIR_COAD_HYBRID01_CONFIRM --num-classes 4 \
+  --log-root /home/sigirika/experiment_logs/mir_mil_v14/coad_hybrid01_confirm \
+  --models MIR_MIL --seeds 2024 2025 2026 --epochs 35 --patience 10 \
+  --max-instances 4096 --in-dim 1536 --device 0 --num-workers 2 \
+  --model-option Model.potential_type=hybrid_multiscale \
+  --model-option Model.multiscale_class_mix_initial=0.1
+```
