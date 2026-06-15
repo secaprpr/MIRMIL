@@ -1,5 +1,6 @@
 import glob
 import os
+from copy import deepcopy
 
 import torch
 from torch.utils.data import DataLoader
@@ -24,6 +25,34 @@ from utils.model_utils import (
 )
 from utils.process_utils import get_process_pipeline
 from utils.wsi_utils import WSI_Coord_Dataset, WSI_Dataset
+
+
+class ExponentialMovingAverage:
+    def __init__(self, model, decay):
+        if not 0 < decay < 1:
+            raise ValueError("EMA decay must be between zero and one")
+        self.model = deepcopy(model).eval()
+        self.decay = float(decay)
+        self.updates = 0
+        for parameter in self.model.parameters():
+            parameter.requires_grad_(False)
+
+    @torch.no_grad()
+    def update(self, model):
+        source = model.state_dict()
+        target = self.model.state_dict()
+        if self.updates == 0:
+            self.model.load_state_dict(source)
+        else:
+            for name, value in target.items():
+                source_value = source[name].detach()
+                if value.is_floating_point():
+                    value.mul_(self.decay).add_(
+                        source_value, alpha=1.0 - self.decay
+                    )
+                else:
+                    value.copy_(source_value)
+        self.updates += 1
 
 
 def process_MIR_MIL(args):
@@ -91,6 +120,12 @@ def process_MIR_MIL(args):
 
     device = torch.device(f"cuda:{args.General.device}")
     model = get_model_from_yaml(args).to(device)
+    ema_decay = float(getattr(args.Model, "ema_decay", 0.0))
+    ema = (
+        ExponentialMovingAverage(model, ema_decay)
+        if ema_decay > 0
+        else None
+    )
     optimizer, base_lr = get_optimizer(args, model)
     scheduler, warmup_scheduler = get_scheduler(args, optimizer, base_lr)
     criterion = get_criterion(
@@ -116,10 +151,13 @@ def process_MIR_MIL(args):
             optimizer,
             active_scheduler,
         )
+        if ema is not None:
+            ema.update(model)
+        validation_model = ema.model if ema is not None else model
         val_loss, val_metrics = mir_val_loop(
             device,
             args.General.num_classes,
-            model,
+            validation_model,
             val_loader,
             criterion,
         )
@@ -141,7 +179,7 @@ def process_MIR_MIL(args):
         best_value, best_epoch = model_select(
             reverse,
             args,
-            model.state_dict(),
+            validation_model.state_dict(),
             val_metrics,
             args.General.best_model_metric,
             best_value,
@@ -153,7 +191,8 @@ def process_MIR_MIL(args):
             break
 
     last_epoch = epoch_log["epoch"][-1]
-    save_last_model(args, model.state_dict(), last_epoch)
+    final_model = ema.model if ema is not None else model
+    save_last_model(args, final_model.state_dict(), last_epoch)
     if not test_dataset.is_None_Dataset():
         checkpoints = glob.glob(
             os.path.join(args.Logs.now_log_dir, "Best*.pth")

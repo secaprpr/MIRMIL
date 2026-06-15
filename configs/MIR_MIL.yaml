@@ -64,6 +64,7 @@ Model:
 
     criterion: ce
     label_smoothing: 0.0
+    ema_decay: 0.0
     optimizer:
         which: adamw
         adam_config:
