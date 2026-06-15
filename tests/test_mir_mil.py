@@ -443,7 +443,7 @@ def test_model_is_constructed_from_repository_yaml():
     assert isinstance(model, MIR_MIL)
     assert model.input_dim == args.Model.in_dim
     assert model.num_classes == args.General.num_classes
-    assert model.num_local_routes == 4
+    assert model.num_local_routes == 12
     assert model.potential_type == "adaptive_multiscale"
 
 

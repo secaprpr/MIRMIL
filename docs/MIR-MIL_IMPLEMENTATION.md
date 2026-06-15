@@ -415,3 +415,67 @@ python experiments/evaluate_checkpoints.py \
   --models MIR_MIL --budgets 4096 --device 0 --num-workers 2 \
   --split-override /home/sigirika/datasets/tcga_rcc_uni2h/TCGA_RCC_UNI2H_CACHE4096_split.csv
 ```
+
+## Active Local Route Follow-up
+
+The four-route adaptive model initialized the local residual with
+`sigmoid(-2) * 0.1`, an effective scale of about `0.012`. On the best BRCA
+checkpoint, the learned effective class scales remained only `0.016-0.023`.
+The local representation was therefore present in the architecture but nearly
+disabled during classification.
+
+A visible-validation ablation increased the shared route count to 12, the
+gate bias to `-0.5`, and the local scale to `0.5`. The model equations and
+closed-form response are unchanged. These settings are now the default for
+unordered multiclass experiments; PANDA retains its separately recorded
+ordinal protocol.
+
+COAD robustness was assessed without reopening its sealed test set. The
+original train and validation examples were pooled and repartitioned with
+three-fold stratified group cross-validation. TCGA case IDs define groups, so
+the two slides from the one duplicated patient never cross a fold boundary.
+
+| COAD visible CV | Macro-AUC | BAcc | Macro-F1 | Accuracy |
+| --- | ---: | ---: | ---: | ---: |
+| 4 routes, weak local initialization | 0.8501 +/- 0.0206 | 0.6310 | 0.6358 | 0.6693 |
+| Label smoothing 0.2 | 0.8537 +/- 0.0175 | 0.6161 | 0.6149 | 0.6529 |
+| 12 active local routes | **0.8665 +/- 0.0273** | 0.6176 | 0.6252 | 0.6445 |
+
+The active routes improve COAD ranking by 1.64 AUC points across folds, but
+do not improve thresholded metrics. On the original visible COAD split, its
+three-seed macro-AUC is `0.8349 +/- 0.0110`, compared with `0.8220 +/- 0.0058`
+for the previous unified model. The sealed COAD test result remains unchanged
+and was not used for this follow-up.
+
+BRCA-PAM50 uses the same model structure and active-route settings. Increasing
+the route count from 4 to 8 and 12 raised seed-2024 macro-AUC from `0.8607` to
+`0.8694` and `0.8697`, respectively. Twelve routes were retained because
+their balanced accuracy and macro-F1 were also higher.
+
+| BRCA visible validation | Macro-AUC | BAcc | Macro-F1 | Accuracy |
+| --- | ---: | ---: | ---: | ---: |
+| MIR, 12 active routes | 0.8646 +/- 0.0047 | 0.6574 | 0.6683 | 0.7058 |
+| MO-MIL | 0.8652 +/- 0.0017 | 0.6252 | 0.6237 | 0.6735 |
+| AB-MIL | **0.8707 +/- 0.0029** | **0.6815** | **0.6834** | **0.7313** |
+
+Thus the active-route change is a reproducible cross-dataset improvement over
+the weakly initialized MIR model, and it improves BRCA BAcc/F1 over MO-MIL.
+It does not establish a three-point AUC advantage: BRCA AUC is statistically
+close to MO-MIL and remains about 0.61 points below AB-MIL. BRCA has no sealed
+test evaluation in this phase.
+
+Representative confirmation command:
+
+```bash
+python experiments/run_benchmark.py \
+  --split /home/sigirika/datasets/brca_pam50_uni2h/BRCA_PAM50_UNI2H_CACHE4096_train_val.csv \
+  --dataset-name MIR_BRCA_LOCAL12_CONFIRM --num-classes 4 \
+  --log-root /home/sigirika/experiment_logs/mir_mil_v9/brca_local12_confirm \
+  --models MIR_MIL --seeds 2025 2026 --epochs 45 --patience 10 \
+  --earlystop-min-delta 0.001 --scheduler-t-max 43 --clamp-cosine \
+  --max-instances 4096 --in-dim 1536 --device 0 --num-workers 2 \
+  --model-option Model.num_local_routes=12 \
+  --model-option Model.multiscale_gate_initial_bias=-0.5 \
+  --model-option Model.multiscale_local_initial_scale=0.5 \
+  --model-option Model.label_smoothing=0.0
+```
