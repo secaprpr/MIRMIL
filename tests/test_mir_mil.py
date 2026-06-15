@@ -430,6 +430,35 @@ def test_class_conditional_multiscale_requires_route_groups():
         )
 
 
+def test_hybrid_multiscale_response_matches_finite_difference():
+    model = make_model(
+        num_classes=3,
+        num_local_routes=6,
+        local_route_dim=4,
+        local_route_temperature=0.4,
+        potential_type="hybrid_multiscale",
+        multiscale_class_mix_initial=0.5,
+    )
+    bag = torch.randn(10, 6, dtype=torch.double)
+    response = model.measure_influence_response(bag, target_class=1)
+    finite = torch.stack(
+        [
+            model.finite_difference_response(
+                bag, point, target_class=1, epsilon=1e-6
+            )
+            for point in bag
+        ]
+    )
+
+    torch.testing.assert_close(
+        torch.sigmoid(model.potential.class_mix_logit),
+        torch.full((3,), 0.5, dtype=torch.double),
+    )
+    torch.testing.assert_close(
+        response["response"], finite, atol=5e-5, rtol=5e-5
+    )
+
+
 def test_adaptive_multiscale_prototype_response_matches_finite_difference():
     model = make_model(
         num_local_routes=3,
