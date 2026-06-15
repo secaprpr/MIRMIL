@@ -564,6 +564,8 @@ class MIR_MIL(nn.Module):
         num_local_routes=0,
         local_route_dim=32,
         local_route_temperature=0.25,
+        anchor_route_dim=0,
+        anchor_route_temperature=1.0,
         potential_hidden_dim=128,
         dropout=0.1,
         act="gelu",
@@ -614,6 +616,8 @@ class MIR_MIL(nn.Module):
         self.num_local_routes = int(num_local_routes)
         self.local_route_dim = int(local_route_dim)
         self.local_route_temperature = float(local_route_temperature)
+        self.anchor_route_dim = int(anchor_route_dim)
+        self.anchor_route_temperature = float(anchor_route_temperature)
         if self.num_local_routes < 0 or self.local_route_dim <= 0:
             raise ValueError(
                 "num_local_routes must be non-negative and "
@@ -621,6 +625,10 @@ class MIR_MIL(nn.Module):
             )
         if self.local_route_temperature <= 0:
             raise ValueError("local_route_temperature must be positive")
+        if self.anchor_route_dim < 0:
+            raise ValueError("anchor_route_dim must be non-negative")
+        if self.anchor_route_temperature <= 0:
+            raise ValueError("anchor_route_temperature must be positive")
         self.stability_weight = float(stability_weight)
         self.patch_dropout = float(patch_dropout)
         self.feature_noise_std = float(feature_noise_std)
@@ -661,10 +669,22 @@ class MIR_MIL(nn.Module):
         else:
             self.local_route_basis = None
             self.local_route_scorer = None
+        if self.anchor_route_dim > 0:
+            self.anchor_route_basis = nn.Linear(
+                hidden_dim, self.anchor_route_dim
+            )
+            self.anchor_route_scorer = nn.Linear(hidden_dim, 1)
+        else:
+            self.anchor_route_basis = None
+            self.anchor_route_scorer = None
+        local_state_dim = (
+            self.num_local_routes * self.local_route_dim
+            + self.anchor_route_dim
+        )
         state_dim = (
             self.composition_state_dim
             + self.num_tail_scores
-            + self.num_local_routes * self.local_route_dim
+            + local_state_dim
         )
         if self.potential_type == "mlp":
             self.potential = nn.Sequential(
@@ -714,7 +734,7 @@ class MIR_MIL(nn.Module):
                     self.composition_state_dim + self.num_tail_scores
                 ),
                 local_state_dim=(
-                    self.num_local_routes * self.local_route_dim
+                    local_state_dim
                 ),
                 num_classes=self.num_classes,
                 hidden_dim=potential_hidden_dim,
@@ -733,6 +753,11 @@ class MIR_MIL(nn.Module):
                 raise ValueError(
                     "class_conditional_multiscale requires "
                     "num_local_routes divisible by num_classes"
+                )
+            if self.anchor_route_dim:
+                raise ValueError(
+                    "class_conditional_multiscale does not support "
+                    "an anchor route"
                 )
             self.potential = ClassConditionalMultiscalePotential(
                 global_state_dim=(
@@ -757,6 +782,10 @@ class MIR_MIL(nn.Module):
                 raise ValueError(
                     "hybrid_multiscale requires num_local_routes "
                     "divisible by num_classes"
+                )
+            if self.anchor_route_dim:
+                raise ValueError(
+                    "hybrid_multiscale does not support an anchor route"
                 )
             self.potential = HybridMultiscalePotential(
                 global_state_dim=(
@@ -784,12 +813,17 @@ class MIR_MIL(nn.Module):
                     "residual_class_multiscale requires "
                     "num_local_routes divisible by num_classes"
                 )
+            if self.anchor_route_dim:
+                raise ValueError(
+                    "residual_class_multiscale does not support "
+                    "an anchor route"
+                )
             self.potential = ResidualClassMultiscalePotential(
                 global_state_dim=(
                     self.composition_state_dim + self.num_tail_scores
                 ),
                 local_state_dim=(
-                    self.num_local_routes * self.local_route_dim
+                    local_state_dim
                 ),
                 num_classes=self.num_classes,
                 hidden_dim=potential_hidden_dim,
@@ -880,13 +914,31 @@ class MIR_MIL(nn.Module):
         else:
             local_basis = encoded.new_empty((encoded.shape[0], 0))
             local_scores = encoded.new_empty((encoded.shape[0], 0))
-        return basis, tail_scores, local_basis, local_scores
+        if self.anchor_route_dim > 0:
+            anchor_basis = self.anchor_route_basis(encoded)
+            anchor_scores = self.anchor_route_scorer(encoded)
+        else:
+            anchor_basis = encoded.new_empty((encoded.shape[0], 0))
+            anchor_scores = encoded.new_empty((encoded.shape[0], 0))
+        return (
+            basis,
+            tail_scores,
+            local_basis,
+            local_scores,
+            anchor_basis,
+            anchor_scores,
+        )
 
     def state_from_weighted_points(self, points, weights=None):
         points = self._normalize_bag(points)
-        basis, tail_scores, local_basis, local_scores = (
-            self._point_statistics(points)
-        )
+        (
+            basis,
+            tail_scores,
+            local_basis,
+            local_scores,
+            anchor_basis,
+            anchor_scores,
+        ) = self._point_statistics(points)
         if weights is None:
             weights = torch.full(
                 (points.shape[0],),
@@ -931,8 +983,24 @@ class MIR_MIL(nn.Module):
             local_state = torch.einsum(
                 "nr,nd->rd", local_weights, local_basis
             ).flatten()
+        anchor_state = points.new_empty((0,))
+        if self.anchor_route_dim > 0:
+            anchor_log_weights = (
+                anchor_scores[:, 0] / self.anchor_route_temperature
+                + log_weights
+            )
+            anchor_weights = torch.softmax(anchor_log_weights, dim=0)
+            anchor_state = torch.sum(
+                anchor_weights[:, None] * anchor_basis, dim=0
+            )
         state = torch.cat(
-            [*composition_state, tail_state, local_state], dim=0
+            [
+                *composition_state,
+                tail_state,
+                local_state,
+                anchor_state,
+            ],
+            dim=0,
         )
         return (
             state,
@@ -941,6 +1009,8 @@ class MIR_MIL(nn.Module):
             weights,
             local_basis,
             local_scores,
+            anchor_basis,
+            anchor_scores,
         )
 
     def forward(self, bag, return_state=False):
@@ -951,6 +1021,8 @@ class MIR_MIL(nn.Module):
             weights,
             local_basis,
             local_scores,
+            anchor_basis,
+            anchor_scores,
         ) = self.state_from_weighted_points(bag)
         logits = self.potential(state.unsqueeze(0))
         output = {"logits": logits}
@@ -963,6 +1035,8 @@ class MIR_MIL(nn.Module):
                     "weights": weights,
                     "local_basis": local_basis,
                     "local_scores": local_scores,
+                    "anchor_basis": anchor_basis,
+                    "anchor_scores": anchor_scores,
                 }
             )
         return output
@@ -1001,6 +1075,8 @@ class MIR_MIL(nn.Module):
             weights,
             local_basis,
             local_scores,
+            anchor_basis,
+            anchor_scores,
         ) = self.state_from_weighted_points(bag)
         logits = self.potential(state.unsqueeze(0))
         if target_class is None:
@@ -1056,10 +1132,13 @@ class MIR_MIL(nn.Module):
         ).sum(dim=1)
         local_response = basis.new_zeros(basis.shape[0])
         if self.num_local_routes > 0:
-            local_state = state[offset:].reshape(
+            local_size = self.num_local_routes * self.local_route_dim
+            local_state = state[offset : offset + local_size].reshape(
                 self.num_local_routes, self.local_route_dim
             )
-            local_gradient = gradient[offset:].reshape(
+            local_gradient = gradient[
+                offset : offset + local_size
+            ].reshape(
                 self.num_local_routes, self.local_route_dim
             )
             local_log_normalizers = torch.logsumexp(
@@ -1079,6 +1158,33 @@ class MIR_MIL(nn.Module):
                 local_basis[:, None, :] - local_state[None, :, :],
                 local_gradient,
             )
+            offset += local_size
+        anchor_response = basis.new_zeros(basis.shape[0])
+        if self.anchor_route_dim > 0:
+            anchor_state = state[
+                offset : offset + self.anchor_route_dim
+            ]
+            anchor_gradient = gradient[
+                offset : offset + self.anchor_route_dim
+            ]
+            anchor_log_normalizer = torch.logsumexp(
+                anchor_scores[:, 0] / self.anchor_route_temperature
+                + torch.log(
+                    weights.clamp_min(
+                        torch.finfo(weights.dtype).tiny
+                    )
+                ),
+                dim=0,
+            )
+            anchor_density_ratio = torch.exp(
+                anchor_scores[:, 0] / self.anchor_route_temperature
+                - anchor_log_normalizer
+            )
+            anchor_response = (
+                anchor_density_ratio[:, None]
+                * (anchor_basis - anchor_state[None, :])
+                * anchor_gradient[None, :]
+            ).sum(dim=1)
         return {
             "logits": logits,
             "score": score,
@@ -1088,11 +1194,13 @@ class MIR_MIL(nn.Module):
                 + variance_response
                 + tail_response
                 + local_response
+                + anchor_response
             ),
             "composition_response": composition_response,
             "variance_response": variance_response,
             "tail_response": tail_response,
             "local_response": local_response,
+            "anchor_response": anchor_response,
         }
 
     def functional_derivative(
@@ -1109,6 +1217,8 @@ class MIR_MIL(nn.Module):
             reference_weights,
             _,
             reference_local_scores,
+            _,
+            reference_anchor_scores,
         ) = self.state_from_weighted_points(
             reference_points, reference_weights
         )
@@ -1120,9 +1230,14 @@ class MIR_MIL(nn.Module):
             score, reference_state, retain_graph=True
         )[0]
         evaluation_points = self._normalize_bag(evaluation_points)
-        basis, tail_scores, local_basis, local_scores = (
-            self._point_statistics(evaluation_points)
-        )
+        (
+            basis,
+            tail_scores,
+            local_basis,
+            local_scores,
+            anchor_basis,
+            anchor_scores,
+        ) = self._point_statistics(evaluation_points)
         composition = reference_state[: self.sketch_dim]
         composition_gradient = gradient[: self.sketch_dim]
         offset = self.sketch_dim
@@ -1154,10 +1269,15 @@ class MIR_MIL(nn.Module):
         )
         local_derivative = basis.new_zeros(basis.shape[0])
         if self.num_local_routes > 0:
-            local_state = reference_state[offset:].reshape(
+            local_size = self.num_local_routes * self.local_route_dim
+            local_state = reference_state[
+                offset : offset + local_size
+            ].reshape(
                 self.num_local_routes, self.local_route_dim
             )
-            local_gradient = gradient[offset:].reshape(
+            local_gradient = gradient[
+                offset : offset + local_size
+            ].reshape(
                 self.num_local_routes, self.local_route_dim
             )
             local_log_normalizers = torch.logsumexp(
@@ -1179,9 +1299,39 @@ class MIR_MIL(nn.Module):
                 local_basis[:, None, :] - local_state[None, :, :],
                 local_gradient,
             )
+            offset += local_size
+        anchor_derivative = basis.new_zeros(basis.shape[0])
+        if self.anchor_route_dim > 0:
+            anchor_state = reference_state[
+                offset : offset + self.anchor_route_dim
+            ]
+            anchor_gradient = gradient[
+                offset : offset + self.anchor_route_dim
+            ]
+            anchor_log_normalizer = torch.logsumexp(
+                reference_anchor_scores[:, 0]
+                / self.anchor_route_temperature
+                + torch.log(
+                    reference_weights.clamp_min(
+                        torch.finfo(reference_weights.dtype).tiny
+                    )
+                ),
+                dim=0,
+            )
+            anchor_density_ratio = torch.exp(
+                anchor_scores[:, 0] / self.anchor_route_temperature
+                - anchor_log_normalizer
+            )
+            anchor_derivative = (
+                anchor_density_ratio[:, None]
+                * (anchor_basis - anchor_state[None, :])
+                * anchor_gradient[None, :]
+            ).sum(dim=1)
         return (
             basis * composition_gradient[None, :]
-        ).sum(dim=1) + variance_derivative + local_derivative + (
+        ).sum(
+            dim=1
+        ) + variance_derivative + local_derivative + anchor_derivative + (
             self.tail_temperature
             * density_ratio
             * tail_gradient[None, :]

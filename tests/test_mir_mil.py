@@ -349,6 +349,58 @@ def test_local_route_integrated_attribution_is_complete():
     )
 
 
+def test_anchor_route_response_matches_finite_difference():
+    model = make_model(
+        num_local_routes=3,
+        local_route_dim=4,
+        anchor_route_dim=7,
+        anchor_route_temperature=0.8,
+    )
+    bag = torch.randn(10, 6, dtype=torch.double)
+    response = model.measure_influence_response(bag, target_class=2)
+    finite = torch.stack(
+        [
+            model.finite_difference_response(
+                bag, point, target_class=2, epsilon=1e-6
+            )
+            for point in bag
+        ]
+    )
+
+    assert response["anchor_response"].abs().max() > 0
+    torch.testing.assert_close(
+        response["anchor_response"].mean(),
+        torch.zeros((), dtype=torch.double),
+        atol=1e-10,
+        rtol=1e-10,
+    )
+    torch.testing.assert_close(
+        response["response"], finite, atol=5e-5, rtol=5e-5
+    )
+
+
+def test_anchor_route_integrated_attribution_is_complete():
+    model = make_model(
+        num_local_routes=3,
+        local_route_dim=4,
+        anchor_route_dim=7,
+        anchor_route_temperature=0.8,
+    )
+    bag = torch.randn(8, 6, dtype=torch.double)
+    baseline = torch.randn(7, 6, dtype=torch.double)
+
+    result = model.integrated_functional_attribution(
+        bag, baseline, target_class=0, steps=1025
+    )
+
+    torch.testing.assert_close(
+        result["decomposition"],
+        result["score_difference"],
+        atol=5e-5,
+        rtol=5e-5,
+    )
+
+
 def test_adaptive_multiscale_response_matches_finite_difference():
     model = make_model(
         num_local_routes=3,

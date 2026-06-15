@@ -206,6 +206,12 @@ def get_model_from_yaml(yaml_args):
             local_route_temperature=_model_option(
                 yaml_args, "local_route_temperature", 0.25
             ),
+            anchor_route_dim=_model_option(
+                yaml_args, "anchor_route_dim", 0
+            ),
+            anchor_route_temperature=_model_option(
+                yaml_args, "anchor_route_temperature", 1.0
+            ),
             potential_hidden_dim=yaml_args.Model.potential_hidden_dim,
             dropout=yaml_args.Model.dropout,
             act=yaml_args.Model.act,

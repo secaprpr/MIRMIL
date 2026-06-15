@@ -33,6 +33,8 @@ Model:
     num_local_routes: 12
     local_route_dim: 32
     local_route_temperature: 0.25
+    anchor_route_dim: 0
+    anchor_route_temperature: 1.0
     potential_hidden_dim: 128
     dropout: 0.1
     act: gelu
