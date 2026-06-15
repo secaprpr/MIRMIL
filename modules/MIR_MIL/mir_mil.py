@@ -215,6 +215,79 @@ class AdaptiveMultiscalePotential(nn.Module):
         )
 
 
+class AnchoredMultiscalePotential(nn.Module):
+    """Full-rank attention potential with global and routed residuals."""
+
+    def __init__(
+        self,
+        global_state_dim,
+        local_state_dim,
+        anchor_state_dim,
+        num_classes,
+        hidden_dim,
+        dropout,
+        act,
+        gate_initial_bias,
+        global_initial_scale,
+        local_initial_scale,
+    ):
+        super().__init__()
+        if min(
+            global_state_dim, local_state_dim, anchor_state_dim
+        ) <= 0:
+            raise ValueError("anchored state dimensions must be positive")
+        self.global_state_dim = int(global_state_dim)
+        self.local_state_dim = int(local_state_dim)
+        self.anchor_state_dim = int(anchor_state_dim)
+        self.gate_initial_bias = float(gate_initial_bias)
+        self.anchor_potential = nn.Linear(
+            self.anchor_state_dim, num_classes
+        )
+        self.global_potential = nn.Sequential(
+            nn.Linear(self.global_state_dim, hidden_dim),
+            _activation(act),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, num_classes),
+        )
+        self.local_potential = nn.Sequential(
+            nn.Linear(self.local_state_dim, hidden_dim),
+            _activation(act),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, num_classes),
+        )
+        self.local_gate = nn.Linear(self.global_state_dim, num_classes)
+        self.global_scale = nn.Parameter(
+            torch.full((num_classes,), float(global_initial_scale))
+        )
+        self.local_scale = nn.Parameter(
+            torch.full((num_classes,), float(local_initial_scale))
+        )
+
+    def reset_gate(self):
+        nn.init.zeros_(self.local_gate.weight)
+        nn.init.constant_(
+            self.local_gate.bias, self.gate_initial_bias
+        )
+
+    def forward(self, state):
+        global_end = self.global_state_dim
+        local_end = global_end + self.local_state_dim
+        global_state = state[:, :global_end]
+        local_state = state[:, global_end:local_end]
+        anchor_state = state[:, local_end:]
+        if anchor_state.shape[1] != self.anchor_state_dim:
+            raise ValueError(
+                f"Expected anchor state dimension "
+                f"{self.anchor_state_dim}, got {anchor_state.shape[1]}"
+            )
+        gate = torch.sigmoid(self.local_gate(global_state))
+        return (
+            self.anchor_potential(anchor_state)
+            + self.global_scale * self.global_potential(global_state)
+            + gate * self.local_scale * self.local_potential(local_state)
+        )
+
+
 class ClassConditionalMultiscalePotential(nn.Module):
     """Global potential with class-owned local measure routes."""
 
@@ -566,6 +639,7 @@ class MIR_MIL(nn.Module):
         local_route_temperature=0.25,
         anchor_route_dim=0,
         anchor_route_temperature=1.0,
+        anchor_route_identity=False,
         potential_hidden_dim=128,
         dropout=0.1,
         act="gelu",
@@ -592,6 +666,8 @@ class MIR_MIL(nn.Module):
         multiscale_class_mix_initial=0.5,
         multiscale_class_residual_initial_scale=0.05,
         multiscale_prototype_initial_scale=0.05,
+        anchor_global_initial_scale=0.1,
+        anchor_local_initial_scale=0.1,
     ):
         super().__init__()
         if in_dim <= 0 or num_classes < 2:
@@ -618,6 +694,7 @@ class MIR_MIL(nn.Module):
         self.local_route_temperature = float(local_route_temperature)
         self.anchor_route_dim = int(anchor_route_dim)
         self.anchor_route_temperature = float(anchor_route_temperature)
+        self.anchor_route_identity = bool(anchor_route_identity)
         if self.num_local_routes < 0 or self.local_route_dim <= 0:
             raise ValueError(
                 "num_local_routes must be non-negative and "
@@ -629,6 +706,12 @@ class MIR_MIL(nn.Module):
             raise ValueError("anchor_route_dim must be non-negative")
         if self.anchor_route_temperature <= 0:
             raise ValueError("anchor_route_temperature must be positive")
+        if self.anchor_route_identity and (
+            self.anchor_route_dim != hidden_dim
+        ):
+            raise ValueError(
+                "identity anchor dimension must equal hidden_dim"
+            )
         self.stability_weight = float(stability_weight)
         self.patch_dropout = float(patch_dropout)
         self.feature_noise_std = float(feature_noise_std)
@@ -670,8 +753,10 @@ class MIR_MIL(nn.Module):
             self.local_route_basis = None
             self.local_route_scorer = None
         if self.anchor_route_dim > 0:
-            self.anchor_route_basis = nn.Linear(
-                hidden_dim, self.anchor_route_dim
+            self.anchor_route_basis = (
+                None
+                if self.anchor_route_identity
+                else nn.Linear(hidden_dim, self.anchor_route_dim)
             )
             self.anchor_route_scorer = nn.Linear(hidden_dim, 1)
         else:
@@ -742,6 +827,31 @@ class MIR_MIL(nn.Module):
                 act=act,
                 gate_initial_bias=multiscale_gate_initial_bias,
                 local_initial_scale=multiscale_local_initial_scale,
+            )
+        elif self.potential_type == "anchored_multiscale":
+            if self.num_local_routes <= 0:
+                raise ValueError(
+                    "anchored_multiscale requires num_local_routes > 0"
+                )
+            if self.anchor_route_dim <= 0:
+                raise ValueError(
+                    "anchored_multiscale requires anchor_route_dim > 0"
+                )
+            self.potential = AnchoredMultiscalePotential(
+                global_state_dim=(
+                    self.composition_state_dim + self.num_tail_scores
+                ),
+                local_state_dim=(
+                    self.num_local_routes * self.local_route_dim
+                ),
+                anchor_state_dim=self.anchor_route_dim,
+                num_classes=self.num_classes,
+                hidden_dim=potential_hidden_dim,
+                dropout=dropout,
+                act=act,
+                gate_initial_bias=multiscale_gate_initial_bias,
+                global_initial_scale=anchor_global_initial_scale,
+                local_initial_scale=anchor_local_initial_scale,
             )
         elif self.potential_type == "class_conditional_multiscale":
             if self.num_local_routes <= 0:
@@ -876,6 +986,7 @@ class MIR_MIL(nn.Module):
             self.potential,
             (
                 AdaptiveMultiscalePotential,
+                AnchoredMultiscalePotential,
                 ClassConditionalMultiscalePotential,
                 HybridMultiscalePotential,
                 ResidualClassMultiscalePotential,
@@ -915,7 +1026,11 @@ class MIR_MIL(nn.Module):
             local_basis = encoded.new_empty((encoded.shape[0], 0))
             local_scores = encoded.new_empty((encoded.shape[0], 0))
         if self.anchor_route_dim > 0:
-            anchor_basis = self.anchor_route_basis(encoded)
+            anchor_basis = (
+                encoded
+                if self.anchor_route_identity
+                else self.anchor_route_basis(encoded)
+            )
             anchor_scores = self.anchor_route_scorer(encoded)
         else:
             anchor_basis = encoded.new_empty((encoded.shape[0], 0))

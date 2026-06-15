@@ -212,6 +212,9 @@ def get_model_from_yaml(yaml_args):
             anchor_route_temperature=_model_option(
                 yaml_args, "anchor_route_temperature", 1.0
             ),
+            anchor_route_identity=_model_option(
+                yaml_args, "anchor_route_identity", False
+            ),
             potential_hidden_dim=yaml_args.Model.potential_hidden_dim,
             dropout=yaml_args.Model.dropout,
             act=yaml_args.Model.act,
@@ -285,6 +288,12 @@ def get_model_from_yaml(yaml_args):
             ),
             multiscale_prototype_initial_scale=_model_option(
                 yaml_args, "multiscale_prototype_initial_scale", 0.05
+            ),
+            anchor_global_initial_scale=_model_option(
+                yaml_args, "anchor_global_initial_scale", 0.1
+            ),
+            anchor_local_initial_scale=_model_option(
+                yaml_args, "anchor_local_initial_scale", 0.1
             ),
         )
     if model_name == 'OT_MIL':

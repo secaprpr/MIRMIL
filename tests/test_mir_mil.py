@@ -401,6 +401,36 @@ def test_anchor_route_integrated_attribution_is_complete():
     )
 
 
+def test_anchored_multiscale_response_matches_finite_difference():
+    model = make_model(
+        hidden_dim=12,
+        num_local_routes=3,
+        local_route_dim=4,
+        anchor_route_dim=12,
+        anchor_route_identity=True,
+        potential_type="anchored_multiscale",
+        anchor_global_initial_scale=0.1,
+        anchor_local_initial_scale=0.1,
+    )
+    bag = torch.randn(10, 6, dtype=torch.double)
+    output = model(bag, return_state=True)
+    encoded = model.encoder(model._normalize_bag(bag))
+    torch.testing.assert_close(output["anchor_basis"], encoded)
+
+    response = model.measure_influence_response(bag, target_class=1)
+    finite = torch.stack(
+        [
+            model.finite_difference_response(
+                bag, point, target_class=1, epsilon=1e-6
+            )
+            for point in bag
+        ]
+    )
+    torch.testing.assert_close(
+        response["response"], finite, atol=6e-5, rtol=6e-5
+    )
+
+
 def test_adaptive_multiscale_response_matches_finite_difference():
     model = make_model(
         num_local_routes=3,

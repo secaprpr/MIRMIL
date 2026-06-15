@@ -35,6 +35,7 @@ Model:
     local_route_temperature: 0.25
     anchor_route_dim: 0
     anchor_route_temperature: 1.0
+    anchor_route_identity: False
     potential_hidden_dim: 128
     dropout: 0.1
     act: gelu
@@ -55,6 +56,8 @@ Model:
     multiscale_class_mix_initial: 0.5
     multiscale_class_residual_initial_scale: 0.05
     multiscale_prototype_initial_scale: 0.05
+    anchor_global_initial_scale: 0.1
+    anchor_local_initial_scale: 0.1
     prototype_embedding_dim: 64
     prototypes_per_class: 4
     prototype_temperature: 0.2
