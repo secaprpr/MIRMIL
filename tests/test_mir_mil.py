@@ -1,4 +1,5 @@
 import torch
+import pytest
 
 from modules.MIR_MIL.mir_mil import MIR_MIL
 from utils.model_utils import get_criterion, get_model_from_yaml
@@ -386,6 +387,47 @@ def test_adaptive_multiscale_starts_with_conservative_local_gate():
         gate,
         torch.full_like(gate, torch.sigmoid(torch.tensor(-2.0)).item()),
     )
+
+
+def test_class_conditional_multiscale_response_matches_finite_difference():
+    model = make_model(
+        num_classes=3,
+        num_local_routes=6,
+        local_route_dim=4,
+        local_route_temperature=0.4,
+        potential_type="class_conditional_multiscale",
+    )
+    bag = torch.randn(10, 6, dtype=torch.double)
+    response = model.measure_influence_response(bag, target_class=2)
+    finite = torch.stack(
+        [
+            model.finite_difference_response(
+                bag, point, target_class=2, epsilon=1e-6
+            )
+            for point in bag
+        ]
+    )
+
+    assert len(model.potential.class_local_potentials) == 3
+    torch.testing.assert_close(
+        response["response"].mean(),
+        torch.zeros((), dtype=torch.double),
+        atol=1e-10,
+        rtol=1e-10,
+    )
+    torch.testing.assert_close(
+        response["response"], finite, atol=5e-5, rtol=5e-5
+    )
+
+
+def test_class_conditional_multiscale_requires_route_groups():
+    with pytest.raises(ValueError, match="divisible by num_classes"):
+        make_model(
+            num_classes=3,
+            num_local_routes=4,
+            local_route_dim=4,
+            potential_type="class_conditional_multiscale",
+        )
 
 
 def test_adaptive_multiscale_prototype_response_matches_finite_difference():

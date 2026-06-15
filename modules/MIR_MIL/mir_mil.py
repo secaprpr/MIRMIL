@@ -215,6 +215,96 @@ class AdaptiveMultiscalePotential(nn.Module):
         )
 
 
+class ClassConditionalMultiscalePotential(nn.Module):
+    """Global potential with class-owned local measure routes."""
+
+    def __init__(
+        self,
+        global_state_dim,
+        local_state_dim,
+        num_classes,
+        hidden_dim,
+        dropout,
+        act,
+        gate_initial_bias,
+        local_initial_scale,
+    ):
+        super().__init__()
+        if global_state_dim <= 0 or local_state_dim <= 0:
+            raise ValueError(
+                "global_state_dim and local_state_dim must be positive"
+            )
+        if local_state_dim % num_classes:
+            raise ValueError(
+                "local_state_dim must be divisible by num_classes"
+            )
+        self.global_state_dim = int(global_state_dim)
+        self.local_state_dim = int(local_state_dim)
+        self.num_classes = int(num_classes)
+        self.class_local_state_dim = (
+            self.local_state_dim // self.num_classes
+        )
+        self.gate_initial_bias = float(gate_initial_bias)
+        self.global_potential = nn.Sequential(
+            nn.Linear(self.global_state_dim, hidden_dim),
+            _activation(act),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, self.num_classes),
+        )
+        self.class_local_potentials = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.Linear(self.class_local_state_dim, hidden_dim),
+                    _activation(act),
+                    nn.Dropout(dropout),
+                    nn.Linear(hidden_dim, 1),
+                )
+                for _ in range(self.num_classes)
+            ]
+        )
+        self.local_gate = nn.Linear(
+            self.global_state_dim, self.num_classes
+        )
+        self.local_scale = nn.Parameter(
+            torch.full(
+                (self.num_classes,), float(local_initial_scale)
+            )
+        )
+
+    def reset_gate(self):
+        nn.init.zeros_(self.local_gate.weight)
+        nn.init.constant_(
+            self.local_gate.bias, self.gate_initial_bias
+        )
+
+    def forward(self, state):
+        global_state = state[:, : self.global_state_dim]
+        local_state = state[:, self.global_state_dim :]
+        if local_state.shape[1] != self.local_state_dim:
+            raise ValueError(
+                f"Expected local state dimension {self.local_state_dim}, "
+                f"got {local_state.shape[1]}"
+            )
+        class_states = local_state.reshape(
+            local_state.shape[0],
+            self.num_classes,
+            self.class_local_state_dim,
+        )
+        local_logits = torch.cat(
+            [
+                potential(class_states[:, class_index])
+                for class_index, potential in enumerate(
+                    self.class_local_potentials
+                )
+            ],
+            dim=1,
+        )
+        gate = torch.sigmoid(self.local_gate(global_state))
+        return self.global_potential(global_state) + (
+            gate * self.local_scale * local_logits
+        )
+
+
 class AdaptiveMultiscalePrototypePotential(AdaptiveMultiscalePotential):
     """Adaptive multiscale potential with class-wise state prototypes."""
 
@@ -446,6 +536,31 @@ class MIR_MIL(nn.Module):
                 gate_initial_bias=multiscale_gate_initial_bias,
                 local_initial_scale=multiscale_local_initial_scale,
             )
+        elif self.potential_type == "class_conditional_multiscale":
+            if self.num_local_routes <= 0:
+                raise ValueError(
+                    "class_conditional_multiscale requires "
+                    "num_local_routes > 0"
+                )
+            if self.num_local_routes % self.num_classes:
+                raise ValueError(
+                    "class_conditional_multiscale requires "
+                    "num_local_routes divisible by num_classes"
+                )
+            self.potential = ClassConditionalMultiscalePotential(
+                global_state_dim=(
+                    self.composition_state_dim + self.num_tail_scores
+                ),
+                local_state_dim=(
+                    self.num_local_routes * self.local_route_dim
+                ),
+                num_classes=self.num_classes,
+                hidden_dim=potential_hidden_dim,
+                dropout=dropout,
+                act=act,
+                gate_initial_bias=multiscale_gate_initial_bias,
+                local_initial_scale=multiscale_local_initial_scale,
+            )
         elif self.potential_type == "adaptive_multiscale_prototype":
             if self.num_local_routes <= 0:
                 raise ValueError(
@@ -483,7 +598,13 @@ class MIR_MIL(nn.Module):
                 f"Unsupported potential_type: {self.potential_type}"
             )
         self.apply(self._initialize)
-        if isinstance(self.potential, AdaptiveMultiscalePotential):
+        if isinstance(
+            self.potential,
+            (
+                AdaptiveMultiscalePotential,
+                ClassConditionalMultiscalePotential,
+            ),
+        ):
             self.potential.reset_gate()
 
     @staticmethod
