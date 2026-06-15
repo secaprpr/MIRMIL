@@ -47,15 +47,16 @@ Model:
     lipschitz_target: 1.0
     lipschitz_samples: 64
     ordinal_weight: 0.0
-    potential_type: adaptive_multiscale
+    potential_type: adaptive_multiscale_prototype
     multiscale_gate_initial_bias: -2.0
     multiscale_local_initial_scale: 0.1
+    multiscale_prototype_initial_scale: 0.05
     prototype_embedding_dim: 64
     prototypes_per_class: 4
     prototype_temperature: 0.2
     prototype_mixture_temperature: 1.0
-    prototype_regularization_weight: 0.0
-    prototype_diversity_margin: 0.0
+    prototype_regularization_weight: 0.01
+    prototype_diversity_margin: 0.2
     prototype_separation_margin: 0.0
     prototype_residual_initial_scale: 0.0
 

@@ -388,6 +388,54 @@ def test_adaptive_multiscale_starts_with_conservative_local_gate():
     )
 
 
+def test_adaptive_multiscale_prototype_response_matches_finite_difference():
+    model = make_model(
+        num_local_routes=3,
+        local_route_dim=4,
+        local_route_temperature=0.4,
+        potential_type="adaptive_multiscale_prototype",
+        prototype_embedding_dim=6,
+        prototypes_per_class=2,
+        multiscale_prototype_initial_scale=0.05,
+    )
+    bag = torch.randn(10, 6, dtype=torch.double)
+    response = model.measure_influence_response(bag, target_class=1)
+    finite = torch.stack(
+        [
+            model.finite_difference_response(
+                bag, point, target_class=1, epsilon=1e-6
+            )
+            for point in bag
+        ]
+    )
+
+    torch.testing.assert_close(
+        response["response"], finite, atol=5e-5, rtol=5e-5
+    )
+
+
+def test_adaptive_multiscale_prototype_regularization_backpropagates():
+    model = make_model(
+        num_local_routes=3,
+        local_route_dim=4,
+        potential_type="adaptive_multiscale_prototype",
+        prototype_embedding_dim=6,
+        prototypes_per_class=2,
+        prototype_regularization_weight=0.1,
+    ).float()
+    bag = torch.randn(12, 6)
+    label = torch.tensor([1])
+
+    _, losses = model.compute_loss(
+        bag, label, torch.nn.CrossEntropyLoss()
+    )
+    losses["loss"].backward()
+
+    assert losses["prototype_loss"] > 0
+    assert model.potential.prototype_scale.grad is not None
+    assert model.potential.prototype_potential.prototypes.grad is not None
+
+
 def test_model_is_constructed_from_repository_yaml():
     args = read_yaml("configs/MIR_MIL.yaml")
     model = get_model_from_yaml(args)
@@ -396,4 +444,4 @@ def test_model_is_constructed_from_repository_yaml():
     assert model.input_dim == args.Model.in_dim
     assert model.num_classes == args.General.num_classes
     assert model.num_local_routes == 4
-    assert model.potential_type == "adaptive_multiscale"
+    assert model.potential_type == "adaptive_multiscale_prototype"

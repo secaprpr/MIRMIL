@@ -215,6 +215,65 @@ class AdaptiveMultiscalePotential(nn.Module):
         )
 
 
+class AdaptiveMultiscalePrototypePotential(AdaptiveMultiscalePotential):
+    """Adaptive multiscale potential with class-wise state prototypes."""
+
+    def __init__(
+        self,
+        state_dim,
+        global_state_dim,
+        local_state_dim,
+        num_classes,
+        hidden_dim,
+        dropout,
+        act,
+        gate_initial_bias,
+        local_initial_scale,
+        prototype_embedding_dim,
+        prototypes_per_class,
+        prototype_temperature,
+        prototype_mixture_temperature,
+        prototype_diversity_margin,
+        prototype_separation_margin,
+        prototype_initial_scale,
+    ):
+        super().__init__(
+            global_state_dim=global_state_dim,
+            local_state_dim=local_state_dim,
+            num_classes=num_classes,
+            hidden_dim=hidden_dim,
+            dropout=dropout,
+            act=act,
+            gate_initial_bias=gate_initial_bias,
+            local_initial_scale=local_initial_scale,
+        )
+        with torch.random.fork_rng():
+            self.prototype_potential = MixturePrototypePotential(
+                state_dim=state_dim,
+                num_classes=num_classes,
+                embedding_dim=prototype_embedding_dim,
+                prototypes_per_class=prototypes_per_class,
+                temperature=prototype_temperature,
+                mixture_temperature=prototype_mixture_temperature,
+                hidden_dim=hidden_dim,
+                dropout=dropout,
+                act=act,
+                diversity_margin=prototype_diversity_margin,
+                separation_margin=prototype_separation_margin,
+            )
+        self.prototype_scale = nn.Parameter(
+            torch.full((num_classes,), float(prototype_initial_scale))
+        )
+
+    def forward(self, state):
+        return super().forward(state) + (
+            self.prototype_scale * self.prototype_potential(state)
+        )
+
+    def regularization(self):
+        return self.prototype_potential.regularization()
+
+
 class MIR_MIL(nn.Module):
     """Neural measure potential with closed-form measure influence response."""
 
@@ -253,6 +312,7 @@ class MIR_MIL(nn.Module):
         prototype_residual_initial_scale=0.0,
         multiscale_gate_initial_bias=-2.0,
         multiscale_local_initial_scale=0.1,
+        multiscale_prototype_initial_scale=0.05,
     ):
         super().__init__()
         if in_dim <= 0 or num_classes < 2:
@@ -385,6 +445,38 @@ class MIR_MIL(nn.Module):
                 act=act,
                 gate_initial_bias=multiscale_gate_initial_bias,
                 local_initial_scale=multiscale_local_initial_scale,
+            )
+        elif self.potential_type == "adaptive_multiscale_prototype":
+            if self.num_local_routes <= 0:
+                raise ValueError(
+                    "adaptive_multiscale_prototype requires "
+                    "num_local_routes > 0"
+                )
+            self.potential = AdaptiveMultiscalePrototypePotential(
+                state_dim=state_dim,
+                global_state_dim=(
+                    self.composition_state_dim + self.num_tail_scores
+                ),
+                local_state_dim=(
+                    self.num_local_routes * self.local_route_dim
+                ),
+                num_classes=self.num_classes,
+                hidden_dim=potential_hidden_dim,
+                dropout=dropout,
+                act=act,
+                gate_initial_bias=multiscale_gate_initial_bias,
+                local_initial_scale=multiscale_local_initial_scale,
+                prototype_embedding_dim=prototype_embedding_dim,
+                prototypes_per_class=prototypes_per_class,
+                prototype_temperature=prototype_temperature,
+                prototype_mixture_temperature=(
+                    prototype_mixture_temperature
+                ),
+                prototype_diversity_margin=prototype_diversity_margin,
+                prototype_separation_margin=prototype_separation_margin,
+                prototype_initial_scale=(
+                    multiscale_prototype_initial_scale
+                ),
             )
         else:
             raise ValueError(
