@@ -93,7 +93,10 @@ def process_MIR_MIL(args):
     model = get_model_from_yaml(args).to(device)
     optimizer, base_lr = get_optimizer(args, model)
     scheduler, warmup_scheduler = get_scheduler(args, optimizer, base_lr)
-    criterion = get_criterion(args.Model.criterion)
+    criterion = get_criterion(
+        args.Model.criterion,
+        label_smoothing=getattr(args.Model, "label_smoothing", 0.0),
+    )
 
     epoch_log = init_epoch_info_log()
     reverse = args.General.best_model_metric == "val_loss"

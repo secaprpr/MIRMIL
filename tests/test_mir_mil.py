@@ -1,7 +1,7 @@
 import torch
 
 from modules.MIR_MIL.mir_mil import MIR_MIL
-from utils.model_utils import get_model_from_yaml
+from utils.model_utils import get_criterion, get_model_from_yaml
 from utils.yaml_utils import read_yaml
 
 
@@ -444,4 +444,11 @@ def test_model_is_constructed_from_repository_yaml():
     assert model.input_dim == args.Model.in_dim
     assert model.num_classes == args.General.num_classes
     assert model.num_local_routes == 4
-    assert model.potential_type == "adaptive_multiscale_prototype"
+    assert model.potential_type == "adaptive_multiscale"
+
+
+def test_cross_entropy_supports_label_smoothing():
+    criterion = get_criterion("ce", label_smoothing=0.1)
+
+    assert isinstance(criterion, torch.nn.CrossEntropyLoss)
+    assert criterion.label_smoothing == 0.1

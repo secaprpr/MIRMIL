@@ -47,7 +47,7 @@ Model:
     lipschitz_target: 1.0
     lipschitz_samples: 64
     ordinal_weight: 0.0
-    potential_type: adaptive_multiscale_prototype
+    potential_type: adaptive_multiscale
     multiscale_gate_initial_bias: -2.0
     multiscale_local_initial_scale: 0.1
     multiscale_prototype_initial_scale: 0.05
@@ -61,6 +61,7 @@ Model:
     prototype_residual_initial_scale: 0.0
 
     criterion: ce
+    label_smoothing: 0.1
     optimizer:
         which: adamw
         adam_config:

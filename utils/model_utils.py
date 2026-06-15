@@ -60,9 +60,11 @@ class ClampedCosineAnnealingLR:
         self.scheduler.load_state_dict(state_dict)
 
 
-def get_criterion(criterion):
+def get_criterion(criterion, label_smoothing=0.0):
     if criterion == 'ce':
-        return torch.nn.CrossEntropyLoss()
+        return torch.nn.CrossEntropyLoss(
+            label_smoothing=float(label_smoothing)
+        )
     elif criterion == 'bce':
         return torch.nn.BCEWithLogitsLoss()
     else:
