@@ -51,6 +51,7 @@ Model:
     multiscale_gate_initial_bias: -0.5
     multiscale_local_initial_scale: 0.5
     multiscale_class_mix_initial: 0.5
+    multiscale_class_residual_initial_scale: 0.05
     multiscale_prototype_initial_scale: 0.05
     prototype_embedding_dim: 64
     prototypes_per_class: 4

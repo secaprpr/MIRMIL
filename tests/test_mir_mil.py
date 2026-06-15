@@ -493,6 +493,69 @@ def test_hybrid_multiscale_preserves_shared_path_initialization():
             )
 
 
+def test_residual_class_multiscale_response_matches_finite_difference():
+    model = make_model(
+        num_classes=3,
+        num_local_routes=6,
+        local_route_dim=4,
+        local_route_temperature=0.4,
+        potential_type="residual_class_multiscale",
+        multiscale_class_residual_initial_scale=0.05,
+    )
+    bag = torch.randn(10, 6, dtype=torch.double)
+    response = model.measure_influence_response(bag, target_class=1)
+    finite = torch.stack(
+        [
+            model.finite_difference_response(
+                bag, point, target_class=1, epsilon=1e-6
+            )
+            for point in bag
+        ]
+    )
+
+    torch.testing.assert_close(
+        model.potential.class_residual_scale,
+        torch.full((3,), 0.05, dtype=torch.double),
+    )
+    torch.testing.assert_close(
+        response["response"], finite, atol=5e-5, rtol=5e-5
+    )
+
+
+def test_residual_class_preserves_shared_path_initialization():
+    shared = make_model(
+        num_classes=3,
+        num_local_routes=6,
+        local_route_dim=4,
+        potential_type="adaptive_multiscale",
+    )
+    residual = make_model(
+        num_classes=3,
+        num_local_routes=6,
+        local_route_dim=4,
+        potential_type="residual_class_multiscale",
+    )
+
+    pairs = [
+        (
+            shared.potential.global_potential,
+            residual.potential.global_potential,
+        ),
+        (
+            shared.potential.local_potential,
+            residual.potential.shared_local_potential,
+        ),
+        (shared.potential.local_gate, residual.potential.local_gate),
+    ]
+    for shared_module, residual_module in pairs:
+        for shared_parameter, residual_parameter in zip(
+            shared_module.parameters(), residual_module.parameters()
+        ):
+            torch.testing.assert_close(
+                shared_parameter, residual_parameter
+            )
+
+
 def test_adaptive_multiscale_prototype_response_matches_finite_difference():
     model = make_model(
         num_local_routes=3,

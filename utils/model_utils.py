@@ -272,6 +272,11 @@ def get_model_from_yaml(yaml_args):
             multiscale_class_mix_initial=_model_option(
                 yaml_args, "multiscale_class_mix_initial", 0.5
             ),
+            multiscale_class_residual_initial_scale=_model_option(
+                yaml_args,
+                "multiscale_class_residual_initial_scale",
+                0.05,
+            ),
             multiscale_prototype_initial_scale=_model_option(
                 yaml_args, "multiscale_prototype_initial_scale", 0.05
             ),
