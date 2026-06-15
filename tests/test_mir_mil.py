@@ -459,6 +459,40 @@ def test_hybrid_multiscale_response_matches_finite_difference():
     )
 
 
+def test_hybrid_multiscale_preserves_shared_path_initialization():
+    shared = make_model(
+        num_classes=3,
+        num_local_routes=6,
+        local_route_dim=4,
+        potential_type="adaptive_multiscale",
+    )
+    hybrid = make_model(
+        num_classes=3,
+        num_local_routes=6,
+        local_route_dim=4,
+        potential_type="hybrid_multiscale",
+    )
+
+    pairs = [
+        (
+            shared.potential.global_potential,
+            hybrid.potential.global_potential,
+        ),
+        (
+            shared.potential.local_potential,
+            hybrid.potential.shared_local_potential,
+        ),
+        (shared.potential.local_gate, hybrid.potential.local_gate),
+    ]
+    for shared_module, hybrid_module in pairs:
+        for shared_parameter, hybrid_parameter in zip(
+            shared_module.parameters(), hybrid_module.parameters()
+        ):
+            torch.testing.assert_close(
+                shared_parameter, hybrid_parameter
+            )
+
+
 def test_adaptive_multiscale_prototype_response_matches_finite_difference():
     model = make_model(
         num_local_routes=3,

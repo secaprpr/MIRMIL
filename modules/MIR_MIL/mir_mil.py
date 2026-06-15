@@ -251,17 +251,20 @@ class ClassConditionalMultiscalePotential(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, self.num_classes),
         )
-        self.class_local_potentials = nn.ModuleList(
-            [
-                nn.Sequential(
-                    nn.Linear(self.class_local_state_dim, hidden_dim),
-                    _activation(act),
-                    nn.Dropout(dropout),
-                    nn.Linear(hidden_dim, 1),
-                )
-                for _ in range(self.num_classes)
-            ]
-        )
+        with torch.random.fork_rng():
+            self.class_local_potentials = nn.ModuleList(
+                [
+                    nn.Sequential(
+                        nn.Linear(
+                            self.class_local_state_dim, hidden_dim
+                        ),
+                        _activation(act),
+                        nn.Dropout(dropout),
+                        nn.Linear(hidden_dim, 1),
+                    )
+                    for _ in range(self.num_classes)
+                ]
+            )
         self.local_gate = nn.Linear(
             self.global_state_dim, self.num_classes
         )
@@ -305,7 +308,7 @@ class ClassConditionalMultiscalePotential(nn.Module):
         )
 
 
-class HybridMultiscalePotential(ClassConditionalMultiscalePotential):
+class HybridMultiscalePotential(nn.Module):
     """Adaptive mixture of shared and class-owned local potentials."""
 
     def __init__(
@@ -320,17 +323,31 @@ class HybridMultiscalePotential(ClassConditionalMultiscalePotential):
         local_initial_scale,
         class_mix_initial,
     ):
+        super().__init__()
         if not 0 < class_mix_initial < 1:
             raise ValueError("class_mix_initial must be between zero and one")
-        super().__init__(
-            global_state_dim=global_state_dim,
-            local_state_dim=local_state_dim,
-            num_classes=num_classes,
-            hidden_dim=hidden_dim,
-            dropout=dropout,
-            act=act,
-            gate_initial_bias=gate_initial_bias,
-            local_initial_scale=local_initial_scale,
+        if global_state_dim <= 0 or local_state_dim <= 0:
+            raise ValueError(
+                "global_state_dim and local_state_dim must be positive"
+            )
+        if local_state_dim % num_classes:
+            raise ValueError(
+                "local_state_dim must be divisible by num_classes"
+            )
+        self.global_state_dim = int(global_state_dim)
+        self.local_state_dim = int(local_state_dim)
+        self.num_classes = int(num_classes)
+        self.class_local_state_dim = (
+            self.local_state_dim // self.num_classes
+        )
+        self.gate_initial_bias = float(gate_initial_bias)
+        # Keep the shared path in the same creation order as
+        # AdaptiveMultiscalePotential so it has the same seeded initialization.
+        self.global_potential = nn.Sequential(
+            nn.Linear(self.global_state_dim, hidden_dim),
+            _activation(act),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, self.num_classes),
         )
         self.shared_local_potential = nn.Sequential(
             nn.Linear(self.local_state_dim, hidden_dim),
@@ -338,11 +355,39 @@ class HybridMultiscalePotential(ClassConditionalMultiscalePotential):
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, self.num_classes),
         )
+        self.local_gate = nn.Linear(
+            self.global_state_dim, self.num_classes
+        )
+        self.local_scale = nn.Parameter(
+            torch.full(
+                (self.num_classes,), float(local_initial_scale)
+            )
+        )
+        with torch.random.fork_rng():
+            self.class_local_potentials = nn.ModuleList(
+                [
+                    nn.Sequential(
+                        nn.Linear(
+                            self.class_local_state_dim, hidden_dim
+                        ),
+                        _activation(act),
+                        nn.Dropout(dropout),
+                        nn.Linear(hidden_dim, 1),
+                    )
+                    for _ in range(self.num_classes)
+                ]
+            )
         initial_logit = math.log(
             class_mix_initial / (1.0 - class_mix_initial)
         )
         self.class_mix_logit = nn.Parameter(
             torch.full((self.num_classes,), initial_logit)
+        )
+
+    def reset_gate(self):
+        nn.init.zeros_(self.local_gate.weight)
+        nn.init.constant_(
+            self.local_gate.bias, self.gate_initial_bias
         )
 
     def forward(self, state):
