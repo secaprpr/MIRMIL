@@ -9,6 +9,7 @@ For full 2D Mamba functionality, refer to the original repository.
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint
 
 try:
     # mamba-ssm 2.2.x imports these symbols from the old public location.
@@ -43,11 +44,26 @@ def initialize_weights(module):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
 
+
+def run_scan_in_chunks(layer, sequences, chunk_size, training):
+    outputs = []
+    for chunk in sequences.split(chunk_size, dim=0):
+        if training and chunk.requires_grad:
+            output = checkpoint(layer, chunk, use_reentrant=False)
+        else:
+            output = layer(chunk)
+        outputs.append(output)
+    return torch.cat(outputs, dim=0)
+
+
 class Mamba2DBlock(nn.Module):
     """
     2D Mamba Block - applies Mamba along spatial dimensions
     """
-    def __init__(self, d_model, d_state=16, d_conv=4, expand=2):
+    def __init__(
+        self, d_model, d_state=16, d_conv=4, expand=2,
+        scan_chunk_size=16,
+    ):
         super().__init__()
         if not MAMBA_AVAILABLE:
             raise ImportError("mamba-ssm is required for MAMBA2D_MIL")
@@ -66,6 +82,7 @@ class Mamba2DBlock(nn.Module):
             expand=expand
         )
         self.norm = nn.LayerNorm(d_model)
+        self.scan_chunk_size = int(scan_chunk_size)
     
     def forward(self, x):
         """
@@ -84,20 +101,17 @@ class Mamba2DBlock(nn.Module):
         
         # Process rows
         x_row = x.view(B * H, W, D)  # (B*H, W, D)
-        # Check if mamba supports rate parameter
-        try:
-            x_row = self.mamba_row(x_row, rate=10)  # Try with rate parameter
-        except TypeError:
-            x_row = self.mamba_row(x_row)  # Fallback without rate
+        x_row = run_scan_in_chunks(
+            self.mamba_row, x_row, self.scan_chunk_size, self.training
+        )
         x_row = x_row.view(B, H, W, D)
         
         # Process columns
         x_col = x_row.permute(0, 2, 1, 3).contiguous()  # (B, W, H, D)
         x_col = x_col.view(B * W, H, D)  # (B*W, H, D)
-        try:
-            x_col = self.mamba_col(x_col, rate=10)  # Try with rate parameter
-        except TypeError:
-            x_col = self.mamba_col(x_col)  # Fallback without rate
+        x_col = run_scan_in_chunks(
+            self.mamba_col, x_col, self.scan_chunk_size, self.training
+        )
         x_col = x_col.view(B, W, H, D)
         x_col = x_col.permute(0, 2, 1, 3).contiguous()  # (B, H, W, D)
         
@@ -114,8 +128,11 @@ class Mamba2D_MIL(nn.Module):
     
     Reference: https://github.com/AtlasAnalyticsLab/2DMamba
     """
-    def __init__(self, in_dim=1024, num_classes=2, dropout=0.1, act=nn.ReLU(), 
-                 d_model=512, d_state=16, n_layers=2, grid_size=None):
+    def __init__(
+        self, in_dim=1024, num_classes=2, dropout=0.1, act=nn.ReLU(),
+        d_model=512, d_state=16, n_layers=2, grid_size=None,
+        scan_chunk_size=16,
+    ):
         super(Mamba2D_MIL, self).__init__()
         
         if not MAMBA_AVAILABLE:
@@ -145,7 +162,11 @@ class Mamba2D_MIL(nn.Module):
         self.mamba2d_layers = nn.ModuleList()
         for _ in range(n_layers):
             self.mamba2d_layers.append(
-                Mamba2DBlock(d_model=d_model, d_state=d_state)
+                Mamba2DBlock(
+                    d_model=d_model,
+                    d_state=d_state,
+                    scan_chunk_size=scan_chunk_size,
+                )
             )
         
         # Aggregation

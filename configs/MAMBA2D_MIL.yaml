@@ -26,6 +26,7 @@ Model:
     d_model: 512  # Hidden dimension for 2D Mamba
     d_state: 16  # State dimension for Mamba
     n_layers: 2  # Number of 2D Mamba layers
+    scan_chunk_size: 16  # Checkpointed row/column scan batch
     grid_size: null  # Optional: specify grid size (H, W), otherwise auto-detect
     dropout: 0.1
     act: gelu  # gelu recommended for Mamba
@@ -52,4 +53,3 @@ Model:
         cosine_config:
             T_max: 10
             eta_min: 0.0001
-

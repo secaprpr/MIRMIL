@@ -76,6 +76,11 @@ def process_MAMBA2D_MIL(args):
     d_state = args.Model.d_state if hasattr(args.Model, 'd_state') else 16
     n_layers = args.Model.n_layers if hasattr(args.Model, 'n_layers') else 2
     grid_size = args.Model.grid_size if hasattr(args.Model, 'grid_size') else None
+    scan_chunk_size = (
+        args.Model.scan_chunk_size
+        if "scan_chunk_size" in args.Model
+        else 16
+    )
     
     mil_model = Mamba2D_MIL(
         in_dim=in_dim,
@@ -85,7 +90,8 @@ def process_MAMBA2D_MIL(args):
         d_model=d_model,
         d_state=d_state,
         n_layers=n_layers,
-        grid_size=grid_size
+        grid_size=grid_size,
+        scan_chunk_size=scan_chunk_size,
     )
     mil_model.to(device)
     
