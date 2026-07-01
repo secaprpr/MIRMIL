@@ -180,10 +180,24 @@ def save_log(args,epoch_info_log,best_epoch,process_pipeline):
     log_df.to_csv(os.path.join(args.Logs.now_log_dir,f'Log_seed{args.General.seed}_{args.Dataset.DATASET_NAME}_{args.General.MODEL_NAME}.csv'),index=False)
     print('Global Log CSV Saved!')
     if process_pipeline == 'Train_Test':
+        from .wandb_utils import finish_training_tracker
+        finish_training_tracker(
+            args,
+            epoch_info_log,
+            best_epoch,
+            process_pipeline,
+        )
         return
     best_df = log_df[log_df['epoch'] == best_epoch]
     best_df.to_csv(os.path.join(args.Logs.now_log_dir,f'Best_Log_seed{args.General.seed}_{args.Dataset.DATASET_NAME}_{args.General.MODEL_NAME}.csv'),index=False)
     print('Best Log CSV Saved!')
+    from .wandb_utils import finish_training_tracker
+    finish_training_tracker(
+        args,
+        epoch_info_log,
+        best_epoch,
+        process_pipeline,
+    )
     
 def get_model_from_yaml(yaml_args):
     model_name = yaml_args.General.MODEL_NAME

@@ -6,6 +6,42 @@ import h5py
 import torch
 from torch.utils.data import Dataset
 
+
+def build_wsi_datasets(args, dataset_class=None):
+    dataset_class = dataset_class or WSI_Dataset
+    max_instances = (
+        int(args.Model.max_instances)
+        if "max_instances" in args.Model
+        else 0
+    )
+    sampling = (
+        str(args.Model.sampling)
+        if "sampling" in args.Model
+        else "random"
+    )
+    path = args.Dataset.dataset_csv_path
+    return (
+        dataset_class(
+            path,
+            "train",
+            max_instances=max_instances,
+            sampling=sampling,
+        ),
+        dataset_class(
+            path,
+            "val",
+            max_instances=max_instances,
+            sampling="uniform",
+        ),
+        dataset_class(
+            path,
+            "test",
+            max_instances=max_instances,
+            sampling="uniform",
+        ),
+    )
+
+
 class WSI_Dataset(Dataset):
     def __init__(
         self,

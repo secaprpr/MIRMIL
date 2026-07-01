@@ -157,18 +157,24 @@ class Mamba2D_MIL(nn.Module):
             features: (N, D) patch features
             coords: (N, 2) patch coordinates (optional)
         Returns:
-            grid: (H, W, D) or flattened (H*W, D)
+            grid: (H, W, D)
+            occupied: (H, W) mask identifying real patches
         """
         N, D = features.shape
         
         if coords is not None:
-            # Use provided coordinates
-            coords_norm = (coords - coords.min(0)[0]) / (coords.max(0)[0] - coords.min(0)[0] + 1e-8)
-            H = int(coords_norm[:, 0].max().item() * 100) + 1
-            W = int(coords_norm[:, 1].max().item() * 100) + 1
+            if coords.ndim == 3:
+                coords = coords.squeeze(0)
+            # Rank the observed x/y locations. This preserves spatial ordering
+            # without expanding a sparse WSI into an arbitrary 101x101 grid.
+            _, x_indices = torch.unique(coords[:, 0], sorted=True, return_inverse=True)
+            _, y_indices = torch.unique(coords[:, 1], sorted=True, return_inverse=True)
+            H = int(y_indices.max().item()) + 1
+            W = int(x_indices.max().item()) + 1
             grid = torch.zeros(H, W, D, device=features.device)
-            indices = (coords_norm * torch.tensor([H-1, W-1], device=features.device)).long()
-            grid[indices[:, 0], indices[:, 1]] = features
+            occupied = torch.zeros(H, W, dtype=torch.bool, device=features.device)
+            grid[y_indices, x_indices] = features
+            occupied[y_indices, x_indices] = True
         else:
             # Assume square grid
             H = W = int(N ** 0.5)
@@ -185,8 +191,11 @@ class Mamba2D_MIL(nn.Module):
                     # If still not enough, truncate (shouldn't happen with above logic)
                     features = features[:H*W]
             grid = features.view(H, W, D)
+            occupied = torch.zeros(H * W, dtype=torch.bool, device=features.device)
+            occupied[:N] = True
+            occupied = occupied.view(H, W)
         
-        return grid
+        return grid, occupied
     
     def forward(self, x, coords=None, return_WSI_attn=False, return_WSI_feature=False):
         forward_return = {}
@@ -202,7 +211,7 @@ class Mamba2D_MIL(nn.Module):
         x = self.feature_proj(x)  # (N, d_model)
         
         # Convert to 2D grid
-        grid = self._features_to_grid(x, coords)  # (H, W, d_model)
+        grid, occupied = self._features_to_grid(x, coords)
         H, W, D = grid.shape
         
         # Apply 2D Mamba layers
@@ -214,11 +223,13 @@ class Mamba2D_MIL(nn.Module):
         h_flat = h.view(H * W, D)  # (H*W, D)
         
         # Attention aggregation
-        A = self.attention(h_flat)  # (H*W, 1)
+        occupied_flat = occupied.view(-1)
+        valid_h = h_flat[occupied_flat]
+        A = self.attention(valid_h)
         A_ori = A.clone()
         A = A.transpose(0, 1)  # (1, H*W)
         A = F.softmax(A, dim=-1)  # (1, H*W)
-        bag_feature = torch.mm(A, h_flat)  # (1, D)
+        bag_feature = torch.mm(A, valid_h)
         # Keep batch dimension for training compatibility
         # bag_feature shape: (1, D)
         
@@ -229,12 +240,6 @@ class Mamba2D_MIL(nn.Module):
         if return_WSI_feature:
             forward_return['WSI_feature'] = bag_feature.unsqueeze(0)
         if return_WSI_attn:
-            # Map attention back to original patches
-            if N <= H * W:
-                attn = A_ori[:N].squeeze(-1)
-            else:
-                attn = A_ori.squeeze(-1)
-            forward_return['WSI_attn'] = attn
+            forward_return['WSI_attn'] = A_ori.squeeze(-1)
         
         return forward_return
-

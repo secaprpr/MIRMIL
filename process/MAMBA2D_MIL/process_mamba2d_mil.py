@@ -2,16 +2,53 @@ import torch
 from torch.utils.data import DataLoader
 from modules.MAMBA2D_MIL.mamba2d_mil import Mamba2D_MIL
 from utils.process_utils import get_process_pipeline, get_act
-from utils.wsi_utils import WSI_Dataset
+from utils.wsi_utils import build_wsi_datasets, WSI_Coord_Dataset
 from utils.general_utils import set_global_seed, init_epoch_info_log, add_epoch_info_log, early_stop
 from utils.model_utils import get_optimizer, get_scheduler, get_criterion, save_last_model, save_log, model_select
-from utils.loop_utils import train_loop, val_loop
+from utils.loop_utils import cal_scores
+import time
+
+
+def _split_spatial_bag(bag, in_dim):
+    return bag[..., :in_dim], bag[..., in_dim:in_dim + 2].squeeze(0)
+
+
+def spatial_train_loop(device, model, loader, criterion, optimizer, scheduler, in_dim):
+    start = time.time()
+    model.train()
+    loss_sum = 0.0
+    for bag, label in loader:
+        optimizer.zero_grad()
+        features, coords = _split_spatial_bag(bag.float().to(device), in_dim)
+        logits = model(features, coords=coords)["logits"]
+        loss = criterion(logits, label.long().to(device))
+        loss.backward()
+        optimizer.step()
+        loss_sum += loss.item()
+    if scheduler is not None:
+        scheduler.step()
+    return loss_sum / max(len(loader), 1), time.time() - start
+
+
+def spatial_val_loop(device, num_classes, model, loader, criterion, in_dim):
+    model.eval()
+    loss_sum = 0.0
+    labels, probabilities = [], []
+    with torch.no_grad():
+        for bag, label in loader:
+            features, coords = _split_spatial_bag(bag.float().to(device), in_dim)
+            logits = model(features, coords=coords)["logits"]
+            target = label.long().to(device)
+            loss_sum += criterion(logits, target).item()
+            labels.append(label.numpy())
+            probabilities.append(torch.softmax(logits.squeeze(0), dim=0).cpu().numpy())
+    return loss_sum / max(len(loader), 1), cal_scores(probabilities, labels, num_classes)
 from tqdm import tqdm
 
 def process_MAMBA2D_MIL(args):
-    train_dataset = WSI_Dataset(args.Dataset.dataset_csv_path, 'train')
-    val_dataset = WSI_Dataset(args.Dataset.dataset_csv_path, 'val')
-    test_dataset = WSI_Dataset(args.Dataset.dataset_csv_path, 'test')
+    train_dataset, val_dataset, test_dataset = build_wsi_datasets(
+        args, dataset_class=WSI_Coord_Dataset
+    )
     process_pipeline = get_process_pipeline(val_dataset, test_dataset)
     args.General.process_pipeline = process_pipeline
     
@@ -75,17 +112,20 @@ def process_MAMBA2D_MIL(args):
             now_scheduler = warmup_scheduler
         else:
             now_scheduler = scheduler
-        train_loss, cost_time = train_loop(device, mil_model, train_dataloader, criterion, optimizer, now_scheduler)
+        train_loss, cost_time = spatial_train_loop(
+            device, mil_model, train_dataloader, criterion, optimizer,
+            now_scheduler, in_dim
+        )
         if process_pipeline == 'Train_Val_Test':
-            val_loss, val_metrics = val_loop(device, num_classes, mil_model, val_dataloader, criterion)
-            test_loss, test_metrics = val_loop(device, num_classes, mil_model, test_dataloader, criterion)
+            val_loss, val_metrics = spatial_val_loop(device, num_classes, mil_model, val_dataloader, criterion, in_dim)
+            test_loss, test_metrics = spatial_val_loop(device, num_classes, mil_model, test_dataloader, criterion, in_dim)
         elif process_pipeline == 'Train_Val':
-            val_loss, val_metrics = val_loop(device, num_classes, mil_model, val_dataloader, criterion)
+            val_loss, val_metrics = spatial_val_loop(device, num_classes, mil_model, val_dataloader, criterion, in_dim)
             test_loss, test_metrics = None, None
         elif process_pipeline == 'Train_Test':
             val_loss, val_metrics, test_loss, test_metrics = None, None, None, None
             if epoch + 1 == args.General.num_epochs:
-                test_loss, test_metrics = val_loop(device, num_classes, mil_model, test_dataloader, criterion)
+                test_loss, test_metrics = spatial_val_loop(device, num_classes, mil_model, test_dataloader, criterion, in_dim)
 
         FAIL = '\033[91m'
         ENDC = '\033[0m'
@@ -103,4 +143,3 @@ def process_MAMBA2D_MIL(args):
         if epoch + 1 == args.General.num_epochs:
             save_last_model(args, mil_model.state_dict(), epoch + 1)
             save_log(args, epoch_info_log, best_epoch, process_pipeline)
-

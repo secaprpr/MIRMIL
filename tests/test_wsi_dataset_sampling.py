@@ -6,8 +6,13 @@ import h5py
 import numpy as np
 import pandas as pd
 import torch
+from addict import Dict
 
-from utils.wsi_utils import WSI_Coord_Dataset, WSI_Dataset
+from utils.wsi_utils import (
+    WSI_Coord_Dataset,
+    WSI_Dataset,
+    build_wsi_datasets,
+)
 
 
 class WSIDatasetSamplingTest(unittest.TestCase):
@@ -89,6 +94,22 @@ class WSIDatasetSamplingTest(unittest.TestCase):
 
         self.assertEqual(values.shape, (10, 4))
         self.assertLessEqual(values[:, -2:].abs().max().item(), 1.0)
+
+    def test_build_wsi_datasets_uses_random_train_and_uniform_eval(self):
+        config = Dict(
+            {
+                "Dataset": {"dataset_csv_path": self._csv(self.h5_path)},
+                "Model": {
+                    "max_instances": 11,
+                    "sampling": "random",
+                },
+            }
+        )
+        train, val, test = build_wsi_datasets(config)
+        self.assertEqual(train.max_instances, 11)
+        self.assertEqual(train.sampling, "random")
+        self.assertEqual(val.sampling, "uniform")
+        self.assertEqual(test.sampling, "uniform")
 
 
 if __name__ == "__main__":

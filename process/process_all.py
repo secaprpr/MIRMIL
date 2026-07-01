@@ -1,9 +1,13 @@
 from utils.general_utils import save_dataset_csv,print_args
 from utils.yaml_utils import save_yaml
+from utils.wandb_utils import start_training_tracker
+
+
 def process(args,yaml_path,options):
     save_dataset_csv(args)
     save_yaml(args,yaml_path,options)
     print_args(args)
+    start_training_tracker(args)
     if args.General.MODEL_NAME == 'OT_MIL':
         from .OT_MIL.process_ot_mil import process_OT_MIL
         process_OT_MIL(args)

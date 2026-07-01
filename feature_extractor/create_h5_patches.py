@@ -28,6 +28,19 @@ def adjust_coords_order(h5_path):
 		coords_dataset[...] = coords_data[sorted_indices]
 
 
+def valid_coord_h5(h5_path):
+	try:
+		with h5py.File(h5_path, 'r') as file:
+			coords = file['coords']
+			return (
+				coords.ndim == 2
+				and coords.shape[0] > 0
+				and coords.shape[1] == 2
+			)
+	except (OSError, KeyError):
+		return False
+
+
 def magnification_to_level_transfer(target_magnification:int, wsi_object:WholeSlideImage):
 	"""
 	Convert magnification to level
@@ -130,7 +143,8 @@ def patching_index_list(index_list:list,df,process_stack,source,patch_level,patc
 			os.makedirs(now_patch_img_save_dir,exist_ok=True)
 		now_ext = '.' + os.path.basename(slide).split('.')[-1]
 
-		if os.path.exists(os.path.join(patch_save_dir, slide_id + '.h5')):
+		existing_h5 = os.path.join(patch_save_dir, slide_id + '.h5')
+		if valid_coord_h5(existing_h5):
 			print('{} already exist in destination location, skipped'.format(slide_id))
 			df.loc[idx, 'status'] = 'already_exist'
 			continue
@@ -247,29 +261,62 @@ def patching_index_list(index_list:list,df,process_stack,source,patch_level,patc
 
 		seg_time_elapsed = -1
 		if seg:
-			WSI_object, seg_time_elapsed = segment(WSI_object, current_seg_params, current_filter_params) 
+			try:
+				WSI_object, seg_time_elapsed = segment(
+					WSI_object,
+					current_seg_params,
+					current_filter_params,
+				)
+			except Exception as exc:
+				print('segmentation failed for {}: {}'.format(slide_id, exc))
+				df.loc[idx, 'status'] = 'failed_seg'
+				continue
 
 		if save_mask:
-			mask = WSI_object.visWSI(**current_vis_params)
-			mask_path = os.path.join(mask_save_dir, slide_id+'.jpg')
-			mask.save(mask_path)
+			try:
+				mask = WSI_object.visWSI(**current_vis_params)
+				mask_path = os.path.join(mask_save_dir, slide_id+'.jpg')
+				mask.save(mask_path)
+			except Exception as exc:
+				print('mask rendering failed for {}: {}'.format(slide_id, exc))
+				df.loc[idx, 'status'] = 'failed_mask'
+				continue
 
 		patch_time_elapsed = -1 # Default time
 		if patch:
-			current_patch_params.update({'patch_level': now_WSI_level, 'patch_size': now_WSI_patch_size, 'real_patch_size':patch_size, 'step_size': now_WSI_step_size, 
-											'save_path': patch_save_dir})
-			file_path, patch_time_elapsed = patching(WSI_object = WSI_object,  **current_patch_params,)
 			h5_path = os.path.join(patch_save_dir, slide_id+'.h5')
-			adjust_coords_order(h5_path)
+			try:
+				current_patch_params.update({'patch_level': now_WSI_level, 'patch_size': now_WSI_patch_size, 'real_patch_size':patch_size, 'step_size': now_WSI_step_size,
+												'save_path': patch_save_dir})
+				file_path, patch_time_elapsed = patching(
+					WSI_object=WSI_object,
+					**current_patch_params,
+				)
+				if not valid_coord_h5(h5_path):
+					raise ValueError('no valid patch coordinates were generated')
+				adjust_coords_order(h5_path)
+			except Exception as exc:
+				print('patching failed for {}: {}'.format(slide_id, exc))
+				df.loc[idx, 'status'] = 'failed_patch'
+				continue
 			if save_patch_img:
 				save_patch_img_to_dir(WSI_object, h5_path, now_WSI_level, now_WSI_patch_size, patch_size,now_patch_img_save_dir,multiprocess_save_patch)
 		stitch_time_elapsed = -1
 		if stitch:
 			file_path = os.path.join(patch_save_dir, slide_id+'.h5')
 			if os.path.isfile(file_path):
-				heatmap, stitch_time_elapsed = stitching(file_path, WSI_object, downscale=64)
-				stitch_path = os.path.join(stitch_save_dir, slide_id+'.jpg')
-				heatmap.save(stitch_path)
+				try:
+					heatmap, stitch_time_elapsed = stitching(
+						file_path,
+						WSI_object,
+						downscale=64,
+					)
+					stitch_path = os.path.join(stitch_save_dir, slide_id+'.jpg')
+					heatmap.save(stitch_path)
+				except Exception as exc:
+					print('stitching failed for {}: {}'.format(slide_id, exc))
+					df.loc[idx, 'status'] = 'failed_stitch'
+					continue
 
 		print("segmentation took {} seconds".format(seg_time_elapsed))
 		print("patching took {} seconds".format(patch_time_elapsed))
@@ -361,6 +408,9 @@ parser.add_argument(
 	'--stitch', default=True, action=argparse.BooleanOptionalAction
 )
 parser.add_argument(
+	'--save_mask', default=True, action=argparse.BooleanOptionalAction
+)
+parser.add_argument(
 	'--save_patch_img',
 	default=False,
 	action=argparse.BooleanOptionalAction,
@@ -445,7 +495,7 @@ if __name__ == '__main__':
 
 	seg_times, patch_times = seg_and_patch(**directories, **parameters,
 											patch_size = args.patch_size, step_size=args.step_size, 
-											seg = args.seg,  use_default_params=False, save_mask = True, 
+											seg = args.seg,  use_default_params=False, save_mask = args.save_mask,
 											stitch= args.stitch,
 											patch_level=args.patch_level, patch = args.patch,
 											process_list = process_list, auto_skip=args.no_auto_skip, 

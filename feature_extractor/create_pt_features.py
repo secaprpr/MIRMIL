@@ -13,9 +13,43 @@ import h5py
 from clam_base_utils.utils.model_utils import get_transforms, get_backbone, feature_extractor_adapter
 import openslide
 import pandas as pd
+import csv
+import tempfile
 
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+
+
+def valid_feature_outputs(h5_path, pt_path):
+	try:
+		if not os.path.exists(h5_path) or not os.path.exists(pt_path):
+			return False
+		with h5py.File(h5_path, "r") as handle:
+			if "features" not in handle or "coords" not in handle:
+				return False
+			features = handle["features"]
+			coords = handle["coords"]
+			if features.ndim != 2 or coords.ndim != 2:
+				return False
+			if features.shape[0] == 0 or features.shape[0] != coords.shape[0]:
+				return False
+			h5_shape = tuple(features.shape)
+		loaded = torch.load(pt_path, map_location="cpu", weights_only=True)
+		return isinstance(loaded, torch.Tensor) and tuple(loaded.shape) == h5_shape
+	except (OSError, RuntimeError, ValueError, KeyError, EOFError):
+		return False
+
+
+def record_failure(path, slide_id, slide_path, error):
+	if not path:
+		return
+	os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+	write_header = not os.path.exists(path)
+	with open(path, "a", newline="", encoding="utf-8") as handle:
+		writer = csv.writer(handle)
+		if write_header:
+			writer.writerow(["slide_id", "wsi_path", "error"])
+		writer.writerow([slide_id, slide_path, str(error)])
 
 
 def compute_w_loader(args,file_path, patch_img_save_dir,output_path, wsi, model,
@@ -84,7 +118,6 @@ def main(args):
 	os.makedirs(args.feat_dir, exist_ok=True)
 	os.makedirs(os.path.join(args.feat_dir, 'pt_files'), exist_ok=True)
 	os.makedirs(os.path.join(args.feat_dir, 'h5_files'), exist_ok=True)
-	dest_files = os.listdir(os.path.join(args.feat_dir, 'pt_files'))
 	print('loading model checkpoint')
 	model = get_backbone(args.backbone, device, args.pretrained_weights_dir)
 	if torch.cuda.device_count() > 1:
@@ -92,6 +125,8 @@ def main(args):
 	model.eval()
 	total = len(bags_dataset)
 	for bag_candidate_idx in range(total):
+		if bag_candidate_idx % args.num_shards != args.shard_index:
+			continue
 		now_slide_ext = '.'+bags_dataset[bag_candidate_idx].split('.')[-1]
 		slide_file_path = bags_dataset[bag_candidate_idx]
 		slide_id = os.path.basename(bags_dataset[bag_candidate_idx]).split(now_slide_ext)[0]
@@ -108,11 +143,22 @@ def main(args):
 		print('\nprogress: {}/{}'.format(bag_candidate_idx, total))
 		print(slide_id)
 
-		if not args.no_auto_skip and slide_id+'.pt' in dest_files:
+		output_path = os.path.join(args.feat_dir, 'h5_files', bag_name)
+		pt_path = os.path.join(args.feat_dir, 'pt_files', slide_id + '.pt')
+		if not args.no_auto_skip and valid_feature_outputs(output_path, pt_path):
 			print('skipped {}'.format(slide_id))
 			continue 
 
-		output_path = os.path.join(args.feat_dir, 'h5_files', bag_name)
+		for stale_path in (output_path, pt_path):
+			if os.path.exists(stale_path):
+				os.remove(stale_path)
+		fd, temp_h5_path = tempfile.mkstemp(
+			prefix=f".{slide_id}.", suffix=".h5.tmp",
+			dir=os.path.dirname(output_path)
+		)
+		os.close(fd)
+		os.remove(temp_h5_path)
+		temp_pt_path = pt_path + f".tmp.{os.getpid()}"
 		time_start = time.time()
 		if slide_file_path.endswith('.sdpc'):
 			try:
@@ -131,36 +177,51 @@ def main(args):
 				print(f'{slide_file_path} can not open')
 				continue
 		try:
-			output_file_path = compute_w_loader(args,h5_file_path, patch_img_save_dir, output_path, wsi, 
+			output_file_path = compute_w_loader(args,h5_file_path, patch_img_save_dir, temp_h5_path, wsi,
 		model = model, batch_size = args.batch_size, verbose = 1, print_every = 20, 
 		custom_downsample=custom_downsample, target_patch_size=args.target_patch_size,num_workers= args.num_workers)
 		except Exception as exc:
 			print(f'feature extraction failed for {slide_id}: {exc}')
+			record_failure(args.failure_log, slide_id, slide_file_path, exc)
+			if os.path.exists(temp_h5_path):
+				os.remove(temp_h5_path)
 			continue
 
 		time_elapsed = time.time() - time_start
 		print('\ncomputing features for {} took {} s'.format(output_file_path, time_elapsed))
-		file = h5py.File(output_file_path, "r")
-
-		features = file['features'][:]
+		with h5py.File(output_file_path, "r") as file:
+			features = file['features'][:]
+			coords_shape = file['coords'].shape
 		print('features size: ', features.shape)
-		print('coordinates size: ', file['coords'].shape)
+		print('coordinates size: ', coords_shape)
 		features = torch.from_numpy(features)
-		bag_base, _ = os.path.splitext(bag_name)
-		torch.save(features, os.path.join(args.feat_dir, 'pt_files', bag_base+'.pt'))
+		torch.save(features, temp_pt_path)
+		os.replace(temp_h5_path, output_path)
+		os.replace(temp_pt_path, pt_path)
 
 
-parser = argparse.ArgumentParser(description='Feature Extraction')
-parser.add_argument('--data_h5_dir', default = '' ,type=str)
-parser.add_argument('--process_wsi_paths_csv', default = None ,type=str,help='prior process, head -> wsi_path, need when use_patch_img is False')
-parser.add_argument('--use_patch_img', default=False, action='store_true',
-					help='read saved patch JPEGs instead of sampling the WSI')
-parser.add_argument('--feat_dir', type=str, default='')
-parser.add_argument('--batch_size', type=int, default=256)
-parser.add_argument('--num_workers', type=int, default=4)
-parser.add_argument('--no_auto_skip', default=False, action='store_true')
-parser.add_argument('--target_patch_size', type=int, default=224)
-parser.add_argument('--backbone', default='gigapath',type=str,choices=['vit_s_imagenet','resnet50_imagenet','plip','conch','uni','ctranspath','gigapath','virchow','virchow_v2','conch_v1_5','uni_v2','hoptimus_v0','hoptimus_v1','midnight'], help='backbone model')
-parser.add_argument('--pretrained_weights_dir', type=str, default='/mnt/net_sda/lxt/Other_Pathology_Model/GigaPath_weights', help='dir to the pretrained backbone')
-args = parser.parse_args()
-main(args)
+def build_parser():
+	parser = argparse.ArgumentParser(description='Feature Extraction')
+	parser.add_argument('--data_h5_dir', default='', type=str)
+	parser.add_argument('--process_wsi_paths_csv', default=None, type=str, help='prior process, head -> wsi_path, need when use_patch_img is False')
+	parser.add_argument('--use_patch_img', default=False, action='store_true',
+						help='read saved patch JPEGs instead of sampling the WSI')
+	parser.add_argument('--feat_dir', type=str, default='')
+	parser.add_argument('--batch_size', type=int, default=256)
+	parser.add_argument('--num_workers', type=int, default=4)
+	parser.add_argument('--no_auto_skip', default=False, action='store_true')
+	parser.add_argument('--target_patch_size', type=int, default=224)
+	parser.add_argument('--backbone', default='gigapath', type=str, choices=['vit_s_imagenet','resnet50_imagenet','plip','conch','uni','ctranspath','gigapath','virchow','virchow_v2','conch_v1_5','uni_v2','hoptimus_v0','hoptimus_v1','midnight'], help='backbone model')
+	parser.add_argument('--pretrained_weights_dir', type=str, default='/mnt/net_sda/lxt/Other_Pathology_Model/GigaPath_weights', help='dir to the pretrained backbone')
+	parser.add_argument('--num_shards', type=int, default=1)
+	parser.add_argument('--shard_index', type=int, default=0)
+	parser.add_argument('--failure_log', type=str, default=None)
+	return parser
+
+
+if __name__ == '__main__':
+	parser = build_parser()
+	args = parser.parse_args()
+	if args.num_shards < 1 or not 0 <= args.shard_index < args.num_shards:
+		parser.error('--shard_index must be in [0, --num_shards)')
+	main(args)

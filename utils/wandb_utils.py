@@ -6,6 +6,7 @@ from pathlib import Path
 
 
 SCHEMA_VERSION = 1
+_ACTIVE_TRACKER = None
 
 
 def file_sha256(path):
@@ -159,7 +160,11 @@ def build_training_config(config, process_pipeline=None):
         "evaluation": {
             "protocol": settings["protocol"],
             "sampling": "uniform",
-            "patch_budget": int(config.Model.max_instances),
+            "patch_budget": (
+                int(config.Model.max_instances)
+                if "max_instances" in config.Model
+                else 0
+            ),
         },
     }
 
@@ -345,3 +350,78 @@ def _import_wandb():
             "Install it with `pip install wandb`."
         ) from exc
     return wandb
+
+
+def start_training_tracker(config, process_pipeline=None):
+    global _ACTIVE_TRACKER
+    if _ACTIVE_TRACKER is not None and _ACTIVE_TRACKER.enabled:
+        raise RuntimeError("A W&B training tracker is already active")
+    _ACTIVE_TRACKER = WandbTracker.for_training(
+        config,
+        process_pipeline=process_pipeline,
+    )
+    return _ACTIVE_TRACKER
+
+
+def active_training_tracker():
+    return _ACTIVE_TRACKER
+
+
+def finish_training_tracker(
+    args,
+    epoch_info_log,
+    best_epoch,
+    process_pipeline,
+):
+    global _ACTIVE_TRACKER
+    tracker = _ACTIVE_TRACKER
+    if tracker is None:
+        return
+    if tracker.enabled and epoch_info_log["epoch"]:
+        best_index = max(
+            min(best_epoch - 1, len(epoch_info_log["epoch"]) - 1),
+            0,
+        )
+        metrics = {
+            "acc": epoch_info_log["val_acc"][best_index],
+            "bacc": epoch_info_log["val_bacc"][best_index],
+            "macro_auc": epoch_info_log["val_macro_auc"][best_index],
+            "macro_f1": epoch_info_log["val_macro_f1"][best_index],
+        }
+        tracker.summary(
+            {
+                **{
+                    key.replace("val/", "val/best_"): value
+                    for key, value in metric_payload("val", metrics).items()
+                },
+                "train/best_epoch": int(best_epoch),
+                "train/stop_epoch": int(epoch_info_log["epoch"][-1]),
+                "provenance/process_pipeline": process_pipeline,
+            }
+        )
+        import glob
+
+        checkpoints = glob.glob(
+            os.path.join(args.Logs.now_log_dir, "Best*.pth")
+        )
+        if checkpoints:
+            tracker.summary(
+                {
+                    "provenance/checkpoint_path": os.path.abspath(
+                        checkpoints[0]
+                    ),
+                    "provenance/checkpoint_sha256": file_sha256(
+                        checkpoints[0]
+                    ),
+                }
+            )
+        tracker.log_artifact(
+            name=f"{tracker.run.id}-split",
+            artifact_type="split",
+            files=[args.Dataset.dataset_csv_path],
+            metadata={
+                "sha256": file_sha256(args.Dataset.dataset_csv_path)
+            },
+        )
+    tracker.finish()
+    _ACTIVE_TRACKER = None

@@ -18,6 +18,51 @@ MODEL_SPECS = {
         "model": "AB_MIL",
         "options": [],
     },
+    "CLAM_SB_MIL": {
+        "config": "configs/CLAM_SB_MIL.yaml",
+        "model": "CLAM_SB_MIL",
+        "options": [],
+    },
+    "CLAM_MB_MIL": {
+        "config": "configs/CLAM_MB_MIL.yaml",
+        "model": "CLAM_MB_MIL",
+        "options": [],
+    },
+    "DS_MIL": {
+        "config": "configs/DS_MIL.yaml",
+        "model": "DS_MIL",
+        "options": [],
+    },
+    "DTFD_MIL": {
+        "config": "configs/DTFD_MIL.yaml",
+        "model": "DTFD_MIL",
+        "options": [],
+    },
+    "TRANS_MIL": {
+        "config": "configs/TRANS_MIL.yaml",
+        "model": "TRANS_MIL",
+        "options": [],
+    },
+    "RRT_MIL": {
+        "config": "configs/RRT_MIL.yaml",
+        "model": "RRT_MIL",
+        "options": [],
+    },
+    "WIKG_MIL": {
+        "config": "configs/WIKG_MIL.yaml",
+        "model": "WIKG_MIL",
+        "options": [],
+    },
+    "AC_MIL": {
+        "config": "configs/AC_MIL.yaml",
+        "model": "AC_MIL",
+        "options": [],
+    },
+    "MAMBA2D_MIL": {
+        "config": "configs/MAMBA2D_MIL.yaml",
+        "model": "MAMBA2D_MIL",
+        "options": [],
+    },
     "MO_MIL": {
         "config": "configs/MO_MIL.yaml",
         "model": "MO_MIL",
@@ -74,7 +119,22 @@ def build_command(args, variant, seed):
         f"Model.max_instances={args.max_instances}",
         "Model.sampling=random",
         f"General.experiment_variant={variant}",
+        f"Tracking.wandb.enabled={str(getattr(args, 'wandb', False)).lower()}",
+        f"Tracking.wandb.project={getattr(args, 'wandb_project', 'MIR-MIL')}",
+        f"Tracking.wandb.mode={getattr(args, 'wandb_mode', 'online')}",
+        f"Tracking.wandb.feature={getattr(args, 'feature', 'unknown')}",
+        f"Tracking.wandb.variant={variant}",
+        f"Tracking.wandb.protocol={getattr(args, 'protocol', 'default')}",
+        f"Tracking.wandb.split_id={getattr(args, 'split_id', 'default')}",
+        "Tracking.wandb.upload_checkpoints=false",
+        f"Tracking.wandb.max_artifact_mb={getattr(args, 'max_artifact_mb', 50)}",
     ]
+    if getattr(args, "wandb_entity", None):
+        options.append(f"Tracking.wandb.entity={args.wandb_entity}")
+    if getattr(args, "comparison_id", None):
+        options.append(
+            f"Tracking.wandb.comparison_id={args.comparison_id}"
+        )
     options.extend(spec["options"])
     options.extend(args.model_option)
     if spec["model"] in {"MIR_MIL", "OT_MIL"}:
@@ -133,6 +193,19 @@ def main():
     )
     parser.add_argument("--max-instances", type=int, default=4096)
     parser.add_argument("--in-dim", type=int, default=1024)
+    parser.add_argument("--feature", default="unknown")
+    parser.add_argument("--protocol", default="default")
+    parser.add_argument("--split-id", default="unspecified")
+    parser.add_argument("--comparison-id")
+    parser.add_argument("--wandb", action="store_true")
+    parser.add_argument("--wandb-project", default="MIR-MIL")
+    parser.add_argument("--wandb-entity")
+    parser.add_argument(
+        "--wandb-mode",
+        choices=["online", "offline", "disabled"],
+        default="online",
+    )
+    parser.add_argument("--max-artifact-mb", type=float, default=50)
     parser.add_argument("--device", type=int, default=0)
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--balanced", action=argparse.BooleanOptionalAction, default=True)
@@ -166,6 +239,11 @@ def main():
         "model_options": args.model_option,
         "max_instances": args.max_instances,
         "balanced": args.balanced,
+        "feature": args.feature,
+        "protocol": args.protocol,
+        "split_id": args.split_id,
+        "comparison_id": args.comparison_id,
+        "wandb": args.wandb,
         "commands": commands,
     }
     manifest_path = os.path.join(

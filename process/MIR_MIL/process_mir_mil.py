@@ -25,7 +25,6 @@ from utils.model_utils import (
 )
 from utils.process_utils import get_process_pipeline
 from utils.wsi_utils import WSI_Coord_Dataset, WSI_Dataset
-from utils.wandb_utils import WandbTracker, file_sha256, metric_payload
 
 
 class ExponentialMovingAverage:
@@ -83,7 +82,6 @@ def process_MIR_MIL(args):
     )
     process_pipeline = get_process_pipeline(val_dataset, test_dataset)
     args.General.process_pipeline = process_pipeline
-    tracker = WandbTracker.for_training(args, process_pipeline)
 
     generator = torch.Generator()
     generator.manual_seed(args.General.seed)
@@ -169,14 +167,6 @@ def process_MIR_MIL(args):
         )
         print("Train_Loss_Components:", components)
         print("Val_Metrics:", val_metrics)
-        tracker.log_epoch(
-            epoch + 1,
-            train_loss,
-            components,
-            val_loss,
-            val_metrics,
-            elapsed,
-        )
         add_epoch_info_log(
             epoch_log,
             epoch,
@@ -228,63 +218,3 @@ def process_MIR_MIL(args):
         )
         print("Final_Test_Metrics:", test_metrics)
     save_log(args, epoch_log, best_epoch, process_pipeline)
-    best_index = max(min(best_epoch - 1, len(epoch_log["epoch"]) - 1), 0)
-    best_val_metrics = {
-        "acc": epoch_log["val_acc"][best_index],
-        "bacc": epoch_log["val_bacc"][best_index],
-        "macro_auc": epoch_log["val_macro_auc"][best_index],
-        "macro_f1": epoch_log["val_macro_f1"][best_index],
-    }
-    tracker.summary(
-        {
-            **{
-                key.replace("val/", "val/best_"): value
-                for key, value in metric_payload(
-                    "val", best_val_metrics
-                ).items()
-            },
-            "train/best_epoch": int(best_epoch),
-            "train/stop_epoch": int(last_epoch),
-        }
-    )
-    best_checkpoints = glob.glob(
-        os.path.join(args.Logs.now_log_dir, "Best*.pth")
-    )
-    tracking = getattr(getattr(args, "Tracking", {}), "wandb", {})
-    upload_checkpoints = bool(
-        getattr(tracking, "upload_checkpoints", False)
-    )
-    if best_checkpoints and upload_checkpoints:
-        checkpoint_path = best_checkpoints[0]
-        tracker.log_artifact(
-            name=f"{tracker.run.id}-best-checkpoint"
-            if tracker.enabled
-            else "best-checkpoint",
-            artifact_type="model",
-            files=[checkpoint_path],
-            metadata={
-                "sha256": file_sha256(checkpoint_path),
-                "best_epoch": int(best_epoch),
-            },
-        )
-    elif best_checkpoints:
-        checkpoint_path = best_checkpoints[0]
-        tracker.summary(
-            {
-                "provenance/checkpoint_path": os.path.abspath(
-                    checkpoint_path
-                ),
-                "provenance/checkpoint_sha256": file_sha256(
-                    checkpoint_path
-                ),
-            }
-        )
-    tracker.log_artifact(
-        name=f"{tracker.run.id}-split"
-        if tracker.enabled
-        else "split",
-        artifact_type="split",
-        files=[args.Dataset.dataset_csv_path],
-        metadata={"sha256": file_sha256(args.Dataset.dataset_csv_path)},
-    )
-    tracker.finish()

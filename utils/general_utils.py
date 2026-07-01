@@ -9,6 +9,7 @@ import shutil
 import pandas as pd
 import os
 from .model_utils import save_last_model,save_log
+from .wandb_utils import active_training_tracker
 def save_dataset_csv(args):
     dataset_csv_path = args.Dataset.dataset_csv_path
     os.makedirs(args.Logs.now_log_dir, exist_ok=True)
@@ -75,6 +76,16 @@ def add_epoch_info_log(epoch_info_log,epoch,train_loss,val_loss,test_loss,val_me
     else:
         for key in val_metrics.keys():
             epoch_info_log['test_'+key].append(None)
+    tracker = active_training_tracker()
+    if tracker is not None and val_metrics is not None:
+        tracker.log_epoch(
+            epoch=epoch + 1,
+            train_loss=train_loss,
+            train_components={},
+            val_loss=val_loss,
+            val_metrics=val_metrics,
+            elapsed_seconds=0.0,
+        )
 
 
 def attach_test_result(epoch_info_log, epoch_index, test_loss, test_metrics):
