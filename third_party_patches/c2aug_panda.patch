@@ -1,0 +1,207 @@
+diff --git a/dataset/data_interface.py b/dataset/data_interface.py
+--- a/dataset/data_interface.py
++++ b/dataset/data_interface.py
+@@ -8 +8,2 @@ class WSIDataModule(pl.LightningDataModule):
+-    def __init__(self, dataset_path, fold, dataset, num_views, model=None):
++    def __init__(self, dataset_path, fold, dataset, num_views, model=None,
++                 split_csv=None, max_instances=0, num_workers=0):
+@@ -22,0 +24,11 @@ class WSIDataModule(pl.LightningDataModule):
++        self.split_csv = split_csv
++        self.max_instances = max_instances
++        self.num_workers = int(num_workers)
++
++    def _dataset(self, state):
++        return WSIDataset(
++            self.data_root, state=state, fold=self.fold,
++            dataset=self.dataset_name, num_views=self.num_views,
++            model=self.model, split_csv=self.split_csv,
++            max_instances=self.max_instances,
++        )
+@@ -48,2 +60,2 @@ class WSIDataModule(pl.LightningDataModule):
+-                self.train_dataset = WSIDataset(self.data_root, state='train', fold=self.fold, dataset=self.dataset_name, num_views=self.num_views,model=self.model)
+-                self.val_dataset = WSIDataset(self.data_root, state='test', fold=self.fold, dataset=self.dataset_name, num_views=self.num_views,model=self.model)
++                self.train_dataset = self._dataset('train')
++                self.val_dataset = self._dataset('val')
+@@ -53 +65 @@ class WSIDataModule(pl.LightningDataModule):
+-            self.test_dataset = WSIDataset(self.data_root, state='test', fold=self.fold, dataset=self.dataset_name, num_views=self.num_views,model=self.model)
++            self.test_dataset = self._dataset('test')
+@@ -56 +68 @@ class WSIDataModule(pl.LightningDataModule):
+-        return DataLoader(self.train_dataset, batch_size=1, num_workers=0, shuffle=True)
++        return DataLoader(self.train_dataset, batch_size=1, num_workers=self.num_workers, shuffle=True)
+@@ -59 +71 @@ class WSIDataModule(pl.LightningDataModule):
+-        return DataLoader(self.val_dataset, batch_size=1, num_workers=0, shuffle=False)
++        return DataLoader(self.val_dataset, batch_size=1, num_workers=self.num_workers, shuffle=False)
+@@ -62 +74 @@ class WSIDataModule(pl.LightningDataModule):
+-        return DataLoader(self.test_dataset, batch_size=1, num_workers=0, shuffle=False)
+\ No newline at end of file
++        return DataLoader(self.test_dataset, batch_size=1, num_workers=self.num_workers, shuffle=False)
+diff --git a/dataset/wsi_dataset.py b/dataset/wsi_dataset.py
+--- a/dataset/wsi_dataset.py
++++ b/dataset/wsi_dataset.py
+@@ -9 +9,2 @@ class WSIDataset(data.Dataset):
+-    def __init__(self, data_root, state, fold, dataset, num_views,model):
++    def __init__(self, data_root, state, fold, dataset, num_views,model,
++                 split_csv=None, max_instances=0):
+@@ -12,0 +14,2 @@ class WSIDataset(data.Dataset):
++        self.split_csv = split_csv
++        self.max_instances = int(max_instances or 0)
+@@ -16,6 +19 @@ class WSIDataset(data.Dataset):
+-        self.feat_dir = os.path.join(
+-            self.data_root,
+-                # 'feat_clam_resnet50',
+-                'patch_size_256_at_mag_20',
+-                'pt_files'
+-            )
++        self.feat_dir = os.path.join(self.data_root, 'pt_files')
+@@ -81,0 +79,28 @@ class WSIDataset(data.Dataset):
++        if self.split_csv is not None:
++            split = pd.read_csv(self.split_csv)
++            path_column = f"{data_set}_slide_path"
++            label_column = f"{data_set}_label"
++            paths = split[path_column].dropna().tolist()
++            labels = split[label_column].dropna().astype(int).tolist()
++            if len(paths) != len(labels):
++                raise ValueError(f"mismatched paths and labels for {data_set}")
++            max_len = 0
++            for full_path, label in zip(paths, labels):
++                slide_id = os.path.splitext(os.path.basename(full_path))[0]
++                features = self.get_data(full_path)
++                if isinstance(features, dict):
++                    features = features.get('features', features.get('feats'))
++                if features.ndim == 3:
++                    features = features.squeeze(0)
++                if self.max_instances and features.shape[0] > self.max_instances:
++                    indices = torch.linspace(
++                        0, features.shape[0] - 1, self.max_instances
++                    ).long()
++                    features = features[indices]
++                wsis[slide_id] = int(label)
++                data[slide_id] = features
++                max_len = max(max_len, int(features.shape[0]))
++            self.max_len = max_len
++            print('Max len: ', self.max_len)
++            print('Number of slides in {} set: {}'.format(data_set, len(wsis)))
++            return wsis, data
+diff --git a/models/model_interface.py b/models/model_interface.py
+--- a/models/model_interface.py
++++ b/models/model_interface.py
+@@ -17 +17,2 @@ class  ModelInterface(pl.LightningModule):
+-    def __init__(self, model, feat, debug, encoder):
++    def __init__(self, model, feat, debug, encoder, num_classes=2,
++                 input_dim=1024):
+@@ -22,4 +23,3 @@ class  ModelInterface(pl.LightningModule):
+-            input_dim = 384
+-            # input_dim = 1024
++            input_dim = input_dim
+         elif self.feat == 'res50':
+-            input_dim = 1024
++            input_dim = input_dim
+@@ -35,0 +36 @@ class  ModelInterface(pl.LightningModule):
++        self.num_classes = int(num_classes)
+@@ -46 +47,0 @@ class  ModelInterface(pl.LightningModule):
+-        self.num_classes = 2
+@@ -467 +467 @@ class  ModelInterface(pl.LightningModule):
+-            model = TransMIL(input_dim=input_dim, n_classes=2)
++            model = TransMIL(input_dim=input_dim, n_classes=self.num_classes)
+@@ -484 +484 @@ class  ModelInterface(pl.LightningModule):
+-            model = CLAM_SB(input_dim=input_dim, n_classes=2)
++            model = CLAM_SB(input_dim=input_dim, n_classes=self.num_classes)
+@@ -487 +487 @@ class  ModelInterface(pl.LightningModule):
+-            model = CLAM_MB( n_classes=2)
++            model = CLAM_MB(n_classes=self.num_classes)
+diff --git a/train.py b/train.py
+--- a/train.py
++++ b/train.py
+@@ -28,0 +29,15 @@ def make_parse():
++    parser.add_argument('--split-csv', required=True)
++    parser.add_argument('--feature-dir', required=True)
++    parser.add_argument('--num-classes', type=int, default=6)
++    parser.add_argument('--seed', type=int, default=2024)
++    parser.add_argument('--max-epochs', type=int, default=30)
++    parser.add_argument('--max-instances', type=int, default=4096)
++    parser.add_argument('--num-workers', type=int, default=0)
++    parser.add_argument('--log-root', default='logs')
++    parser.add_argument('--checkpoint-root', default='ckpt')
++    parser.add_argument('--wandb', action='store_true')
++    parser.add_argument('--wandb-project', default='MIR-MIL')
++    parser.add_argument('--wandb-entity', default=None)
++    parser.add_argument('--feature-name', default=None)
++    parser.add_argument('--protocol', default='protocol-v1')
++    parser.add_argument('--split-id', default='split-v1')
+@@ -36 +51 @@ def main(args):
+-    pl.seed_everything(2023)
++    pl.seed_everything(args.seed, workers=True)
+@@ -39 +54,31 @@ def main(args):
+-    loggers = load_loggers('logs', args.dataset, args.fold)
++    if args.wandb:
++        from pytorch_lightning.loggers import WandbLogger
++        feature_name = args.feature_name or args.feat
++        run_name = (
++            f"{args.dataset}_{feature_name}_TransMIL_C2Aug_seed{args.seed}"
++        )
++        tags = [
++            f"dataset:{args.dataset}", f"feature:{feature_name}",
++            "model:TransMIL", "variant:C2Aug",
++            f"protocol:{args.protocol}", f"split:{args.split_id}",
++            f"seed:{args.seed}", "job_type:train",
++        ]
++        loggers = WandbLogger(
++            project=args.wandb_project,
++            entity=args.wandb_entity,
++            name=run_name,
++            group=(
++                f"{args.dataset}_{feature_name}_TransMIL_C2Aug_"
++                f"{args.protocol}"
++            ),
++            tags=tags,
++            log_model=False,
++            config={
++                **vars(args),
++                "upstream_commit": "14cb53bc71f5161105b0dbef45351243d7330561",
++            },
++        )
++    else:
++        loggers = load_loggers(
++            args.log_root, args.dataset, str(args.fold)
++        )
+@@ -42 +86,3 @@ def main(args):
+-    callbacks = load_callbacks('ckpt', args.dataset, args.fold)
++    callbacks = load_callbacks(
++        args.checkpoint_root, args.dataset, str(args.fold)
++    )
+@@ -45,2 +90,0 @@ def main(args):
+-    data_root = '/data/smb/syh/WSI_cls/'
+-
+@@ -57,2 +101,6 @@ def main(args):
+-    dataset_root = os.path.join(data_root, args.dataset, feat_ext)
+-    dm = WSIDataModule(fold=args.fold, dataset_path=dataset_root, dataset=args.dataset, num_views=args.views,model=args.model)
++    dataset_root = args.feature_dir
++    dm = WSIDataModule(
++        fold=args.fold, dataset_path=dataset_root, dataset=args.dataset,
++        num_views=args.views, model=args.model, split_csv=args.split_csv,
++        max_instances=args.max_instances, num_workers=args.num_workers,
++    )
+@@ -61 +110,4 @@ def main(args):
+-    model = ModelInterface(model=args.model, feat=args.feat, debug=True, encoder=args.enc)
++    model = ModelInterface(
++        model=args.model, feat=args.feat, debug=False, encoder=args.enc,
++        num_classes=args.num_classes, input_dim=1024,
++    )
+@@ -69 +121 @@ def main(args):
+-        max_epochs=200,
++        max_epochs=args.max_epochs,
+@@ -78,4 +130,13 @@ def main(args):
+         trainer.fit(model = model, datamodule = dm)
++        if args.wandb:
++            import wandb
++            for key, value in trainer.callback_metrics.items():
++                if hasattr(value, "item"):
++                    value = value.item()
++                wandb.run.summary[str(key)] = value
+     else:
+-        new_model = ModelInterface.load_from_checkpoint(args.ckpt, feat=args.feat, debug=False)
++        new_model = ModelInterface.load_from_checkpoint(
++            args.ckpt, model=args.model, feat=args.feat, debug=False,
++            encoder=args.enc, num_classes=args.num_classes, input_dim=1024,
++        )
+         trainer.test(model=new_model, datamodule=dm)
