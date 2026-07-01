@@ -22,6 +22,25 @@ Dataset:
 Logs:
     log_root_dir: /path/to/your/log_dir
 
+Tracking:
+    wandb:
+        enabled: False
+        project: MIR-MIL
+        entity: null
+        mode: online
+        tags: [stage:pilot]
+        feature: unknown
+        variant: base
+        protocol: default
+        split_id: unspecified
+        comparison_id: null
+        source_manifest_sha256: null
+        feature_manifest_sha256: null
+        coordinate_manifest_sha256: null
+        encoder_checkpoint_sha256: null
+        upload_checkpoints: False
+        max_artifact_mb: 50
+
 Model:
     in_dim: 1024
     coordinate_dim: 0

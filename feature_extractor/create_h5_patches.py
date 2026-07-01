@@ -21,17 +21,11 @@ def recursion_get_wsis(source, ext_list: list):
 	return slides
 
 def adjust_coords_order(h5_path):
-	with h5py.File(h5_path, 'r') as source_file:
-		coords_dataset = source_file['coords']
+	with h5py.File(h5_path, 'r+') as file:
+		coords_dataset = file['coords']
 		coords_data = coords_dataset[:]
 		sorted_indices = np.lexsort((coords_data[:, 1], coords_data[:, 0]))
-		coords_data = coords_data[sorted_indices]
-		coords_attrs = dict(coords_dataset.attrs)
-		new_coords_data = coords_data + 1
-	with h5py.File(h5_path, 'w') as new_file:
-		new_coords_dataset = new_file.create_dataset('coords', data=new_coords_data)
-		for key, value in coords_attrs.items():
-			new_coords_dataset.attrs[key] = value
+		coords_dataset[...] = coords_data[sorted_indices]
 
 
 def magnification_to_level_transfer(target_magnification:int, wsi_object:WholeSlideImage):
@@ -356,11 +350,21 @@ parser.add_argument('--step_size', type = int, default=256,
 					help='step_size')
 parser.add_argument('--patch_size', type = int, default=256,
 					help='patch_size')
-parser.add_argument('--patch', default=True, action='store_true')
-parser.add_argument('--seg', default=True, action='store_true')
+parser.add_argument(
+	'--patch', default=True, action=argparse.BooleanOptionalAction
+)
+parser.add_argument(
+	'--seg', default=True, action=argparse.BooleanOptionalAction
+)
 parser.add_argument('--use_otsu', default=False, action='store_true')
-parser.add_argument('--stitch', default=True, action='store_true')
-parser.add_argument('--save_patch_img', default=True, action='store_true')
+parser.add_argument(
+	'--stitch', default=True, action=argparse.BooleanOptionalAction
+)
+parser.add_argument(
+	'--save_patch_img',
+	default=False,
+	action=argparse.BooleanOptionalAction,
+)
 parser.add_argument('--multiprocess_save_patch', default=32,type=int,help='multprocess threads')
 parser.add_argument('--save_ext', default='.jpg', choices=['.jpg','.png'])
 parser.add_argument('--ext_list', default=['.svs','.mrxs'], type=list,help='list of file extensions to process, .svs, .tif, .sdpc, .ndpi, .mrxs .etc')

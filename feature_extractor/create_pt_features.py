@@ -134,7 +134,8 @@ def main(args):
 			output_file_path = compute_w_loader(args,h5_file_path, patch_img_save_dir, output_path, wsi, 
 		model = model, batch_size = args.batch_size, verbose = 1, print_every = 20, 
 		custom_downsample=custom_downsample, target_patch_size=args.target_patch_size,num_workers= args.num_workers)
-		except:
+		except Exception as exc:
+			print(f'feature extraction failed for {slide_id}: {exc}')
 			continue
 
 		time_elapsed = time.time() - time_start
@@ -152,7 +153,8 @@ def main(args):
 parser = argparse.ArgumentParser(description='Feature Extraction')
 parser.add_argument('--data_h5_dir', default = '' ,type=str)
 parser.add_argument('--process_wsi_paths_csv', default = None ,type=str,help='prior process, head -> wsi_path, need when use_patch_img is False')
-parser.add_argument('--use_patch_img',default=True,action='store_true', help='whether use patch imgs to generate pt')
+parser.add_argument('--use_patch_img', default=False, action='store_true',
+					help='read saved patch JPEGs instead of sampling the WSI')
 parser.add_argument('--feat_dir', type=str, default='')
 parser.add_argument('--batch_size', type=int, default=256)
 parser.add_argument('--num_workers', type=int, default=4)

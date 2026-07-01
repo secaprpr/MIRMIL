@@ -41,6 +41,11 @@ Thumbs.db
 # Logs
 *.log
 logs/
+wandb/
+
+# Local experiment outputs and downloaded third-party baselines
+artifacts/
+baselines/
 
 # Temporary files
 *.tmp

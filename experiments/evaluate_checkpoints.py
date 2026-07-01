@@ -19,6 +19,13 @@ from utils.loop_utils import cal_scores
 from utils.model_utils import get_model_from_yaml
 from utils.wsi_utils import WSI_Dataset
 from utils.yaml_utils import read_yaml
+from utils.wandb_utils import (
+    SCHEMA_VERSION,
+    WandbTracker,
+    job_options,
+    metric_payload,
+    tracking_settings,
+)
 
 
 def file_sha256(path):
@@ -217,6 +224,7 @@ def main():
             "training-time config split"
         ),
     )
+    job_options(parser)
     args = parser.parse_args()
 
     if args.split_override and not os.path.isfile(args.split_override):
@@ -227,6 +235,7 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
 
     results = []
+    eval_run_records = []
     provenance = {
         "git_commit": git_commit(),
         "run_root": os.path.abspath(args.run_root),
@@ -256,9 +265,122 @@ def main():
             prediction_name = (
                 f"{result['variant']}_seed{result['seed']}_budget{budget}.csv"
             )
-            pd.DataFrame(predictions).to_csv(
-                os.path.join(args.output_dir, prediction_name), index=False
+            prediction_path = os.path.join(args.output_dir, prediction_name)
+            pd.DataFrame(predictions).to_csv(prediction_path, index=False)
+            run_config = read_yaml(config_path)
+            settings = tracking_settings(run_config)
+            split_path = (
+                os.path.abspath(args.split_override)
+                if args.split_override
+                else os.path.abspath(run_config.Dataset.dataset_csv_path)
             )
+            split_hash = file_sha256(split_path)
+            dataset_name = str(run_config.Dataset.DATASET_NAME)
+            model_name = str(run_config.General.MODEL_NAME)
+            protocol = settings["protocol"]
+            split_id = settings["split_id"]
+            name = (
+                f"{dataset_name}_{settings['feature']}_{model_name}_"
+                f"{result['variant']}_seed{result['seed']}_eval"
+            )
+            group = args.wandb_group or (
+                f"{dataset_name}_{settings['feature']}_{model_name}_"
+                f"{result['variant']}_{protocol}_{split_id}"
+            )
+            tracker = WandbTracker.for_job(
+                enabled=args.wandb,
+                project=args.wandb_project,
+                entity=args.wandb_entity,
+                mode=args.wandb_mode,
+                name=name,
+                group=group,
+                job_type="eval",
+                tags=[
+                    *args.wandb_tag,
+                    f"dataset:{dataset_name.lower()}",
+                    f"feature:{settings['feature'].lower()}",
+                    f"model:{model_name.lower()}",
+                    "test:sealed" if args.split_override else "test:configured",
+                ],
+                config={
+                    "schema_version": SCHEMA_VERSION,
+                    "comparison_id": (
+                        args.wandb_comparison_id
+                        or settings["comparison_id"]
+                    ),
+                    "parent": {
+                        "run_dir": os.path.abspath(run_dir),
+                        "config_sha256": file_sha256(config_path),
+                        "checkpoint_sha256": file_sha256(checkpoint_path),
+                    },
+                    "dataset": {
+                        "name": dataset_name,
+                        "num_classes": int(
+                            run_config.General.num_classes
+                        ),
+                    },
+                    "split": {
+                        "id": split_id,
+                        "path": split_path,
+                        "sha256": split_hash,
+                        "test_sealed": bool(args.split_override),
+                    },
+                    "features": {
+                        "encoder": settings["feature"],
+                        "manifest_sha256": settings[
+                            "feature_manifest_sha256"
+                        ],
+                        "coordinate_manifest_sha256": settings[
+                            "coordinate_manifest_sha256"
+                        ],
+                    },
+                    "model": {
+                        "name": model_name,
+                        "variant": result["variant"],
+                    },
+                    "evaluation": {
+                        "protocol": protocol,
+                        "sampling": "uniform",
+                        "patch_budget": int(budget),
+                        "num_slides": int(result["num_slides"]),
+                    },
+                },
+                output_dir=args.output_dir,
+            )
+            tracker.summary(
+                {
+                    **metric_payload(
+                        "test",
+                        {
+                            "acc": result["acc"],
+                            "bacc": result["bacc"],
+                            "macro_auc": result["macro_auc"],
+                            "macro_f1": result["macro_f1"],
+                        },
+                    ),
+                    "test/num_slides": int(result["num_slides"]),
+                }
+            )
+            tracker.log_artifact(
+                name=f"{tracker.run.id}-predictions"
+                if tracker.enabled
+                else "predictions",
+                artifact_type="predictions",
+                files=[prediction_path],
+                metadata={
+                    "split_sha256": split_hash,
+                    "checkpoint_sha256": file_sha256(checkpoint_path),
+                },
+            )
+            if tracker.enabled:
+                eval_run_records.append(
+                    {
+                        "run_id": tracker.run.id,
+                        "variant": result["variant"],
+                        "budget": int(budget),
+                    }
+                )
+            tracker.finish()
             provenance["runs"].append(
                 {
                     **result,
@@ -288,6 +410,67 @@ def main():
     aggregate.to_csv(
         os.path.join(args.output_dir, "budget_aggregate.csv"), index=False
     )
+    if args.wandb:
+        first_config_path, _ = find_run_files(run_dirs[0])
+        first_config = read_yaml(first_config_path)
+        settings = tracking_settings(first_config)
+        dataset_name = str(first_config.Dataset.DATASET_NAME)
+        for row in aggregate.to_dict(orient="records"):
+            variant = str(row["variant"])
+            budget = int(row["budget"])
+            child_ids = [
+                item["run_id"]
+                for item in eval_run_records
+                if item["variant"] == variant
+                and item["budget"] == budget
+            ]
+            tracker = WandbTracker.for_job(
+                enabled=True,
+                project=args.wandb_project,
+                entity=args.wandb_entity,
+                mode=args.wandb_mode,
+                name=(
+                    f"{dataset_name}_{settings['feature']}_{variant}_"
+                    f"budget{budget}_aggregate"
+                ),
+                group=args.wandb_group
+                or (
+                    f"{dataset_name}_{settings['feature']}_{variant}_"
+                    f"{settings['protocol']}_{settings['split_id']}"
+                ),
+                job_type="aggregate",
+                tags=[
+                    *args.wandb_tag,
+                    f"dataset:{dataset_name.lower()}",
+                    f"feature:{settings['feature'].lower()}",
+                    "job:aggregate",
+                ],
+                config={
+                    "schema_version": SCHEMA_VERSION,
+                    "comparison_id": (
+                        args.wandb_comparison_id
+                        or settings["comparison_id"]
+                    ),
+                    "aggregate": {
+                        "variant": variant,
+                        "budget": budget,
+                        "child_eval_run_ids": child_ids,
+                        "num_seeds": len(child_ids),
+                    },
+                },
+                output_dir=args.output_dir,
+            )
+            tracker.summary(
+                {
+                    "test/macro_auc_ovr": row["macro_auc_mean"],
+                    "test/macro_auc_ovr_std": row["macro_auc_std"],
+                    "test/accuracy": row["acc_mean"],
+                    "test/balanced_accuracy": row["bacc_mean"],
+                    "test/macro_f1": row["macro_f1_mean"],
+                    "aggregate/num_seeds": len(child_ids),
+                }
+            )
+            tracker.finish()
     with open(
         os.path.join(args.output_dir, "provenance.json"),
         "w",

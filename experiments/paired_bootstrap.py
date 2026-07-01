@@ -2,6 +2,7 @@ import argparse
 import glob
 import json
 import os
+import sys
 
 import numpy as np
 import pandas as pd
@@ -10,6 +11,17 @@ from sklearn.metrics import (
     balanced_accuracy_score,
     f1_score,
     roc_auc_score,
+)
+
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+
+from utils.wandb_utils import (
+    SCHEMA_VERSION,
+    WandbTracker,
+    hash_manifest,
+    job_options,
 )
 
 
@@ -129,6 +141,7 @@ def main():
     )
     parser.add_argument("--model-a", default="OT_MIL")
     parser.add_argument("--model-b", default="MO_MIL")
+    job_options(parser)
     args = parser.parse_args()
 
     pairs = paired_frames(
@@ -219,6 +232,85 @@ def main():
     output_path = args.output or os.path.join(args.input_dir, default_name)
     with open(output_path, "w", encoding="utf-8") as file:
         json.dump(result, file, indent=2)
+    prediction_paths = []
+    pattern_a = os.path.join(
+        args.input_dir,
+        f"{args.model_a}_seed*_budget{args.budget}.csv",
+    )
+    for model_a_path in sorted(glob.glob(pattern_a)):
+        seed = int(
+            os.path.basename(model_a_path).split("_seed")[1].split("_")[0]
+        )
+        prediction_paths.extend(
+            [
+                model_a_path,
+                os.path.join(
+                    args.input_dir,
+                    f"{args.model_b}_seed{seed}_budget{args.budget}.csv",
+                ),
+            ]
+        )
+    prediction_manifest = hash_manifest(prediction_paths)
+    output_dir = os.path.dirname(os.path.abspath(output_path))
+    comparison = f"{args.model_a}_vs_{args.model_b}"
+    tracker = WandbTracker.for_job(
+        enabled=args.wandb,
+        project=args.wandb_project,
+        entity=args.wandb_entity,
+        mode=args.wandb_mode,
+        name=f"{comparison}_{args.metric}_bootstrap",
+        group=args.wandb_group or comparison,
+        job_type="bootstrap",
+        tags=[
+            *args.wandb_tag,
+            "audit:bootstrap",
+            f"metric:{args.metric}",
+        ],
+        config={
+            "schema_version": SCHEMA_VERSION,
+            "comparison_id": (
+                args.wandb_comparison_id or comparison
+            ),
+            "bootstrap": {
+                "model_a": args.model_a,
+                "model_b": args.model_b,
+                "metric": args.metric,
+                "budget": args.budget,
+                "iterations": args.iterations,
+                "seed": args.seed,
+                "id_column": args.id_column,
+                "num_training_seeds": len(pairs),
+            },
+            "prediction_manifest": prediction_manifest,
+        },
+        output_dir=output_dir,
+    )
+    tracker.summary(
+        {
+            "bootstrap/metric": args.metric,
+            "bootstrap/delta": result[
+                f"mean_{args.metric}_difference"
+            ],
+            "bootstrap/ci95_low": result["ci_95_low"],
+            "bootstrap/ci95_high": result["ci_95_high"],
+            "bootstrap/probability_model_a_better": result[
+                "probability_model_a_better"
+            ],
+            "bootstrap/iterations": args.iterations,
+            "bootstrap/seed": args.seed,
+        }
+    )
+    tracker.log_artifact(
+        name=f"{tracker.run.id}-bootstrap"
+        if tracker.enabled
+        else "bootstrap",
+        artifact_type="bootstrap",
+        files=[output_path],
+        metadata={
+            "prediction_manifest_sha256": prediction_manifest["sha256"]
+        },
+    )
+    tracker.finish()
     print(json.dumps(result, indent=2))
 
 

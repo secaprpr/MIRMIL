@@ -17,6 +17,12 @@ if REPO_ROOT not in sys.path:
 from utils.model_utils import get_model_from_yaml
 from utils.wsi_utils import WSI_Coord_Dataset, WSI_Dataset
 from utils.yaml_utils import read_yaml
+from utils.wandb_utils import (
+    SCHEMA_VERSION,
+    WandbTracker,
+    job_options,
+    tracking_settings,
+)
 
 
 def file_sha256(path):
@@ -105,6 +111,7 @@ def main():
         default="predicted",
     )
     parser.add_argument("--target-class", type=int)
+    job_options(parser)
     args = parser.parse_args()
     if args.target == "class" and args.target_class is None:
         parser.error("--target-class is required when --target=class")
@@ -244,6 +251,106 @@ def main():
         encoding="utf-8",
     ) as file:
         json.dump(provenance, file, indent=2)
+    settings = tracking_settings(config)
+    dataset_name = str(config.Dataset.DATASET_NAME)
+    model_name = str(config.General.MODEL_NAME)
+    variant = settings["variant"]
+    name = (
+        f"{dataset_name}_{settings['feature']}_{model_name}_{variant}_"
+        f"seed{args.seed}_faithfulness"
+    )
+    group = args.wandb_group or (
+        f"{dataset_name}_{settings['feature']}_{model_name}_{variant}_"
+        f"{settings['protocol']}_{settings['split_id']}"
+    )
+    tracker = WandbTracker.for_job(
+        enabled=args.wandb,
+        project=args.wandb_project,
+        entity=args.wandb_entity,
+        mode=args.wandb_mode,
+        name=name,
+        group=group,
+        job_type="faithfulness",
+        tags=[
+            *args.wandb_tag,
+            f"dataset:{dataset_name.lower()}",
+            f"feature:{settings['feature'].lower()}",
+            f"model:{model_name.lower()}",
+            "audit:faithfulness",
+        ],
+        config={
+            "schema_version": SCHEMA_VERSION,
+            "comparison_id": (
+                args.wandb_comparison_id or settings["comparison_id"]
+            ),
+            "parent": {
+                "run_dir": os.path.abspath(args.run_dir),
+                "config_sha256": provenance["config_sha256"],
+                "checkpoint_sha256": provenance["checkpoint_sha256"],
+            },
+            "dataset": {
+                "name": dataset_name,
+                "num_classes": int(config.General.num_classes),
+            },
+            "split": {
+                "id": settings["split_id"],
+                "path": provenance["split"],
+                "sha256": provenance["split_sha256"],
+                "group": args.group,
+            },
+            "features": {
+                "encoder": settings["feature"],
+                "manifest_sha256": settings["feature_manifest_sha256"],
+                "coordinate_manifest_sha256": settings[
+                    "coordinate_manifest_sha256"
+                ],
+            },
+            "model": {"name": model_name, "variant": variant},
+            "faithfulness": {
+                "budget": args.budget,
+                "max_slides": args.max_slides,
+                "patches_per_slide": args.patches_per_slide,
+                "epsilon": args.epsilon,
+                "topk": args.topk,
+                "seed": args.seed,
+                "target": args.target,
+                "target_class": args.target_class,
+            },
+        },
+        output_dir=args.output_dir,
+    )
+    tracker.summary(
+        {
+            "faithfulness/pearson": aggregate["pearson_mean"],
+            "faithfulness/spearman": aggregate["spearman_mean"],
+            "faithfulness/fd_mae": aggregate["mae_mean"],
+            "faithfulness/fd_mse": aggregate["mse_mean"],
+            "faithfulness/topk_overlap": aggregate[
+                "topk_overlap_mean"
+            ],
+            "faithfulness/centered_mean_abs": aggregate[
+                "centered_response_mean"
+            ],
+            "faithfulness/num_slides": aggregate["num_slides"],
+            "faithfulness/num_patches": aggregate["num_patches"],
+        }
+    )
+    tracker.log_artifact(
+        name=f"{tracker.run.id}-faithfulness"
+        if tracker.enabled
+        else "faithfulness",
+        artifact_type="faithfulness",
+        files=[
+            os.path.join(args.output_dir, "slide_faithfulness.csv"),
+            os.path.join(args.output_dir, "patch_faithfulness.csv"),
+            os.path.join(args.output_dir, "provenance.json"),
+        ],
+        metadata={
+            "checkpoint_sha256": provenance["checkpoint_sha256"],
+            "split_sha256": provenance["split_sha256"],
+        },
+    )
+    tracker.finish()
     print(json.dumps(aggregate, indent=2))
 
 

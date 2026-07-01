@@ -90,7 +90,16 @@ def get_backbone(backbone_name:str,device,pretrained_weights_dir):
     if backbone_name == 'resnet50_imagenet':
         model = resnet50_baseline(pretrained=False)
         checkpoint_path = os.path.join(model_dir, "resnet50-19c8e357.pth")
-        model.load_state_dict(torch.load(checkpoint_path, map_location=device,weights_only=True), strict=True)
+        # The official resnet50-19c8e357.pth checkpoint uses PyTorch's
+        # legacy tar serialization and cannot be read with weights_only=True.
+        model.load_state_dict(
+            torch.load(
+                checkpoint_path,
+                map_location="cpu",
+                weights_only=False,
+            ),
+            strict=False,
+        )
         model = model.to(device)
     elif backbone_name == 'vit_s_imagenet':
         model = timm.create_model('vit_small_patch16_224.augreg_in21k_ft_in1k')
@@ -103,7 +112,14 @@ def get_backbone(backbone_name:str,device,pretrained_weights_dir):
         model = model.to(device)
     elif backbone_name == 'uni':
         model = timm.create_model("vit_large_patch16_224", img_size=224, patch_size=16, init_values=1e-5, num_classes=0, dynamic_img_size=True)
-        model.load_state_dict(torch.load(os.path.join(model_dir, "pytorch_model.bin"), map_location=device,weights_only=True), strict=True)
+        model.load_state_dict(
+            torch.load(
+                os.path.join(model_dir, "pytorch_model.bin"),
+                map_location="cpu",
+                weights_only=True,
+            ),
+            strict=True,
+        )
         model = model.to(device)
     elif backbone_name == 'conch':
         checkpoint_path = os.path.join(model_dir, "pytorch_model.bin")
