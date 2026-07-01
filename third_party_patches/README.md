@@ -8,6 +8,7 @@ and UNI inputs, six-class outputs, a shared 4,096-instance budget, configurable
 runtime paths, and W&B logging without checkpoint upload. The C2Aug
 augmentation, attention fusion, DINO group loss, teacher EMA, and TransMIL
 backbone remain upstream implementations.
+Validation macro-AUC controls checkpoint selection and early stopping.
 
 Apply to a clean checkout with:
 

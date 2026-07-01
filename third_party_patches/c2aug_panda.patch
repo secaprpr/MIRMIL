@@ -112,7 +112,7 @@ diff --git a/models/model_interface.py b/models/model_interface.py
 diff --git a/train.py b/train.py
 --- a/train.py
 +++ b/train.py
-@@ -28,0 +29,15 @@ def make_parse():
+@@ -28,0 +29,17 @@ def make_parse():
 +    parser.add_argument('--split-csv', required=True)
 +    parser.add_argument('--feature-dir', required=True)
 +    parser.add_argument('--num-classes', type=int, default=6)
@@ -128,10 +128,12 @@ diff --git a/train.py b/train.py
 +    parser.add_argument('--feature-name', default=None)
 +    parser.add_argument('--protocol', default='protocol-v1')
 +    parser.add_argument('--split-id', default='split-v1')
-@@ -36 +51 @@ def main(args):
++    parser.add_argument('--monitor', default='val_auc')
++    parser.add_argument('--patience', type=int, default=8)
+@@ -36 +53 @@ def main(args):
 -    pl.seed_everything(2023)
 +    pl.seed_everything(args.seed, workers=True)
-@@ -39 +54,31 @@ def main(args):
+@@ -39 +56,31 @@ def main(args):
 -    loggers = load_loggers('logs', args.dataset, args.fold)
 +    if args.wandb:
 +        from pytorch_lightning.loggers import WandbLogger
@@ -164,15 +166,16 @@ diff --git a/train.py b/train.py
 +        loggers = load_loggers(
 +            args.log_root, args.dataset, str(args.fold)
 +        )
-@@ -42 +86,3 @@ def main(args):
+@@ -42 +88,4 @@ def main(args):
 -    callbacks = load_callbacks('ckpt', args.dataset, args.fold)
 +    callbacks = load_callbacks(
-+        args.checkpoint_root, args.dataset, str(args.fold)
++        args.checkpoint_root, args.dataset, str(args.fold),
++        monitor=args.monitor, patience=args.patience,
 +    )
-@@ -45,2 +90,0 @@ def main(args):
+@@ -45,2 +93,0 @@ def main(args):
 -    data_root = '/data/smb/syh/WSI_cls/'
 -
-@@ -57,2 +101,6 @@ def main(args):
+@@ -57,2 +104,6 @@ def main(args):
 -    dataset_root = os.path.join(data_root, args.dataset, feat_ext)
 -    dm = WSIDataModule(fold=args.fold, dataset_path=dataset_root, dataset=args.dataset, num_views=args.views,model=args.model)
 +    dataset_root = args.feature_dir
@@ -181,16 +184,16 @@ diff --git a/train.py b/train.py
 +        num_views=args.views, model=args.model, split_csv=args.split_csv,
 +        max_instances=args.max_instances, num_workers=args.num_workers,
 +    )
-@@ -61 +110,4 @@ def main(args):
+@@ -61 +113,4 @@ def main(args):
 -    model = ModelInterface(model=args.model, feat=args.feat, debug=True, encoder=args.enc)
 +    model = ModelInterface(
 +        model=args.model, feat=args.feat, debug=False, encoder=args.enc,
 +        num_classes=args.num_classes, input_dim=1024,
 +    )
-@@ -69 +121 @@ def main(args):
+@@ -69 +124 @@ def main(args):
 -        max_epochs=200,
 +        max_epochs=args.max_epochs,
-@@ -78,4 +130,13 @@ def main(args):
+@@ -78,4 +133,13 @@ def main(args):
          trainer.fit(model = model, datamodule = dm)
 +        if args.wandb:
 +            import wandb
@@ -205,3 +208,24 @@ diff --git a/train.py b/train.py
 +            encoder=args.enc, num_classes=args.num_classes, input_dim=1024,
 +        )
          trainer.test(model=new_model, datamodule=dm)
+diff --git a/utils/utils.py b/utils/utils.py
+--- a/utils/utils.py
++++ b/utils/utils.py
+@@ -30 +30,2 @@ def load_loggers(log_root, dataset_name, fold):
+-def load_callbacks(ckpt_root, dataset_name, fold):
++def load_callbacks(ckpt_root, dataset_name, fold, monitor='val_auc',
++                   patience=8):
+@@ -39 +40 @@ def load_callbacks(ckpt_root, dataset_name, fold):
+-    Mycallbacks.append(ModelCheckpoint(monitor = 'val_acc',
++    Mycallbacks.append(ModelCheckpoint(monitor = monitor,
+@@ -41 +42 @@ def load_callbacks(ckpt_root, dataset_name, fold):
+-                                         filename = '{epoch:02d}-{val_acc:.4f}',
++                                         filename = '{epoch:02d}-{' + monitor + ':.4f}',
+@@ -46,0 +48,7 @@ def load_callbacks(ckpt_root, dataset_name, fold):
++    from pytorch_lightning.callbacks import EarlyStopping
++    Mycallbacks.append(
++        EarlyStopping(
++            monitor=monitor, mode='max', patience=patience,
++            min_delta=0.0,
++        )
++    )
