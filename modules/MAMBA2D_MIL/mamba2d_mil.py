@@ -11,17 +11,27 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 try:
-    from mamba.mamba_ssm.modules.mamba_simple import Mamba
-    from mamba.mamba_ssm.modules.srmamba import SRMamba
+    # mamba-ssm 2.2.x imports these symbols from the old public location.
+    # Newer transformers retains them in generation.utils only.
+    import transformers.generation as _generation
+    from transformers.generation import utils as _generation_utils
+    for _name in (
+        "GreedySearchDecoderOnlyOutput",
+        "SampleDecoderOnlyOutput",
+    ):
+        if not hasattr(_generation, _name):
+            _output_type = getattr(
+                _generation_utils,
+                _name,
+                _generation.GenerateDecoderOnlyOutput,
+            )
+            setattr(_generation, _name, _output_type)
+    from mamba_ssm.modules.mamba_simple import Mamba
+    SRMamba = Mamba
     MAMBA_AVAILABLE = True
-except ImportError:
-    try:
-        from mamba_ssm.modules.mamba_simple import Mamba
-        SRMamba = Mamba
-        MAMBA_AVAILABLE = True
-    except ImportError:
-        MAMBA_AVAILABLE = False
-        print("Warning: mamba-ssm is required. Install with: pip install mamba-ssm")
+except (ImportError, AttributeError):
+    MAMBA_AVAILABLE = False
+    print("Warning: mamba-ssm is required. Install with: pip install mamba-ssm")
 
 def initialize_weights(module):
     for m in module.modules():
