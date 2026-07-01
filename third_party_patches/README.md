@@ -9,6 +9,8 @@ runtime paths, and W&B logging without checkpoint upload. The C2Aug
 augmentation, attention fusion, DINO group loss, teacher EMA, and TransMIL
 backbone remain upstream implementations.
 Validation macro-AUC controls checkpoint selection and early stopping.
+The patch also fixes compression padding when a bag is shorter than the
+random compression ratio.
 
 Apply to a clean checkout with:
 

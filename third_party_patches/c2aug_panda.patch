@@ -234,3 +234,13 @@ diff --git a/utils/utils.py b/utils/utils.py
 +            min_delta=0.0,
 +        )
 +    )
+diff --git a/models/attn_fuse.py b/models/attn_fuse.py
+--- a/models/attn_fuse.py
++++ b/models/attn_fuse.py
+@@ -342,2 +342,4 @@ class CompressAttention(nn.Module):
+-            # x = F.pad(x, (0, 0, 0, padding_size), mode='constant', value=0)
+-            x = torch.cat([x, x[:, :padding_size, :]], dim=1)
++            repeat_indices = (
++                torch.arange(padding_size, device=x.device) % N
++            )
++            x = torch.cat([x, x[:, repeat_indices, :]], dim=1)
