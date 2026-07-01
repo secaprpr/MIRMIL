@@ -31,6 +31,10 @@ def test_coordinate_audit_rejects_duplicates_and_unsorted_files(tmp_path):
     write_coords(unsorted, [[256, 0], [0, 0]])
     assert inspect_coordinate_file(duplicate)["status"] == "failed"
     assert inspect_coordinate_file(unsorted)["status"] == "failed"
+    repaired = inspect_coordinate_file(unsorted, repair_order=True)
+    assert repaired["status"] == "ok"
+    with h5py.File(unsorted, "r") as handle:
+        assert handle["coords"][:].tolist() == [[0, 0], [256, 0]]
 
 
 def test_coordinate_audit_includes_missing_manifest_slide(tmp_path):

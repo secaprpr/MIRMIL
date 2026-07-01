@@ -17,7 +17,7 @@ def file_sha256(path):
     return digest.hexdigest()
 
 
-def inspect_coordinate_file(path):
+def inspect_coordinate_file(path, repair_order=False):
     result = {
         "status": "ok",
         "detail": "",
@@ -27,7 +27,7 @@ def inspect_coordinate_file(path):
         "sha256": None,
     }
     try:
-        with h5py.File(path, "r") as handle:
+        with h5py.File(path, "r+" if repair_order else "r") as handle:
             if "coords" not in handle:
                 raise ValueError("missing coords dataset")
             dataset = handle["coords"]
@@ -44,7 +44,15 @@ def inspect_coordinate_file(path):
                 raise ValueError("duplicate coordinate")
             order = np.lexsort((coords[:, 1], coords[:, 0]))
             if not np.array_equal(order, np.arange(len(coords))):
-                raise ValueError("coordinates are not deterministically sorted")
+                if not repair_order:
+                    raise ValueError(
+                        "coordinates are not deterministically sorted"
+                    )
+                attributes = dict(dataset.attrs)
+                dataset[...] = coords[order]
+                for key, value in attributes.items():
+                    dataset.attrs[key] = value
+                coords = dataset[:]
             result["num_patches"] = int(coords.shape[0])
             result["patch_size"] = int(dataset.attrs.get("patch_size", -1))
             result["patch_level"] = int(dataset.attrs.get("patch_level", -1))
@@ -60,7 +68,7 @@ def inspect_coordinate_file(path):
     return result
 
 
-def audit_coordinates(source_csv, patch_dir):
+def audit_coordinates(source_csv, patch_dir, repair_order=False):
     source = pd.read_csv(source_csv)
     if "wsi_path" not in source:
         raise ValueError("source CSV must contain wsi_path")
@@ -68,7 +76,9 @@ def audit_coordinates(source_csv, patch_dir):
     for wsi_path in source["wsi_path"]:
         slide_id = Path(wsi_path).stem
         coordinate_path = patch_dir / "patches" / f"{slide_id}.h5"
-        result = inspect_coordinate_file(coordinate_path)
+        result = inspect_coordinate_file(
+            coordinate_path, repair_order=repair_order
+        )
         records.append(
             {
                 "slide_id": slide_id,
@@ -85,10 +95,17 @@ def main():
     parser.add_argument("--source-csv", type=Path, required=True)
     parser.add_argument("--patch-dir", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--repair-order",
+        action="store_true",
+        help="Sort otherwise valid coordinate datasets in place before audit",
+    )
     args = parser.parse_args()
 
     audit = audit_coordinates(
-        args.source_csv.resolve(), args.patch_dir.resolve()
+        args.source_csv.resolve(),
+        args.patch_dir.resolve(),
+        repair_order=args.repair_order,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     audit.to_csv(args.output, index=False)
