@@ -126,6 +126,14 @@ def build_command(args, variant, seed):
         f"Tracking.wandb.variant={variant}",
         f"Tracking.wandb.protocol={getattr(args, 'protocol', 'default')}",
         f"Tracking.wandb.split_id={getattr(args, 'split_id', 'default')}",
+        "Tracking.wandb.source_manifest_sha256="
+        f"{getattr(args, 'source_manifest_sha256', None)}",
+        "Tracking.wandb.feature_manifest_sha256="
+        f"{getattr(args, 'feature_manifest_sha256', None)}",
+        "Tracking.wandb.coordinate_manifest_sha256="
+        f"{getattr(args, 'coordinate_manifest_sha256', None)}",
+        "Tracking.wandb.encoder_checkpoint_sha256="
+        f"{getattr(args, 'encoder_checkpoint_sha256', None)}",
         "Tracking.wandb.upload_checkpoints=false",
         f"Tracking.wandb.max_artifact_mb={getattr(args, 'max_artifact_mb', 50)}",
     ]
@@ -197,6 +205,10 @@ def main():
     parser.add_argument("--protocol", default="default")
     parser.add_argument("--split-id", default="unspecified")
     parser.add_argument("--comparison-id")
+    parser.add_argument("--source-manifest-sha256")
+    parser.add_argument("--feature-manifest-sha256")
+    parser.add_argument("--coordinate-manifest-sha256")
+    parser.add_argument("--encoder-checkpoint-sha256")
     parser.add_argument("--wandb", action="store_true")
     parser.add_argument("--wandb-project", default="MIR-MIL")
     parser.add_argument("--wandb-entity")
@@ -243,6 +255,10 @@ def main():
         "protocol": args.protocol,
         "split_id": args.split_id,
         "comparison_id": args.comparison_id,
+        "source_manifest_sha256": args.source_manifest_sha256,
+        "feature_manifest_sha256": args.feature_manifest_sha256,
+        "coordinate_manifest_sha256": args.coordinate_manifest_sha256,
+        "encoder_checkpoint_sha256": args.encoder_checkpoint_sha256,
         "wandb": args.wandb,
         "commands": commands,
     }
