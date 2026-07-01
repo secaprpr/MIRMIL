@@ -19,6 +19,8 @@ def update_config_from_options(config, options):
         keys = key.split('.')
         d = config
         for k in keys[:-1]:
+            if k not in d or d[k] is None:
+                d[k] = Dict()
             d = d[k]
         d[keys[-1]] = _parse_option_value(value)
     return config
@@ -32,6 +34,8 @@ def change_yaml_by_options(yaml_path, options):
         keys = key.split('.')
         d = config
         for k in keys[:-1]:
+            if k not in d or d[k] is None:
+                d[k] = {}
             d = d[k]
         d[keys[-1]] = _parse_option_value(value)
 

@@ -17,6 +17,16 @@ from utils.yaml_utils import read_yaml, update_config_from_options
 
 
 class ExperimentUtilsTest(unittest.TestCase):
+    def test_yaml_options_can_create_tracking_tree(self):
+        from utils.yaml_utils import update_config_from_options
+        from addict import Dict
+
+        config = update_config_from_options(
+            Dict({"General": {"seed": 1}}),
+            ["Tracking.wandb.enabled=true"],
+        )
+        self.assertTrue(config.Tracking.wandb.enabled)
+
     def test_split_is_deterministic_and_stratified(self):
         frame = pd.DataFrame(
             {
