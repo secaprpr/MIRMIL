@@ -196,6 +196,7 @@ def main():
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--protocol", default="protocol-v1")
     parser.add_argument("--wandb-project", default="MIR-MIL")
+    parser.add_argument("--manifest-name", default="matrix_manifest.json")
     parser.add_argument("--python", type=Path, default=Path(sys.executable))
     parser.add_argument(
         "--feature-root",
@@ -241,7 +242,7 @@ def main():
             for task in tasks
         ],
     }
-    with open(args.output_dir / "matrix_manifest.json", "w", encoding="utf-8") as handle:
+    with open(args.output_dir / args.manifest_name, "w", encoding="utf-8") as handle:
         json.dump(manifest, handle, indent=2)
 
     task_queue = queue.Queue()

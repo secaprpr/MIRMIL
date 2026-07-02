@@ -142,6 +142,7 @@ class Mamba2D_MIL(nn.Module):
         self.num_classes = num_classes
         self.d_model = d_model
         self.grid_size = grid_size
+        self.input_norm = nn.LayerNorm(in_dim)
         
         # Convert act to string
         if isinstance(act, nn.ReLU):
@@ -239,7 +240,7 @@ class Mamba2D_MIL(nn.Module):
         N = x.shape[0]
         
         # Feature projection
-        x = self.feature_proj(x)  # (N, d_model)
+        x = self.feature_proj(self.input_norm(x))  # (N, d_model)
         
         # Convert to 2D grid
         grid, occupied = self._features_to_grid(x, coords)
