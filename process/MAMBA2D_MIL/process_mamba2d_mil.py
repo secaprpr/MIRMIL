@@ -22,7 +22,14 @@ def spatial_train_loop(device, model, loader, criterion, optimizer, scheduler, i
         features, coords = _split_spatial_bag(bag.float().to(device), in_dim)
         logits = model(features, coords=coords)["logits"]
         loss = criterion(logits, label.long().to(device))
+        if not torch.isfinite(loss):
+            raise FloatingPointError("non-finite 2DMamba training loss")
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(
+            model.parameters(),
+            max_norm=1.0,
+            error_if_nonfinite=True,
+        )
         optimizer.step()
         loss_sum += loss.item()
     if scheduler is not None:

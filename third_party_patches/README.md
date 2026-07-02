@@ -11,6 +11,8 @@ backbone remain upstream implementations.
 Validation macro-AUC controls checkpoint selection and early stopping.
 The patch also fixes compression padding when a bag is shorter than the
 random compression ratio.
+C2Aug formal runs use full precision and unit gradient clipping to avoid
+mixed-precision overflow in the contrastive losses.
 
 Apply to a clean checkout with:
 

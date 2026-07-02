@@ -291,11 +291,23 @@ class WandbTracker:
                 artifact.add_file(path)
                 added = True
         if added:
-            self.run.log_artifact(artifact)
+            try:
+                self.run.log_artifact(artifact)
+            except Exception as exc:
+                print(
+                    "W&B artifact upload failed; local results remain valid: "
+                    f"{exc}"
+                )
 
     def finish(self, exit_code=0):
         if self.enabled:
-            self.run.finish(exit_code=exit_code)
+            try:
+                self.run.finish(exit_code=exit_code)
+            except Exception as exc:
+                print(
+                    "W&B finish failed; local results remain valid: "
+                    f"{exc}"
+                )
 
 
 def job_options(parser):

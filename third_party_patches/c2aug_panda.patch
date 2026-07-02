@@ -244,3 +244,12 @@ diff --git a/models/attn_fuse.py b/models/attn_fuse.py
 +                torch.arange(padding_size, device=x.device) % N
 +            )
 +            x = torch.cat([x, x[:, repeat_indices, :]], dim=1)
+diff --git a/train.py b/train.py
+--- a/train.py
++++ b/train.py
+@@ -67 +127 @@ def main(args):
+-        # gradient_clip_val=1,
++        gradient_clip_val=1.0,
+@@ -71 +131 @@ def main(args):
+-        precision='16-mixed',
++        precision='32-true',
