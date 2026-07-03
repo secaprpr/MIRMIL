@@ -1,0 +1,163 @@
+"""Evaluate one trained MIRMIL-repository model on the sealed PANDA test."""
+
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
+
+import pandas as pd
+import torch
+from torch.utils.data import DataLoader
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from utils.general_utils import set_global_seed
+from utils.loop_utils import cal_scores
+from utils.model_utils import get_model_from_yaml
+from utils.wandb_utils import WandbTracker, file_sha256, metric_payload
+from utils.wsi_utils import WSI_Coord_Dataset, WSI_Dataset
+from utils.yaml_utils import read_yaml
+
+
+def evaluate(args):
+    config = read_yaml(args.config)
+    config.Dataset.dataset_csv_path = str(args.split.resolve())
+    config.General.device = 0
+    config.Model.max_instances = args.max_instances
+    set_global_seed(int(config.General.seed))
+    spatial = str(config.General.MODEL_NAME) == "MAMBA2D_MIL"
+    dataset_class = WSI_Coord_Dataset if spatial else WSI_Dataset
+    dataset = dataset_class(
+        str(args.split),
+        "test",
+        max_instances=args.max_instances,
+        sampling="uniform",
+    )
+    loader = DataLoader(
+        dataset, batch_size=1, shuffle=False, num_workers=args.num_workers
+    )
+    device = torch.device("cuda:0")
+    model = get_model_from_yaml(config).to(device)
+    model.load_state_dict(
+        torch.load(args.checkpoint, map_location=device, weights_only=True)
+    )
+    model.eval()
+    probabilities, labels = [], []
+    with torch.no_grad():
+        for bag, label in loader:
+            bag = bag.float().to(device)
+            if spatial:
+                in_dim = int(config.Model.in_dim)
+                features = bag[..., :in_dim]
+                coords = bag[..., in_dim:in_dim + 2].squeeze(0)
+                output = model(features, coords=coords)
+            else:
+                output = model(bag)
+            probability = torch.softmax(
+                output["logits"].squeeze(0), dim=0
+            )
+            probabilities.append(probability.cpu().numpy())
+            labels.append(int(label.item()))
+    metrics = cal_scores(probabilities, labels, int(config.General.num_classes))
+    rows = []
+    for slide_path, label, probability in zip(
+        dataset.slide_path_list, labels, probabilities
+    ):
+        row = {"slide_path": slide_path, "label": label}
+        row.update(
+            {f"prob_{index}": float(value) for index, value in enumerate(probability)}
+        )
+        rows.append(row)
+    return config, metrics, rows
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=Path, required=True)
+    parser.add_argument("--checkpoint", type=Path, required=True)
+    parser.add_argument("--split", type=Path, required=True)
+    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--feature", required=True)
+    parser.add_argument("--model", required=True)
+    parser.add_argument("--seed", type=int, required=True)
+    parser.add_argument("--max-instances", type=int, default=4096)
+    parser.add_argument("--num-workers", type=int, default=4)
+    parser.add_argument("--wandb-project", default="MIR-MIL")
+    args = parser.parse_args()
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+
+    config, metrics, predictions = evaluate(args)
+    prediction_path = args.output_dir / "predictions.csv"
+    pd.DataFrame(predictions).to_csv(prediction_path, index=False)
+    result = {
+        "feature": args.feature,
+        "model": args.model,
+        "seed": args.seed,
+        "num_slides": len(predictions),
+        "acc": metrics["acc"],
+        "bacc": metrics["bacc"],
+        "macro_auc": metrics["macro_auc"],
+        "macro_f1": metrics["macro_f1"],
+        "checkpoint": str(args.checkpoint.resolve()),
+        "checkpoint_sha256": file_sha256(args.checkpoint),
+        "split_sha256": file_sha256(args.split),
+    }
+    with open(args.output_dir / "result.json", "w", encoding="utf-8") as handle:
+        json.dump(result, handle, indent=2)
+
+    tracker = WandbTracker.for_job(
+        enabled=True,
+        project=args.wandb_project,
+        entity=None,
+        mode="online",
+        name=f"PANDA_{args.feature}_{args.model}_{args.model}_seed{args.seed}_eval",
+        group=f"PANDA_{args.feature}_{args.model}_protocol-v1_split-v1-qc",
+        job_type="eval",
+        tags=[
+            "dataset:panda", f"feature:{args.feature}",
+            f"model:{args.model}", "test:sealed", f"seed:{args.seed}",
+        ],
+        config={
+            "dataset": "PANDA",
+            "feature": args.feature,
+            "model": args.model,
+            "seed": args.seed,
+            "split_sha256": result["split_sha256"],
+            "checkpoint_sha256": result["checkpoint_sha256"],
+            "patch_budget": args.max_instances,
+            "sampling": "uniform",
+        },
+        output_dir=str(args.output_dir),
+    )
+    tracker.summary(
+        {
+            **metric_payload(
+                "test",
+                {
+                    "acc": result["acc"],
+                    "bacc": result["bacc"],
+                    "macro_auc": result["macro_auc"],
+                    "macro_f1": result["macro_f1"],
+                },
+            ),
+            "test/num_slides": result["num_slides"],
+        }
+    )
+    tracker.log_artifact(
+        name=f"{tracker.run.id}-predictions",
+        artifact_type="predictions",
+        files=[str(prediction_path)],
+        metadata={
+            "split_sha256": result["split_sha256"],
+            "checkpoint_sha256": result["checkpoint_sha256"],
+        },
+    )
+    tracker.finish()
+    print(json.dumps(result, indent=2))
+
+
+if __name__ == "__main__":
+    main()
