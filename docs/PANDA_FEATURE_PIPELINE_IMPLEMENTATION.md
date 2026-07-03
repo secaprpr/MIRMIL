@@ -1,6 +1,6 @@
 # PANDA Feature Pipeline Implementation
 
-Status: validated 20-slide prototype, July 1, 2026.
+Status: full dataset extraction and audit complete, July 3, 2026.
 
 ## Purpose
 
@@ -11,7 +11,32 @@ PANDA experiments. The source WSI directory is treated as read-only:
 /data15/data15_5/fanhao/datasets/PANDA/WSI/train_images/
 ```
 
-All trial outputs are stored under the repository's `artifacts/` directory.
+Trial outputs are stored under the repository's `artifacts/` directory. Full
+outputs are stored outside the repository under:
+
+```text
+/data15/data15_5/fanhao/datasets/PANDA/MIRMIL_FEATURES/
+```
+
+The source WSI directory was not modified.
+
+## Full-Scale Completion
+
+The frozen cohort contains 10,615 slides: 6,369 train, 2,123 validation, and
+2,123 sealed test. One all-white source slide,
+`3790f55cad63053e956fb73027179707`, was excluded by QC before splitting.
+
+The completed extraction contains:
+
+- 10,615 patch-coordinate H5 files and 5,323,426 patch coordinates;
+- 10,615 R50 H5 files and 10,615 matching PT files;
+- 10,615 UNI H5 files and 10,615 matching PT files.
+
+Every feature file passed count, dimensionality, finiteness, H5/PT equality,
+and coordinate-alignment checks. Both encoders use the identical coordinate
+cohort. The final split manifests are in the feature root's `metadata/`
+directory; `_h5.csv` variants contain the equivalent H5 paths needed by the
+spatial model.
 
 ## Environment
 
