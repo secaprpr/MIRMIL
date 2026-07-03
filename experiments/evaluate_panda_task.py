@@ -15,7 +15,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from utils.general_utils import set_global_seed
-from utils.loop_utils import cal_scores
+from utils.loop_utils import cal_scores, get_cam_1d
 from utils.model_utils import get_model_from_yaml
 from utils.wandb_utils import WandbTracker, file_sha256, metric_payload
 from utils.wsi_utils import WSI_Coord_Dataset, WSI_Dataset
@@ -40,16 +40,64 @@ def evaluate(args):
         dataset, batch_size=1, shuffle=False, num_workers=args.num_workers
     )
     device = torch.device("cuda:0")
-    model = get_model_from_yaml(config).to(device)
-    model.load_state_dict(
-        torch.load(args.checkpoint, map_location=device, weights_only=True)
-    )
-    model.eval()
+    model = get_model_from_yaml(config)
+    checkpoint = torch.load(args.checkpoint, map_location=device, weights_only=True)
+    is_dtfd = str(config.General.MODEL_NAME) == "DTFD_MIL"
+    if is_dtfd:
+        checkpoint_keys = ("classifier", "attention", "dimReduction", "attCls")
+        for module, key in zip(model, checkpoint_keys):
+            module.to(device)
+            module.load_state_dict(checkpoint[key])
+            module.eval()
+    else:
+        model = model.to(device)
+        model.load_state_dict(checkpoint)
+        model.eval()
     probabilities, labels = [], []
     with torch.no_grad():
         for bag, label in loader:
             bag = bag.float().to(device)
-            if spatial:
+            if is_dtfd:
+                classifier, attention, dim_reduction, attention_classifier = model
+                pseudo_features = []
+                instance_per_group = (
+                    int(config.Model.total_instance) // int(config.Model.num_Group)
+                )
+                for sub_features in torch.chunk(
+                    bag.squeeze(0), int(config.Model.num_Group), dim=0
+                ):
+                    middle_features = dim_reduction(sub_features)
+                    attention_scores = attention(middle_features).squeeze(0)
+                    weighted_features = torch.einsum(
+                        "ns,n->ns", middle_features, attention_scores
+                    )
+                    attention_feature = weighted_features.sum(dim=0, keepdim=True)
+                    patch_logits = get_cam_1d(
+                        classifier, weighted_features.unsqueeze(0)
+                    ).squeeze(0).transpose(0, 1)
+                    sort_index = torch.sort(
+                        torch.softmax(patch_logits, dim=1)[:, -1],
+                        descending=True,
+                    ).indices
+                    top_max = sort_index[:instance_per_group].long()
+                    top_min = sort_index[-instance_per_group:].long()
+                    if str(config.Model.distill) == "MaxMinS":
+                        selected = torch.cat((top_max, top_min), dim=0)
+                        pseudo_features.append(
+                            middle_features.index_select(0, selected)
+                        )
+                    elif str(config.Model.distill) == "MaxS":
+                        pseudo_features.append(
+                            middle_features.index_select(0, top_max)
+                        )
+                    elif str(config.Model.distill) == "AFS":
+                        pseudo_features.append(attention_feature)
+                    else:
+                        raise ValueError(
+                            f"Unsupported DTFD distill mode: {config.Model.distill}"
+                        )
+                output = attention_classifier(torch.cat(pseudo_features, dim=0))
+            elif spatial:
                 in_dim = int(config.Model.in_dim)
                 features = bag[..., :in_dim]
                 coords = bag[..., in_dim:in_dim + 2].squeeze(0)
