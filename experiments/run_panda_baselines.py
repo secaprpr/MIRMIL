@@ -1,4 +1,4 @@
-"""Run the formal PANDA R50/UNI baseline matrix across local GPUs."""
+"""Run a formal R50/UNI baseline matrix across local GPUs."""
 
 import argparse
 import hashlib
@@ -37,19 +37,26 @@ def file_sha256(path):
 
 
 def generic_command(args, feature, model, seed, run_dir, hashes):
+    train_suffix = getattr(args, "train_suffix", "split_v1_train_val_qc")
+    train_h5_suffix = getattr(
+        args, "train_h5_suffix", "split_v1_train_val_qc_h5"
+    )
+    split_prefix = getattr(args, "split_prefix", "PANDA")
+    dataset_name = getattr(args, "dataset_name", "PANDA")
+    num_classes = getattr(args, "num_classes", 6)
+    split_id = getattr(args, "split_id", "split-v1-qc")
     split_suffix = (
-        "train_val_qc_h5" if model == "MAMBA2D_MIL"
-        else "train_val_qc"
+        train_h5_suffix if model == "MAMBA2D_MIL" else train_suffix
     )
     split = args.metadata_dir / (
-        f"PANDA_{feature}_split_v1_{split_suffix}.csv"
+        f"{split_prefix}_{feature}_{split_suffix}.csv"
     )
     return [
         str(args.python),
         "experiments/run_benchmark.py",
         "--split", str(split),
-        "--dataset-name", "PANDA",
-        "--num-classes", "6",
+        "--dataset-name", dataset_name,
+        "--num-classes", str(num_classes),
         "--log-root", str(run_dir),
         "--models", model,
         "--seeds", str(seed),
@@ -59,8 +66,9 @@ def generic_command(args, feature, model, seed, run_dir, hashes):
         "--in-dim", "1024",
         "--feature", feature,
         "--protocol", args.protocol,
-        "--split-id", "split-v1-qc",
-        "--comparison-id", f"panda-{feature}-{model}-seed{seed}",
+        "--split-id", split_id,
+        "--comparison-id",
+        f"{dataset_name.lower()}-{feature}-{model}-seed{seed}",
         "--wandb",
         "--wandb-project", args.wandb_project,
         "--wandb-mode", "online",
@@ -74,8 +82,13 @@ def generic_command(args, feature, model, seed, run_dir, hashes):
 
 
 def c2aug_command(args, feature, seed, run_dir, hashes):
+    train_suffix = getattr(args, "train_suffix", "split_v1_train_val_qc")
+    split_prefix = getattr(args, "split_prefix", "PANDA")
+    dataset_name = getattr(args, "dataset_name", "PANDA")
+    num_classes = getattr(args, "num_classes", 6)
+    split_id = getattr(args, "split_id", "split-v1-qc")
     split = args.metadata_dir / (
-        f"PANDA_{feature}_split_v1_train_val_qc.csv"
+        f"{split_prefix}_{feature}_{train_suffix}.csv"
     )
     feature_dir = args.feature_root / feature
     feat_name = "res50" if feature == "r50" else "uni"
@@ -84,14 +97,14 @@ def c2aug_command(args, feature, seed, run_dir, hashes):
         "train.py",
         "--model", "transmil",
         "--fold", "0",
-        "--dataset", "PANDA",
+        "--dataset", dataset_name,
         "--gpus", "0",
         "--feat", feat_name,
         "--enc", "attn",
         "--views", "2",
         "--split-csv", str(split),
         "--feature-dir", str(feature_dir),
-        "--num-classes", "6",
+        "--num-classes", str(num_classes),
         "--seed", str(seed),
         "--max-epochs", str(args.epochs),
         "--max-instances", str(args.max_instances),
@@ -104,7 +117,7 @@ def c2aug_command(args, feature, seed, run_dir, hashes):
         "--wandb-project", args.wandb_project,
         "--feature-name", feature,
         "--protocol", args.protocol,
-        "--split-id", "split-v1-qc",
+        "--split-id", split_id,
         "--split-sha256", hashes[f"{feature}_split"],
         "--source-manifest-sha256", hashes["source"],
         "--feature-manifest-sha256", hashes[f"{feature}_feature"],
@@ -195,6 +208,14 @@ def main():
     parser.add_argument("--max-instances", type=int, default=4096)
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--protocol", default="protocol-v1")
+    parser.add_argument("--dataset-name", default="PANDA")
+    parser.add_argument("--num-classes", type=int, default=6)
+    parser.add_argument("--split-prefix", default="PANDA")
+    parser.add_argument("--train-suffix", default="split_v1_train_val_qc")
+    parser.add_argument("--train-h5-suffix", default="split_v1_train_val_qc_h5")
+    parser.add_argument("--split-id", default="split-v1-qc")
+    parser.add_argument("--source-manifest", default="panda_source_manifest_qc.csv")
+    parser.add_argument("--coordinate-manifest", default="panda_patch_manifest_qc.csv")
     parser.add_argument("--wandb-project", default="MIR-MIL")
     parser.add_argument("--manifest-name", default="matrix_manifest.json")
     parser.add_argument("--python", type=Path, default=Path(sys.executable))
@@ -211,12 +232,18 @@ def main():
     args.output_dir = args.output_dir.resolve()
 
     hashes = {
-        "source": file_sha256(args.metadata_dir / "panda_source_manifest_qc.csv"),
-        "coordinates": file_sha256(args.metadata_dir / "panda_patch_manifest_qc.csv"),
+        "source": file_sha256(args.metadata_dir / args.source_manifest),
+        "coordinates": file_sha256(args.metadata_dir / args.coordinate_manifest),
         "r50_feature": file_sha256(args.feature_root / "r50/logs/feature_audit.csv"),
         "uni_feature": file_sha256(args.feature_root / "uni/logs/feature_audit.csv"),
-        "r50_split": file_sha256(args.metadata_dir / "PANDA_r50_split_v1_train_val_qc.csv"),
-        "uni_split": file_sha256(args.metadata_dir / "PANDA_uni_split_v1_train_val_qc.csv"),
+        "r50_split": file_sha256(
+            args.metadata_dir
+            / f"{args.split_prefix}_r50_{args.train_suffix}.csv"
+        ),
+        "uni_split": file_sha256(
+            args.metadata_dir
+            / f"{args.split_prefix}_uni_{args.train_suffix}.csv"
+        ),
         "r50_checkpoint": file_sha256(project_root / "artifacts/pretrained/resnet50_imagenet/resnet50-19c8e357.pth"),
         "uni_checkpoint": file_sha256(project_root / "artifacts/pretrained/uni/pytorch_model.bin"),
     }
@@ -232,6 +259,9 @@ def main():
         "patience": args.patience,
         "max_instances": args.max_instances,
         "protocol": args.protocol,
+        "dataset_name": args.dataset_name,
+        "num_classes": args.num_classes,
+        "split_id": args.split_id,
         "hashes": hashes,
         "tasks": [
             {

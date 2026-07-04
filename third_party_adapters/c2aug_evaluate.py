@@ -1,4 +1,4 @@
-"""Evaluate a C2Aug Lightning checkpoint on PANDA sealed test features."""
+"""Evaluate a C2Aug Lightning checkpoint on held-out test features."""
 
 import argparse
 import hashlib
@@ -64,6 +64,8 @@ def main():
     parser.add_argument("--max-instances", type=int, default=4096)
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--wandb-project", default="MIR-MIL")
+    parser.add_argument("--dataset-name", default="PANDA")
+    parser.add_argument("--num-classes", type=int, default=6)
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
     random.seed(args.seed)
@@ -80,7 +82,7 @@ def main():
         feat=feat_name,
         debug=False,
         encoder="attn",
-        num_classes=6,
+        num_classes=args.num_classes,
         input_dim=1024,
         map_location="cuda:0",
     ).cuda().eval()
@@ -138,15 +140,22 @@ def main():
 
     run = wandb.init(
         project=args.wandb_project,
-        name=f"PANDA_{args.feature}_TransMIL_C2Aug_seed{args.seed}_eval",
-        group=f"PANDA_{args.feature}_TransMIL_C2Aug_protocol-v1_split-v1-qc",
+        name=(
+            f"{args.dataset_name}_{args.feature}_TransMIL_"
+            f"C2Aug_seed{args.seed}_eval"
+        ),
+        group=(
+            f"{args.dataset_name}_{args.feature}_TransMIL_"
+            "C2Aug_protocol-v1_official"
+        ),
         job_type="eval",
         tags=[
-            "dataset:panda", f"feature:{args.feature}", "model:c2aug",
+            f"dataset:{args.dataset_name.lower()}",
+            f"feature:{args.feature}", "model:c2aug",
             "test:sealed", f"seed:{args.seed}",
         ],
         config={
-            "dataset": "PANDA", "feature": args.feature,
+            "dataset": args.dataset_name, "feature": args.feature,
             "model": "C2AUG", "seed": args.seed,
             "split_sha256": result["split_sha256"],
             "checkpoint_sha256": result["checkpoint_sha256"],

@@ -1,4 +1,4 @@
-"""Evaluate one trained MIRMIL-repository model on the sealed PANDA test."""
+"""Evaluate one trained repository model on a held-out test split."""
 
 import argparse
 import json
@@ -134,6 +134,7 @@ def main():
     parser.add_argument("--max-instances", type=int, default=4096)
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--wandb-project", default="MIR-MIL")
+    parser.add_argument("--dataset-name", default="PANDA")
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -161,15 +162,21 @@ def main():
         project=args.wandb_project,
         entity=None,
         mode="online",
-        name=f"PANDA_{args.feature}_{args.model}_{args.model}_seed{args.seed}_eval",
-        group=f"PANDA_{args.feature}_{args.model}_protocol-v1_split-v1-qc",
+        name=(
+            f"{args.dataset_name}_{args.feature}_{args.model}_"
+            f"{args.model}_seed{args.seed}_eval"
+        ),
+        group=(
+            f"{args.dataset_name}_{args.feature}_{args.model}_"
+            "protocol-v1_official"
+        ),
         job_type="eval",
         tags=[
-            "dataset:panda", f"feature:{args.feature}",
+            f"dataset:{args.dataset_name.lower()}", f"feature:{args.feature}",
             f"model:{args.model}", "test:sealed", f"seed:{args.seed}",
         ],
         config={
-            "dataset": "PANDA",
+            "dataset": args.dataset_name,
             "feature": args.feature,
             "model": args.model,
             "seed": args.seed,

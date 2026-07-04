@@ -1,4 +1,4 @@
-"""Parallel sealed-test evaluation and three-seed aggregation for PANDA."""
+"""Parallel held-out evaluation and three-seed baseline aggregation."""
 
 import argparse
 import json
@@ -30,9 +30,9 @@ def build_tasks(args):
         )
         run_dir = Path(item["run_dir"])
         output = args.output_dir / feature / model / f"seed{seed}"
-        split_suffix = "full_qc_h5" if model == "MAMBA2D_MIL" else "full_qc"
+        split_suffix = args.full_h5_suffix if model == "MAMBA2D_MIL" else args.full_suffix
         split = args.feature_root / "metadata" / (
-            f"PANDA_{feature}_split_v1_{split_suffix}.csv"
+            f"{args.split_prefix}_{feature}_{split_suffix}.csv"
         )
         if model == "C2AUG":
             checkpoint = latest_file(
@@ -55,11 +55,14 @@ def build_tasks(args):
                 "--max-instances", str(args.max_instances),
                 "--num-workers", str(args.num_workers),
                 "--wandb-project", args.wandb_project,
+                "--dataset-name", args.dataset_name,
+                "--num-classes", str(args.num_classes),
             ]
             cwd = args.project_root / "baselines/c2aug"
         else:
             checkpoint = latest_file(
-                run_dir, "PANDA/*/time_*/Best_EPOCH_*.pth"
+                run_dir,
+                f"{args.dataset_name}/*/time_*/Best_EPOCH_*.pth",
             )
             config = checkpoint.parent / f"{model}.yaml"
             if not config.exists():
@@ -77,6 +80,7 @@ def build_tasks(args):
                 "--max-instances", str(args.max_instances),
                 "--num-workers", str(args.num_workers),
                 "--wandb-project", args.wandb_project,
+                "--dataset-name", args.dataset_name,
             ]
             cwd = args.project_root
         tasks.append(
@@ -143,17 +147,24 @@ def aggregate(args, tasks):
     for row in aggregate.to_dict("records"):
         run = wandb.init(
             project=args.wandb_project,
-            name=f"PANDA_{row['feature']}_{row['model']}_aggregate",
-            group=f"PANDA_{row['feature']}_{row['model']}_protocol-v1_split-v1-qc",
+            name=(
+                f"{args.dataset_name}_{row['feature']}_"
+                f"{row['model']}_aggregate"
+            ),
+            group=(
+                f"{args.dataset_name}_{row['feature']}_{row['model']}_"
+                f"protocol-v1_{args.split_id}"
+            ),
             job_type="aggregate",
             tags=[
-                "dataset:panda", f"feature:{row['feature']}",
+                f"dataset:{args.dataset_name.lower()}",
+                f"feature:{row['feature']}",
                 f"model:{row['model']}", "job:aggregate",
             ],
             config={
-                "dataset": "PANDA", "feature": row["feature"],
+                "dataset": args.dataset_name, "feature": row["feature"],
                 "model": row["model"], "num_seeds": int(row["seeds"]),
-                "test": "sealed", "split_id": "split-v1-qc",
+                "test": "held-out", "split_id": args.split_id,
             },
             reinit="finish_previous",
         )
@@ -193,6 +204,12 @@ def main():
     parser.add_argument("--max-instances", type=int, default=4096)
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--wandb-project", default="MIR-MIL")
+    parser.add_argument("--dataset-name", default="PANDA")
+    parser.add_argument("--num-classes", type=int, default=6)
+    parser.add_argument("--split-prefix", default="PANDA")
+    parser.add_argument("--full-suffix", default="split_v1_full_qc")
+    parser.add_argument("--full-h5-suffix", default="split_v1_full_qc_h5")
+    parser.add_argument("--split-id", default="split-v1-qc")
     parser.add_argument("--python", type=Path, default=Path(sys.executable))
     args = parser.parse_args()
     args.project_root = project_root
