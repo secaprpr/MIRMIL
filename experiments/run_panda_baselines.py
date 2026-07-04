@@ -166,6 +166,9 @@ def run_task(task, gpu):
     log_path = run_dir / "train.stdout.log"
     environment = os.environ.copy()
     environment["CUDA_VISIBLE_DEVICES"] = str(gpu)
+    environment.setdefault(
+        "PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True"
+    )
     started = datetime.now(timezone.utc).isoformat()
     with open(log_path, "a", encoding="utf-8") as log:
         log.write(
