@@ -48,6 +48,11 @@ def generic_command(args, feature, model, seed, run_dir, hashes):
     split_suffix = (
         train_h5_suffix if model == "MAMBA2D_MIL" else train_suffix
     )
+    max_instances = (
+        getattr(args, "spatial_max_instances", args.max_instances)
+        if model == "MAMBA2D_MIL"
+        else args.max_instances
+    )
     split = args.metadata_dir / (
         f"{split_prefix}_{feature}_{split_suffix}.csv"
     )
@@ -62,7 +67,7 @@ def generic_command(args, feature, model, seed, run_dir, hashes):
         "--seeds", str(seed),
         "--epochs", str(args.epochs),
         "--patience", str(args.patience),
-        "--max-instances", str(args.max_instances),
+        "--max-instances", str(max_instances),
         "--in-dim", "1024",
         "--feature", feature,
         "--protocol", args.protocol,
@@ -209,6 +214,7 @@ def main():
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--patience", type=int, default=8)
     parser.add_argument("--max-instances", type=int, default=4096)
+    parser.add_argument("--spatial-max-instances", type=int, default=4096)
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--protocol", default="protocol-v1")
     parser.add_argument("--dataset-name", default="PANDA")
@@ -261,6 +267,7 @@ def main():
         "epochs": args.epochs,
         "patience": args.patience,
         "max_instances": args.max_instances,
+        "spatial_max_instances": args.spatial_max_instances,
         "protocol": args.protocol,
         "dataset_name": args.dataset_name,
         "num_classes": args.num_classes,

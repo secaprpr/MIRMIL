@@ -28,6 +28,11 @@ def build_tasks(args):
         feature, model, seed = (
             item["feature"], item["model"], int(item["seed"])
         )
+        max_instances = (
+            args.spatial_max_instances
+            if model == "MAMBA2D_MIL"
+            else args.max_instances
+        )
         run_dir = Path(item["run_dir"])
         output = args.output_dir / feature / model / f"seed{seed}"
         split_suffix = args.full_h5_suffix if model == "MAMBA2D_MIL" else args.full_suffix
@@ -52,7 +57,7 @@ def build_tasks(args):
                 "--output-dir", str(output),
                 "--feature", feature,
                 "--seed", str(seed),
-                "--max-instances", str(args.max_instances),
+                "--max-instances", str(max_instances),
                 "--num-workers", str(args.num_workers),
                 "--wandb-project", args.wandb_project,
                 "--dataset-name", args.dataset_name,
@@ -77,7 +82,7 @@ def build_tasks(args):
                 "--feature", feature,
                 "--model", model,
                 "--seed", str(seed),
-                "--max-instances", str(args.max_instances),
+                "--max-instances", str(max_instances),
                 "--num-workers", str(args.num_workers),
                 "--wandb-project", args.wandb_project,
                 "--dataset-name", args.dataset_name,
@@ -202,6 +207,7 @@ def main():
     )
     parser.add_argument("--gpus", default="0,1,2,3,4,5,6,7")
     parser.add_argument("--max-instances", type=int, default=4096)
+    parser.add_argument("--spatial-max-instances", type=int, default=4096)
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--wandb-project", default="MIR-MIL")
     parser.add_argument("--dataset-name", default="PANDA")
