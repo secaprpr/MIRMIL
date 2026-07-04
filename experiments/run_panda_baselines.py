@@ -56,7 +56,7 @@ def generic_command(args, feature, model, seed, run_dir, hashes):
     split = args.metadata_dir / (
         f"{split_prefix}_{feature}_{split_suffix}.csv"
     )
-    return [
+    command = [
         str(args.python),
         "experiments/run_benchmark.py",
         "--split", str(split),
@@ -84,6 +84,18 @@ def generic_command(args, feature, model, seed, run_dir, hashes):
         "--coordinate-manifest-sha256", hashes["coordinates"],
         "--encoder-checkpoint-sha256", hashes[f"{feature}_checkpoint"],
     ]
+    if model == "MAMBA2D_MIL":
+        command.extend(
+            [
+                "--model-option",
+                "Model.coord_scale="
+                f"{getattr(args, 'spatial_coord_scale', 512.0)}",
+                "--model-option",
+                "Model.d_model="
+                f"{getattr(args, 'spatial_d_model', 512)}",
+            ]
+        )
+    return command
 
 
 def c2aug_command(args, feature, seed, run_dir, hashes):
@@ -215,6 +227,8 @@ def main():
     parser.add_argument("--patience", type=int, default=8)
     parser.add_argument("--max-instances", type=int, default=4096)
     parser.add_argument("--spatial-max-instances", type=int, default=4096)
+    parser.add_argument("--spatial-coord-scale", type=float, default=512.0)
+    parser.add_argument("--spatial-d-model", type=int, default=512)
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--protocol", default="protocol-v1")
     parser.add_argument("--dataset-name", default="PANDA")
@@ -268,6 +282,8 @@ def main():
         "patience": args.patience,
         "max_instances": args.max_instances,
         "spatial_max_instances": args.spatial_max_instances,
+        "spatial_coord_scale": args.spatial_coord_scale,
+        "spatial_d_model": args.spatial_d_model,
         "protocol": args.protocol,
         "dataset_name": args.dataset_name,
         "num_classes": args.num_classes,

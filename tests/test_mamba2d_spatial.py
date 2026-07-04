@@ -22,6 +22,20 @@ def test_coordinate_grid_is_compact_and_tracks_occupied_patches():
     assert torch.equal(grid[1, 1], features[2])
 
 
+def test_coordinate_scale_bins_and_averages_colliding_patches():
+    model = object.__new__(Mamba2D_MIL)
+    model.coord_scale = 1024.0
+    features = torch.tensor([[1.0, 3.0], [3.0, 5.0], [7.0, 9.0]])
+    coords = torch.tensor([[0.0, 0.0], [256.0, 256.0], [1024.0, 0.0]])
+
+    grid, occupied = model._features_to_grid(features, coords)
+
+    assert grid.shape == (1, 2, 2)
+    assert occupied.sum().item() == 2
+    assert torch.equal(grid[0, 0], torch.tensor([2.0, 4.0]))
+    assert torch.equal(grid[0, 1], features[2])
+
+
 def test_spatial_bag_separates_features_and_coordinates():
     bag = torch.randn(1, 7, 10)
     features, coords = _split_spatial_bag(bag, in_dim=8)

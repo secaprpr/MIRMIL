@@ -892,6 +892,8 @@ def get_model_from_yaml(yaml_args):
         d_state = yaml_args.Model.d_state if hasattr(yaml_args.Model, 'd_state') else 16
         n_layers = yaml_args.Model.n_layers if hasattr(yaml_args.Model, 'n_layers') else 2
         grid_size = yaml_args.Model.grid_size if hasattr(yaml_args.Model, 'grid_size') else None
+        coord_scale = yaml_args.Model.coord_scale if hasattr(yaml_args.Model, 'coord_scale') else None
+        scan_chunk_size = yaml_args.Model.scan_chunk_size if hasattr(yaml_args.Model, 'scan_chunk_size') else 16
         mil_model = Mamba2D_MIL(
             in_dim=yaml_args.Model.in_dim,
             num_classes=yaml_args.General.num_classes,
@@ -900,7 +902,9 @@ def get_model_from_yaml(yaml_args):
             d_model=d_model,
             d_state=d_state,
             n_layers=n_layers,
-            grid_size=grid_size
+            grid_size=grid_size,
+            scan_chunk_size=scan_chunk_size,
+            coord_scale=coord_scale,
         )
         return mil_model
     elif model_name == 'GDF_MIL':

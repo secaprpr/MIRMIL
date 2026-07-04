@@ -88,6 +88,9 @@ def process_MAMBA2D_MIL(args):
         if "scan_chunk_size" in args.Model
         else 16
     )
+    coord_scale = (
+        args.Model.coord_scale if "coord_scale" in args.Model else None
+    )
     
     mil_model = Mamba2D_MIL(
         in_dim=in_dim,
@@ -99,6 +102,7 @@ def process_MAMBA2D_MIL(args):
         n_layers=n_layers,
         grid_size=grid_size,
         scan_chunk_size=scan_chunk_size,
+        coord_scale=coord_scale,
     )
     mil_model.to(device)
     

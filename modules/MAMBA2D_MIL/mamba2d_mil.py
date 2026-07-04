@@ -131,7 +131,7 @@ class Mamba2D_MIL(nn.Module):
     def __init__(
         self, in_dim=1024, num_classes=2, dropout=0.1, act=nn.ReLU(),
         d_model=512, d_state=16, n_layers=2, grid_size=None,
-        scan_chunk_size=16,
+        scan_chunk_size=16, coord_scale=None,
     ):
         super(Mamba2D_MIL, self).__init__()
         
@@ -142,6 +142,9 @@ class Mamba2D_MIL(nn.Module):
         self.num_classes = num_classes
         self.d_model = d_model
         self.grid_size = grid_size
+        self.coord_scale = (
+            None if coord_scale is None else float(coord_scale)
+        )
         self.input_norm = nn.LayerNorm(in_dim)
         
         # Convert act to string
@@ -197,16 +200,42 @@ class Mamba2D_MIL(nn.Module):
         if coords is not None:
             if coords.ndim == 3:
                 coords = coords.squeeze(0)
-            # Rank the observed x/y locations. This preserves spatial ordering
-            # without expanding a sparse WSI into an arbitrary 101x101 grid.
-            _, x_indices = torch.unique(coords[:, 0], sorted=True, return_inverse=True)
-            _, y_indices = torch.unique(coords[:, 1], sorted=True, return_inverse=True)
+            if self is not None and self.coord_scale is not None:
+                normalized = coords - coords.amin(dim=0, keepdim=True)
+                x_indices = torch.floor(
+                    normalized[:, 0] / self.coord_scale
+                ).long()
+                y_indices = torch.floor(
+                    normalized[:, 1] / self.coord_scale
+                ).long()
+            else:
+                # Preserve legacy compact-rank behavior when no physical
+                # coordinate scale is configured.
+                _, x_indices = torch.unique(
+                    coords[:, 0], sorted=True, return_inverse=True
+                )
+                _, y_indices = torch.unique(
+                    coords[:, 1], sorted=True, return_inverse=True
+                )
             H = int(y_indices.max().item()) + 1
             W = int(x_indices.max().item()) + 1
             grid = torch.zeros(H, W, D, device=features.device)
             occupied = torch.zeros(H, W, dtype=torch.bool, device=features.device)
-            grid[y_indices, x_indices] = features
-            occupied[y_indices, x_indices] = True
+            flat_indices = y_indices * W + x_indices
+            flat_grid = grid.view(H * W, D)
+            flat_grid.index_add_(0, flat_indices, features)
+            counts = torch.zeros(
+                H * W, device=features.device, dtype=features.dtype
+            )
+            counts.index_add_(
+                0, flat_indices,
+                torch.ones_like(flat_indices, dtype=features.dtype),
+            )
+            occupied_flat = counts > 0
+            flat_grid[occupied_flat] = (
+                flat_grid[occupied_flat] / counts[occupied_flat].unsqueeze(1)
+            )
+            occupied = occupied_flat.view(H, W)
         else:
             # Assume square grid
             H = W = int(N ** 0.5)
