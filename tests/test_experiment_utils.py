@@ -1,6 +1,7 @@
 import unittest
 from argparse import Namespace
-from tempfile import NamedTemporaryFile
+from tempfile import NamedTemporaryFile, TemporaryDirectory
+from pathlib import Path
 
 import pandas as pd
 
@@ -11,12 +12,27 @@ from experiments.prepare_split import (
 from experiments.evaluate_checkpoints import (
     experiment_variant,
     file_sha256 as evaluation_file_sha256,
+    find_run_files,
 )
 from experiments.run_benchmark import build_command, file_sha256
 from utils.yaml_utils import read_yaml, update_config_from_options
 
 
 class ExperimentUtilsTest(unittest.TestCase):
+    def test_evaluator_can_select_last_checkpoint(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "MIR_MIL.yaml").touch()
+            (root / "Best_EPOCH_4.pth").touch()
+            last = root / "Last_EPOCH_10.pth"
+            last.touch()
+
+            _, checkpoint = find_run_files(
+                root, checkpoint_kind="last"
+            )
+
+            self.assertEqual(Path(checkpoint), last)
+
     def test_yaml_options_can_create_tracking_tree(self):
         from utils.yaml_utils import update_config_from_options
         from addict import Dict

@@ -45,20 +45,25 @@ def git_commit():
         return None
 
 
-def find_run_files(run_dir):
+def find_run_files(run_dir, checkpoint_kind="best"):
     config_paths = glob.glob(os.path.join(run_dir, "*.yaml"))
-    checkpoint_paths = glob.glob(os.path.join(run_dir, "Best*.pth"))
+    checkpoint_prefix = "Best" if checkpoint_kind == "best" else "Last"
+    checkpoint_paths = glob.glob(
+        os.path.join(run_dir, f"{checkpoint_prefix}*.pth")
+    )
     if len(config_paths) != 1 or len(checkpoint_paths) != 1:
         raise ValueError(
-            f"{run_dir} must contain exactly one YAML and one Best checkpoint"
+            f"{run_dir} must contain exactly one YAML and one "
+            f"{checkpoint_prefix} checkpoint"
         )
     return config_paths[0], checkpoint_paths[0]
 
 
-def discover_runs(root, models):
+def discover_runs(root, models, checkpoint_kind="best"):
     run_dirs = []
+    checkpoint_prefix = "Best" if checkpoint_kind == "best" else "Last"
     for checkpoint in glob.glob(
-        os.path.join(root, "**", "Best*.pth"), recursive=True
+        os.path.join(root, "**", f"{checkpoint_prefix}*.pth"), recursive=True
     ):
         run_dir = os.path.dirname(checkpoint)
         config_paths = glob.glob(os.path.join(run_dir, "*.yaml"))
@@ -86,8 +91,18 @@ def experiment_variant(args):
     return str(args.General.MODEL_NAME)
 
 
-def evaluate_run(run_dir, budget, device, num_workers, split_override=None):
-    config_path, checkpoint_path = find_run_files(run_dir)
+def evaluate_run(
+    run_dir,
+    budget,
+    device,
+    num_workers,
+    split_override=None,
+    group="test",
+    checkpoint_kind="best",
+):
+    config_path, checkpoint_path = find_run_files(
+        run_dir, checkpoint_kind=checkpoint_kind
+    )
     args = read_yaml(config_path)
     if split_override:
         args.Dataset.dataset_csv_path = os.path.abspath(split_override)
@@ -97,7 +112,7 @@ def evaluate_run(run_dir, budget, device, num_workers, split_override=None):
 
     dataset = WSI_Dataset(
         args.Dataset.dataset_csv_path,
-        "test",
+        group,
         max_instances=budget,
         sampling="uniform",
     )
@@ -218,6 +233,18 @@ def main():
     parser.add_argument("--device", type=int, default=0)
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument(
+        "--group",
+        choices=["train", "val", "test"],
+        default="test",
+        help="Dataset column group to evaluate (default: test).",
+    )
+    parser.add_argument(
+        "--checkpoint-kind",
+        choices=["best", "last"],
+        default="best",
+        help="Evaluate the selected Best or final Last checkpoint.",
+    )
+    parser.add_argument(
         "--split-override",
         help=(
             "Evaluate frozen checkpoints on this split CSV instead of the "
@@ -229,7 +256,11 @@ def main():
 
     if args.split_override and not os.path.isfile(args.split_override):
         raise FileNotFoundError(args.split_override)
-    run_dirs = discover_runs(args.run_root, set(args.models))
+    run_dirs = discover_runs(
+        args.run_root,
+        set(args.models),
+        checkpoint_kind=args.checkpoint_kind,
+    )
     if not run_dirs:
         raise FileNotFoundError(f"No completed runs found under {args.run_root}")
     os.makedirs(args.output_dir, exist_ok=True)
@@ -249,6 +280,8 @@ def main():
             if args.split_override
             else None
         ),
+        "group": args.group,
+        "checkpoint_kind": args.checkpoint_kind,
         "budgets": args.budgets,
         "runs": [],
     }
@@ -260,6 +293,8 @@ def main():
                 args.device,
                 args.num_workers,
                 split_override=args.split_override,
+                group=args.group,
+                checkpoint_kind=args.checkpoint_kind,
             )
             results.append(result)
             prediction_name = (
