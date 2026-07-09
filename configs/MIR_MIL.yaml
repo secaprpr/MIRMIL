@@ -44,6 +44,8 @@ Tracking:
 Model:
     in_dim: 1024
     coordinate_dim: 0
+    input_group_l2_normalize: False
+    input_group_size: 0
     hidden_dim: 256
     sketch_dim: 128
     moment_order: 1

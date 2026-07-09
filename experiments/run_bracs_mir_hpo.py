@@ -464,6 +464,49 @@ VARIANTS = {
         "balanced": False,
         "options": {"Model.ordinal_weight": 0.2},
     },
+    "fusion_norm_default": {
+        "balanced": True,
+        "options": {
+            "Model.input_group_l2_normalize": True,
+            "Model.input_group_size": 1024,
+        },
+    },
+    "fusion_norm_mlp": {
+        "balanced": True,
+        "options": {
+            "Model.input_group_l2_normalize": True,
+            "Model.input_group_size": 1024,
+            "Model.potential_type": "mlp",
+        },
+    },
+    "fusion_norm_mlp_mild": {
+        "balanced": True,
+        "options": {
+            "Model.input_group_l2_normalize": True,
+            "Model.input_group_size": 1024,
+            "Model.potential_type": "mlp",
+            "Model.optimizer.adamw_config.lr": 1e-4,
+            "Model.optimizer.adamw_config.weight_decay": 1e-4,
+            "Model.dropout": 0.15,
+            "Model.stability_weight": 0.05,
+            "Model.patch_dropout": 0.05,
+            "Model.feature_noise_std": 0.005,
+        },
+    },
+    "fusion_norm_adaptive": {
+        "balanced": True,
+        "options": {
+            "Model.input_group_l2_normalize": True,
+            "Model.input_group_size": 1024,
+            "Model.potential_type": "adaptive_multiscale",
+            "Model.optimizer.adamw_config.lr": 1e-4,
+            "Model.optimizer.adamw_config.weight_decay": 1e-4,
+            "Model.dropout": 0.15,
+            "Model.stability_weight": 0.05,
+            "Model.patch_dropout": 0.05,
+            "Model.feature_noise_std": 0.005,
+        },
+    },
 }
 
 
@@ -480,9 +523,9 @@ def command(args, name, spec, output):
         "--epochs", str(args.epochs),
         "--patience", str(args.patience),
         "--max-instances", str(args.max_instances),
-        "--in-dim", "1024",
-        "--feature", "uni",
-        "--protocol", "bracs-mir-hpo-v1",
+        "--in-dim", str(args.in_dim),
+        "--feature", args.feature,
+        "--protocol", args.protocol,
         "--split-id", "official-train-val",
         "--comparison-id", f"bracs-mir-hpo-{name}-seed{args.seed}",
         "--device", "0",
@@ -539,6 +582,9 @@ def main():
     parser.add_argument("--epochs", type=int, default=40)
     parser.add_argument("--patience", type=int, default=10)
     parser.add_argument("--max-instances", type=int, default=4096)
+    parser.add_argument("--in-dim", type=int, default=1024)
+    parser.add_argument("--feature", default="uni")
+    parser.add_argument("--protocol", default="bracs-mir-hpo-v1")
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--wandb", action="store_true")
     parser.add_argument("--wandb-project", default="MIR-MIL")

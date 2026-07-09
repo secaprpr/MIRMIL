@@ -88,7 +88,31 @@ class WSI_Dataset(Dataset):
         if slide_path.endswith('.h5'):
             with h5py.File(slide_path, 'r') as h5_file:
                 feature_dataset = h5_file['features']
-                if feature_dataset.ndim == 2:
+                r50_source = h5_file.attrs.get('r50_source')
+                uni_source = h5_file.attrs.get('uni_source')
+                if r50_source and uni_source:
+                    with h5py.File(r50_source, 'r') as r50_file, h5py.File(
+                        uni_source, 'r'
+                    ) as uni_file:
+                        r50_features = r50_file['features']
+                        uni_features = uni_file['features']
+                        if r50_features.shape[0] != uni_features.shape[0]:
+                            raise ValueError(
+                                "Paired H5 feature row counts differ: "
+                                f"{r50_features.shape} vs {uni_features.shape}"
+                            )
+                        num_instances = r50_features.shape[0]
+                        indices = self._sample_indices(num_instances)
+                        if indices is None:
+                            r50_values = r50_features[:]
+                            uni_values = uni_features[:]
+                        else:
+                            r50_values = r50_features[indices]
+                            uni_values = uni_features[indices]
+                        feat = np.concatenate(
+                            (r50_values, uni_values), axis=1
+                        )
+                elif feature_dataset.ndim == 2:
                     num_instances = feature_dataset.shape[0]
                     indices = self._sample_indices(num_instances)
                     feat = (

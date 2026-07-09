@@ -235,6 +235,12 @@ def get_model_from_yaml(yaml_args):
             coordinate_dim=_model_option(
                 yaml_args, "coordinate_dim", 0
             ),
+            input_group_l2_normalize=_model_option(
+                yaml_args, "input_group_l2_normalize", False
+            ),
+            input_group_size=_model_option(
+                yaml_args, "input_group_size", 0
+            ),
             stability_weight=_model_option(
                 yaml_args, "stability_weight", 0.0
             ),

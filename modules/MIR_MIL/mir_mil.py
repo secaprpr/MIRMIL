@@ -644,6 +644,8 @@ class MIR_MIL(nn.Module):
         dropout=0.1,
         act="gelu",
         coordinate_dim=0,
+        input_group_l2_normalize=False,
+        input_group_size=0,
         stability_weight=0.0,
         patch_dropout=0.0,
         feature_noise_std=0.0,
@@ -681,6 +683,16 @@ class MIR_MIL(nn.Module):
         self.in_dim = int(in_dim)
         self.coordinate_dim = int(coordinate_dim)
         self.input_dim = self.in_dim + self.coordinate_dim
+        self.input_group_l2_normalize = bool(input_group_l2_normalize)
+        self.input_group_size = int(input_group_size)
+        if self.input_group_l2_normalize and (
+            self.input_group_size <= 0
+            or self.in_dim % self.input_group_size != 0
+        ):
+            raise ValueError(
+                "input_group_size must be positive and divide in_dim when "
+                "input_group_l2_normalize is enabled"
+            )
         self.num_classes = int(num_classes)
         self.sketch_dim = int(sketch_dim)
         self.moment_order = int(moment_order)
@@ -1013,6 +1025,18 @@ class MIR_MIL(nn.Module):
                 f"Expected input dimension {self.input_dim}, got "
                 f"{bag.shape[1]}"
             )
+        if self.input_group_l2_normalize:
+            feature_groups = bag[:, : self.in_dim].reshape(
+                bag.shape[0], -1, self.input_group_size
+            )
+            feature_groups = F.normalize(
+                feature_groups, p=2, dim=2, eps=1e-12
+            )
+            features = feature_groups.reshape(bag.shape[0], self.in_dim)
+            if self.coordinate_dim:
+                bag = torch.cat((features, bag[:, self.in_dim :]), dim=1)
+            else:
+                bag = features
         return bag
 
     def _point_statistics(self, points):

@@ -4,6 +4,7 @@ import json
 import os
 import pickle
 import tempfile
+from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime, timezone
 
 import h5py
@@ -43,6 +44,28 @@ def load_subset(source_path, max_candidates):
     if source_path.endswith(".h5"):
         with h5py.File(source_path, "r") as file:
             dataset = file["features"]
+            r50_source = file.attrs.get("r50_source")
+            uni_source = file.attrs.get("uni_source")
+            if r50_source and uni_source:
+                with h5py.File(r50_source, "r") as r50_file, h5py.File(
+                    uni_source, "r"
+                ) as uni_file:
+                    r50_features = r50_file["features"][:]
+                    uni_features = uni_file["features"][:]
+                if r50_features.shape[0] != uni_features.shape[0]:
+                    raise ValueError(
+                        "Paired H5 feature row counts differ: "
+                        f"{r50_features.shape} vs {uni_features.shape}"
+                    )
+                indices = candidate_indices(
+                    r50_features.shape[0], max_candidates
+                )
+                if indices is not None:
+                    r50_features = r50_features[indices]
+                    uni_features = uni_features[indices]
+                return torch.from_numpy(
+                    np.concatenate((r50_features, uni_features), axis=1)
+                )
             if dataset.ndim == 2:
                 num_instances = dataset.shape[0]
                 indices = candidate_indices(num_instances, max_candidates)
@@ -135,12 +158,34 @@ def feature_paths(split_frame):
     return list(dict.fromkeys(paths))
 
 
+def cache_feature_task(arguments):
+    index, total, source_path, output_dir, max_candidates, overwrite = (
+        arguments
+    )
+    destination, rows, dimensions, created = cache_feature(
+        source_path,
+        output_dir,
+        max_candidates,
+        overwrite=overwrite,
+    )
+    return {
+        "index": index,
+        "total": total,
+        "source_path": source_path,
+        "cached_path": os.path.abspath(destination),
+        "instances": rows,
+        "dimensions": dimensions,
+        "created": created,
+    }
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--split", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--output-split", required=True)
     parser.add_argument("--max-candidates", type=int, default=4096)
+    parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--overwrite", action="store_true")
     args = parser.parse_args()
 
@@ -160,28 +205,31 @@ def main():
     os.makedirs(
         os.path.dirname(os.path.abspath(args.output_split)), exist_ok=True
     )
-    path_mapping = {}
-    records = []
-    for index, source_path in enumerate(source_paths, start=1):
-        destination, rows, dimensions, created = cache_feature(
+    tasks = [
+        (
+            index,
+            len(source_paths),
             source_path,
             args.output_dir,
             args.max_candidates,
-            overwrite=args.overwrite,
+            args.overwrite,
         )
-        path_mapping[source_path] = os.path.abspath(destination)
-        records.append(
-            {
-                "source_path": source_path,
-                "cached_path": os.path.abspath(destination),
-                "instances": rows,
-                "dimensions": dimensions,
-                "created": created,
-            }
-        )
+        for index, source_path in enumerate(source_paths, start=1)
+    ]
+    if args.workers == 1:
+        records = [cache_feature_task(task) for task in tasks]
+    else:
+        with ProcessPoolExecutor(max_workers=args.workers) as executor:
+            records = list(executor.map(cache_feature_task, tasks))
+    path_mapping = {
+        record["source_path"]: record["cached_path"]
+        for record in records
+    }
+    for record in records:
         print(
-            f"[{index}/{len(source_paths)}] {source_path} -> "
-            f"{destination} {rows}x{dimensions}"
+            f"[{record['index']}/{record['total']}] "
+            f"{record['source_path']} -> {record['cached_path']} "
+            f"{record['instances']}x{record['dimensions']}"
         )
 
     cached_split = split_frame.copy()
@@ -208,7 +256,14 @@ def main():
         "total_bytes": sum(
             os.path.getsize(record["cached_path"]) for record in records
         ),
-        "records": records,
+        "records": [
+            {
+                key: value
+                for key, value in record.items()
+                if key not in {"index", "total"}
+            }
+            for record in records
+        ],
     }
     manifest_path = f"{args.output_split}.manifest.json"
     with open(manifest_path, "w", encoding="utf-8") as file:

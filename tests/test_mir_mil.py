@@ -34,6 +34,26 @@ def test_forward_is_permutation_invariant():
     torch.testing.assert_close(first, second, atol=1e-10, rtol=1e-10)
 
 
+def test_optional_input_group_normalization_preserves_state_structure():
+    baseline = make_model()
+    normalized = make_model(
+        input_group_l2_normalize=True,
+        input_group_size=3,
+    )
+    bag = torch.tensor(
+        [[3.0, 4.0, 0.0, 0.0, 0.0, 2.0]],
+        dtype=torch.double,
+    )
+
+    transformed = normalized._normalize_bag(bag)
+
+    torch.testing.assert_close(
+        transformed.reshape(1, 2, 3).norm(dim=2),
+        torch.ones((1, 2), dtype=torch.double),
+    )
+    assert baseline.state_dict().keys() == normalized.state_dict().keys()
+
+
 def test_measure_influence_is_centered_under_current_measure():
     model = make_model()
     bag = torch.randn(13, 6, dtype=torch.double)

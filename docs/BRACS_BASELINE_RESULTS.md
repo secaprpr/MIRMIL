@@ -1,6 +1,7 @@
 # BRACS Baseline Benchmark
 
-Status: complete, July 5, 2026.
+Status: baseline complete July 5, 2026; MIR optimization completed July 9,
+2026.
 
 ## Protocol
 
@@ -18,7 +19,7 @@ level-0 patch coordinates.
 All models use a 4,096-instance bag budget. BRACS 2DMamba uses a physical
 coordinate grid with `coord_scale=1024` and `d_model=256`; this prevents the
 sparse 40x WSI coordinate span from expanding beyond 11 GiB GPU memory.
-The MIR-MIL architecture was not changed.
+The original baseline MIR-MIL architecture was not changed.
 
 ## Official Test Results
 
@@ -53,6 +54,48 @@ UNI materially improves most baselines. MIR-MIL ranks fourth by macro AUC
 with R50 and tenth with UNI; unlike the PANDA benchmark, it is not the
 best-performing BRACS model.
 
+## Optimized MIR-MIL Result
+
+The post-baseline search used validation data only and selected
+`fusion_norm_mlp_mild`. It concatenates aligned R50 and UNI patch features,
+normalizes each 1,024-dimensional encoder group independently, and retains
+the 4,096-instance bag budget. A uniformly spaced 16,384-patch candidate
+cache preserves broader tissue coverage while allowing random training
+subsets. The MIR state-dict layout is unchanged: group normalization is
+parameter-free and disabled by default, so all existing PANDA checkpoints
+remain strictly loadable.
+
+The selected settings are:
+
+```text
+in_dim=2048
+input_group_l2_normalize=true
+input_group_size=1024
+potential_type=mlp
+lr=1e-4
+weight_decay=1e-4
+dropout=0.15
+stability_weight=0.05
+patch_dropout=0.05
+feature_noise_std=0.005
+```
+
+Validation macro AUC was `.8400`, `.8337`, and `.8227` for seeds 2024,
+2025, and 2026 respectively. After freezing the configuration, official
+test performance was:
+
+| Feature | Model | ACC | BACC | Macro AUC | Macro F1 |
+| --- | --- | ---: | ---: | ---: | ---: |
+| R50 + UNI | MIR-MIL optimized | **.4559 ± .0239** | **.4109 ± .0410** | **.8151 ± .0093** | **.3967 ± .0303** |
+
+This is the best mean result in the repository's BRACS comparison on all
+four reported metrics. Relative to the previous macro-AUC leader, UNI
+CLAM-SB (`.8039 ± .0060`), optimized MIR-MIL improves mean macro AUC by
+`.0112`. A 10,000-iteration paired, class-stratified bootstrap gives a
+95% interval of `[-.0068, .0289]` and probability `0.8873` that MIR-MIL is
+better; the point estimate is the new benchmark best, while the interval
+does not establish significance at the 0.05 level.
+
 ## Audit and Outputs
 
 The completed matrix contains 72 training runs, 72 test result files, and 72
@@ -67,6 +110,7 @@ artifacts/bracs_baselines/
 artifacts/bracs_evaluation/seed_results.csv
 artifacts/bracs_evaluation/aggregate_results.csv
 artifacts/bracs_evaluation/<feature>/<model>/seed<seed>/
+artifacts/bracs_mir_fusion_test/
 ```
 
 Training, test evaluation, prediction artifacts, and aggregate summaries are
