@@ -507,6 +507,58 @@ VARIANTS = {
             "Model.feature_noise_std": 0.005,
         },
     },
+    "capacity_h128_s64": {
+        "balanced": True,
+        "options": {
+            "Model.hidden_dim": 128,
+            "Model.sketch_dim": 64,
+            "Model.potential_hidden_dim": 64,
+        },
+    },
+    "capacity_h384_s128": {
+        "balanced": True,
+        "options": {
+            "Model.hidden_dim": 384,
+            "Model.sketch_dim": 128,
+            "Model.potential_hidden_dim": 192,
+        },
+    },
+    "capacity_h384_s192": {
+        "balanced": True,
+        "options": {
+            "Model.hidden_dim": 384,
+            "Model.sketch_dim": 192,
+            "Model.potential_hidden_dim": 192,
+        },
+    },
+    "capacity_h512_s128": {
+        "balanced": True,
+        "options": {
+            "Model.hidden_dim": 512,
+            "Model.sketch_dim": 128,
+            "Model.potential_hidden_dim": 256,
+        },
+    },
+    "capacity_h512_s256": {
+        "balanced": True,
+        "options": {
+            "Model.hidden_dim": 512,
+            "Model.sketch_dim": 256,
+            "Model.potential_hidden_dim": 256,
+        },
+    },
+    "capacity_routes8": {
+        "balanced": True,
+        "options": {"Model.num_local_routes": 8},
+    },
+    "capacity_routes16": {
+        "balanced": True,
+        "options": {"Model.num_local_routes": 16},
+    },
+    "capacity_potential256": {
+        "balanced": True,
+        "options": {"Model.potential_hidden_dim": 256},
+    },
 }
 
 

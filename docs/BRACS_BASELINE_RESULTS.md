@@ -1,7 +1,8 @@
 # BRACS Baseline Benchmark
 
-Status: baseline complete July 5, 2026; MIR optimization completed July 9,
-2026.
+Status: single-feature baseline complete July 5, 2026. Single-feature MIR
+optimization remains in progress. The July 9 feature-fusion experiment is
+exploratory and is excluded from the primary comparison.
 
 ## Protocol
 
@@ -54,9 +55,13 @@ UNI materially improves most baselines. MIR-MIL ranks fourth by macro AUC
 with R50 and tenth with UNI; unlike the PANDA benchmark, it is not the
 best-performing BRACS model.
 
-## Optimized MIR-MIL Result
+## Exploratory R50 + UNI Fusion (Excluded from Primary Comparison)
 
-The post-baseline search used validation data only and selected
+This experiment does not follow the primary single-feature reporting
+protocol. It must not be used to claim an R50 or UNI result, and it is not
+included in the baseline ranking.
+
+The exploratory search used validation data only and selected
 `fusion_norm_mlp_mild`. It concatenates aligned R50 and UNI patch features,
 normalizes each 1,024-dimensional encoder group independently, and retains
 the 4,096-instance bag budget. A uniformly spaced 16,384-patch candidate
@@ -86,15 +91,14 @@ test performance was:
 
 | Feature | Model | ACC | BACC | Macro AUC | Macro F1 |
 | --- | --- | ---: | ---: | ---: | ---: |
-| R50 + UNI | MIR-MIL optimized | **.4559 ± .0239** | **.4109 ± .0410** | **.8151 ± .0093** | **.3967 ± .0303** |
+| R50 + UNI | MIR-MIL exploratory fusion | .4559 ± .0239 | .4109 ± .0410 | .8151 ± .0093 | .3967 ± .0303 |
 
-This is the best mean result in the repository's BRACS comparison on all
-four reported metrics. Relative to the previous macro-AUC leader, UNI
-CLAM-SB (`.8039 ± .0060`), optimized MIR-MIL improves mean macro AUC by
-`.0112`. A 10,000-iteration paired, class-stratified bootstrap gives a
-95% interval of `[-.0068, .0289]` and probability `0.8873` that MIR-MIL is
-better; the point estimate is the new benchmark best, while the interval
-does not establish significance at the 0.05 level.
+For exploratory context only, its mean macro AUC is `.0112` above UNI
+CLAM-SB (`.8039 ± .0060`). A 10,000-iteration paired, class-stratified
+bootstrap gives a 95% interval of `[-.0068, .0289]`; this does not establish
+significance at the 0.05 level. The valid primary MIR-MIL results remain
+the separately reported R50 (`.7087 ± .0073`) and UNI (`.7694 ± .0356`)
+rows above, neither of which is the current BRACS leader.
 
 ## Audit and Outputs
 
