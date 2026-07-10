@@ -622,6 +622,57 @@ class AdaptiveMultiscalePrototypePotential(AdaptiveMultiscalePotential):
         return self.prototype_potential.regularization()
 
 
+class ClassAwareEvidenceHead(nn.Module):
+    """Class-wise patch evidence readout over existing encoded instances."""
+
+    def __init__(
+        self,
+        hidden_dim,
+        num_classes,
+        query_dim,
+        value_dim,
+        temperature,
+        dropout,
+    ):
+        super().__init__()
+        if query_dim <= 0 or value_dim <= 0:
+            raise ValueError("query_dim and value_dim must be positive")
+        if temperature <= 0:
+            raise ValueError("evidence temperature must be positive")
+        self.num_classes = int(num_classes)
+        self.query_dim = int(query_dim)
+        self.temperature = float(temperature)
+        self.key = nn.Linear(hidden_dim, self.query_dim)
+        self.value = nn.Linear(hidden_dim, int(value_dim))
+        self.query = nn.Parameter(
+            torch.empty(self.num_classes, self.query_dim)
+        )
+        self.logit_vector = nn.Parameter(
+            torch.empty(self.num_classes, int(value_dim))
+        )
+        self.logit_bias = nn.Parameter(torch.zeros(self.num_classes))
+        self.dropout = nn.Dropout(dropout)
+        with torch.random.fork_rng(devices=[]):
+            nn.init.normal_(
+                self.query, std=1.0 / math.sqrt(self.query_dim)
+            )
+            nn.init.normal_(
+                self.logit_vector, std=1.0 / math.sqrt(value_dim)
+            )
+
+    def forward(self, encoded):
+        keys = self.key(encoded)
+        values = self.dropout(self.value(encoded))
+        scale = math.sqrt(self.query_dim) * self.temperature
+        scores = torch.einsum("nq,cq->nc", keys, self.query) / scale
+        attention = torch.softmax(scores, dim=0)
+        evidence = torch.einsum("nc,nv->cv", attention, values)
+        logits = (
+            evidence * self.logit_vector
+        ).sum(dim=1) + self.logit_bias
+        return logits.unsqueeze(0)
+
+
 class MIR_MIL(nn.Module):
     """Neural measure potential with closed-form measure influence response."""
 
@@ -670,6 +721,11 @@ class MIR_MIL(nn.Module):
         multiscale_prototype_initial_scale=0.05,
         anchor_global_initial_scale=0.1,
         anchor_local_initial_scale=0.1,
+        evidence_weight=0.0,
+        evidence_query_dim=64,
+        evidence_value_dim=128,
+        evidence_temperature=1.0,
+        evidence_dropout=0.0,
     ):
         super().__init__()
         if in_dim <= 0 or num_classes < 2:
@@ -742,6 +798,9 @@ class MIR_MIL(nn.Module):
             raise ValueError(
                 "prototype_regularization_weight must be non-negative"
             )
+        self.evidence_weight = float(evidence_weight)
+        if self.evidence_weight < 0:
+            raise ValueError("evidence_weight must be non-negative")
 
         self.encoder = nn.Sequential(
             nn.Linear(self.input_dim, hidden_dim),
@@ -993,6 +1052,16 @@ class MIR_MIL(nn.Module):
             raise ValueError(
                 f"Unsupported potential_type: {self.potential_type}"
             )
+        self.evidence_head = None
+        if self.evidence_weight > 0:
+            self.evidence_head = ClassAwareEvidenceHead(
+                hidden_dim=hidden_dim,
+                num_classes=self.num_classes,
+                query_dim=evidence_query_dim,
+                value_dim=evidence_value_dim,
+                temperature=evidence_temperature,
+                dropout=evidence_dropout,
+            )
         self.apply(self._initialize)
         if isinstance(
             self.potential,
@@ -1060,6 +1129,7 @@ class MIR_MIL(nn.Module):
             anchor_basis = encoded.new_empty((encoded.shape[0], 0))
             anchor_scores = encoded.new_empty((encoded.shape[0], 0))
         return (
+            encoded,
             basis,
             tail_scores,
             local_basis,
@@ -1071,6 +1141,7 @@ class MIR_MIL(nn.Module):
     def state_from_weighted_points(self, points, weights=None):
         points = self._normalize_bag(points)
         (
+            encoded,
             basis,
             tail_scores,
             local_basis,
@@ -1143,6 +1214,7 @@ class MIR_MIL(nn.Module):
         )
         return (
             state,
+            encoded,
             basis,
             tail_scores,
             weights,
@@ -1155,6 +1227,7 @@ class MIR_MIL(nn.Module):
     def forward(self, bag, return_state=False):
         (
             state,
+            encoded,
             basis,
             tail_scores,
             weights,
@@ -1164,11 +1237,16 @@ class MIR_MIL(nn.Module):
             anchor_scores,
         ) = self.state_from_weighted_points(bag)
         logits = self.potential(state.unsqueeze(0))
+        if self.evidence_head is not None:
+            logits = logits + self.evidence_weight * self.evidence_head(
+                encoded
+            )
         output = {"logits": logits}
         if return_state:
             output.update(
                 {
                     "state": state,
+                    "encoded": encoded,
                     "basis": basis,
                     "tail_scores": tail_scores,
                     "weights": weights,
@@ -1209,6 +1287,7 @@ class MIR_MIL(nn.Module):
     ):
         (
             state,
+            _encoded,
             basis,
             tail_scores,
             weights,
@@ -1351,6 +1430,7 @@ class MIR_MIL(nn.Module):
     ):
         (
             reference_state,
+            _reference_encoded,
             _,
             reference_tail,
             reference_weights,
@@ -1370,6 +1450,7 @@ class MIR_MIL(nn.Module):
         )[0]
         evaluation_points = self._normalize_bag(evaluation_points)
         (
+            _encoded,
             basis,
             tail_scores,
             local_basis,
@@ -1578,11 +1659,18 @@ class MIR_MIL(nn.Module):
                 ),
             ]
         )
-        perturbed_state = self.state_from_weighted_points(
+        perturbed_state, perturbed_encoded = self.state_from_weighted_points(
             support, weights
-        )[0]
+        )[:2]
+        perturbed_logits = self.potential(perturbed_state.unsqueeze(0))
+        if self.evidence_head is not None:
+            perturbed_logits = (
+                perturbed_logits
+                + self.evidence_weight
+                * self.evidence_head(perturbed_encoded)
+            )
         perturbed_score = self.explained_score(
-            self.potential(perturbed_state.unsqueeze(0)), target_class
+            perturbed_logits, target_class
         )
         base_score = self.explained_score(
             self.forward(bag)["logits"], target_class
@@ -1618,7 +1706,7 @@ class MIR_MIL(nn.Module):
         count = min(self.lipschitz_samples, bag.shape[0])
         indices = torch.randperm(bag.shape[0], device=bag.device)[:count]
         points = bag[indices].detach().requires_grad_(True)
-        basis = self._point_statistics(points)[0]
+        basis = self._point_statistics(points)[1]
         probe = torch.randn_like(basis)
         probe = probe / probe.norm(dim=1, keepdim=True).clamp_min(1e-8)
         scalar = (basis * probe).sum()

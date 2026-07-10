@@ -372,6 +372,21 @@ def get_model_from_yaml(yaml_args):
             anchor_local_initial_scale=_model_option(
                 yaml_args, "anchor_local_initial_scale", 0.1
             ),
+            evidence_weight=_model_option(
+                yaml_args, "evidence_weight", 0.0
+            ),
+            evidence_query_dim=_model_option(
+                yaml_args, "evidence_query_dim", 64
+            ),
+            evidence_value_dim=_model_option(
+                yaml_args, "evidence_value_dim", 128
+            ),
+            evidence_temperature=_model_option(
+                yaml_args, "evidence_temperature", 1.0
+            ),
+            evidence_dropout=_model_option(
+                yaml_args, "evidence_dropout", 0.0
+            ),
         )
     if model_name == 'OT_MIL':
         from modules.OT_MIL.ot_mil import OT_MIL
