@@ -559,6 +559,191 @@ VARIANTS = {
         "balanced": True,
         "options": {"Model.potential_hidden_dim": 256},
     },
+    "loss_inverse": {
+        "balanced": True,
+        "options": {"Model.class_weighting": "inverse"},
+    },
+    "loss_sqrt_inverse": {
+        "balanced": True,
+        "options": {"Model.class_weighting": "sqrt_inverse"},
+    },
+    "loss_effective": {
+        "balanced": True,
+        "options": {
+            "Model.class_weighting": "effective",
+            "Model.class_weight_beta": 0.99,
+        },
+    },
+    "loss_effective999": {
+        "balanced": True,
+        "options": {
+            "Model.class_weighting": "effective",
+            "Model.class_weight_beta": 0.999,
+        },
+    },
+    "loss_focal1": {
+        "balanced": True,
+        "options": {"Model.focal_gamma": 1.0},
+    },
+    "loss_focal2": {
+        "balanced": True,
+        "options": {"Model.focal_gamma": 2.0},
+    },
+    "loss_focal1_sqrt": {
+        "balanced": True,
+        "options": {
+            "Model.focal_gamma": 1.0,
+            "Model.class_weighting": "sqrt_inverse",
+        },
+    },
+    "loss_focal2_effective": {
+        "balanced": True,
+        "options": {
+            "Model.focal_gamma": 2.0,
+            "Model.class_weighting": "effective",
+            "Model.class_weight_beta": 0.99,
+        },
+    },
+    "loss_h384_sqrt": {
+        "balanced": True,
+        "options": {
+            "Model.hidden_dim": 384,
+            "Model.sketch_dim": 128,
+            "Model.potential_hidden_dim": 192,
+            "Model.class_weighting": "sqrt_inverse",
+        },
+    },
+    "loss_h384_focal1": {
+        "balanced": True,
+        "options": {
+            "Model.hidden_dim": 384,
+            "Model.sketch_dim": 128,
+            "Model.potential_hidden_dim": 192,
+            "Model.focal_gamma": 1.0,
+        },
+    },
+    "h384_clean": {
+        "balanced": True,
+        "options": {
+            "Model.hidden_dim": 384,
+            "Model.sketch_dim": 128,
+            "Model.potential_hidden_dim": 192,
+            "Model.stability_weight": 0.0,
+            "Model.patch_dropout": 0.0,
+            "Model.feature_noise_std": 0.0,
+        },
+    },
+    "h384_mild_reg": {
+        "balanced": True,
+        "options": {
+            "Model.hidden_dim": 384,
+            "Model.sketch_dim": 128,
+            "Model.potential_hidden_dim": 192,
+            "Model.optimizer.adamw_config.lr": 1e-4,
+            "Model.optimizer.adamw_config.weight_decay": 1e-4,
+            "Model.dropout": 0.15,
+            "Model.stability_weight": 0.05,
+            "Model.patch_dropout": 0.05,
+            "Model.feature_noise_std": 0.005,
+        },
+    },
+    "h384_strong_reg": {
+        "balanced": True,
+        "options": {
+            "Model.hidden_dim": 384,
+            "Model.sketch_dim": 128,
+            "Model.potential_hidden_dim": 192,
+            "Model.optimizer.adamw_config.lr": 1e-4,
+            "Model.optimizer.adamw_config.weight_decay": 5e-4,
+            "Model.dropout": 0.25,
+            "Model.stability_weight": 0.05,
+            "Model.patch_dropout": 0.1,
+            "Model.feature_noise_std": 0.01,
+            "Model.label_smoothing": 0.05,
+        },
+    },
+    "h384_unbalanced": {
+        "balanced": False,
+        "options": {
+            "Model.hidden_dim": 384,
+            "Model.sketch_dim": 128,
+            "Model.potential_hidden_dim": 192,
+        },
+    },
+    "h384_unbalanced_mild": {
+        "balanced": False,
+        "options": {
+            "Model.hidden_dim": 384,
+            "Model.sketch_dim": 128,
+            "Model.potential_hidden_dim": 192,
+            "Model.optimizer.adamw_config.lr": 1e-4,
+            "Model.optimizer.adamw_config.weight_decay": 1e-4,
+            "Model.dropout": 0.15,
+            "Model.stability_weight": 0.05,
+            "Model.patch_dropout": 0.05,
+            "Model.feature_noise_std": 0.005,
+        },
+    },
+    "h384_moment2": {
+        "balanced": True,
+        "options": {
+            "Model.hidden_dim": 384,
+            "Model.sketch_dim": 128,
+            "Model.potential_hidden_dim": 192,
+            "Model.moment_order": 2,
+        },
+    },
+    "h384_mlp": {
+        "balanced": True,
+        "options": {
+            "Model.hidden_dim": 384,
+            "Model.sketch_dim": 128,
+            "Model.potential_hidden_dim": 192,
+            "Model.potential_type": "mlp",
+        },
+    },
+    "swa8_default": {
+        "balanced": True,
+        "options": {"Model.swa_start_epoch": 8},
+    },
+    "swa10_default": {
+        "balanced": True,
+        "options": {"Model.swa_start_epoch": 10},
+    },
+    "swa8_h384": {
+        "balanced": True,
+        "options": {
+            "Model.hidden_dim": 384,
+            "Model.sketch_dim": 128,
+            "Model.potential_hidden_dim": 192,
+            "Model.swa_start_epoch": 8,
+        },
+    },
+    "swa10_h384": {
+        "balanced": True,
+        "options": {
+            "Model.hidden_dim": 384,
+            "Model.sketch_dim": 128,
+            "Model.potential_hidden_dim": 192,
+            "Model.swa_start_epoch": 10,
+        },
+    },
+    "swa12_h384": {
+        "balanced": True,
+        "options": {
+            "Model.hidden_dim": 384,
+            "Model.sketch_dim": 128,
+            "Model.potential_hidden_dim": 192,
+            "Model.swa_start_epoch": 12,
+        },
+    },
+    "swa10_potential256": {
+        "balanced": True,
+        "options": {
+            "Model.potential_hidden_dim": 256,
+            "Model.swa_start_epoch": 10,
+        },
+    },
 }
 
 

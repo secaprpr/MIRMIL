@@ -1,0 +1,95 @@
+{
+  "baseline_seed_results": "artifacts/bracs_evaluation/seed_results.csv",
+  "passed": true,
+  "r50_split": "/data15/data15_5/fanhao/datasets/BRACS/MIRMIL_FEATURES/metadata/BRACS_r50_split_official_full.csv",
+  "seed_result_audit": {
+    "metric_ranges_ok": {
+      "acc": true,
+      "bacc": true,
+      "macro_auc": true,
+      "macro_f1": true
+    },
+    "metrics_finite": true,
+    "missing_columns": [],
+    "rows": 72,
+    "seeds_per_feature_model_max": 3,
+    "seeds_per_feature_model_min": 3,
+    "unique_num_slide_counts_per_feature_model": {
+      "r50/AB_MIL": 1,
+      "r50/AC_MIL": 1,
+      "r50/C2AUG": 1,
+      "r50/CLAM_MB_MIL": 1,
+      "r50/CLAM_SB_MIL": 1,
+      "r50/DS_MIL": 1,
+      "r50/DTFD_MIL": 1,
+      "r50/MAMBA2D_MIL": 1,
+      "r50/MIR_MIL": 1,
+      "r50/RRT_MIL": 1,
+      "r50/TRANS_MIL": 1,
+      "r50/WIKG_MIL": 1,
+      "uni/AB_MIL": 1,
+      "uni/AC_MIL": 1,
+      "uni/C2AUG": 1,
+      "uni/CLAM_MB_MIL": 1,
+      "uni/CLAM_SB_MIL": 1,
+      "uni/DS_MIL": 1,
+      "uni/DTFD_MIL": 1,
+      "uni/MAMBA2D_MIL": 1,
+      "uni/MIR_MIL": 1,
+      "uni/RRT_MIL": 1,
+      "uni/TRANS_MIL": 1,
+      "uni/WIKG_MIL": 1
+    }
+  },
+  "split_audit": {
+    "test": {
+      "duplicate_stems": [],
+      "label_counts": {
+        "0": 7,
+        "1": 16,
+        "2": 9,
+        "3": 11,
+        "4": 12,
+        "5": 12,
+        "6": 20
+      },
+      "labels_match": true,
+      "path_stems_match": true,
+      "r50_count": 87,
+      "uni_count": 87
+    },
+    "train": {
+      "duplicate_stems": [],
+      "label_counts": {
+        "0": 27,
+        "1": 120,
+        "2": 56,
+        "3": 24,
+        "4": 28,
+        "5": 40,
+        "6": 100
+      },
+      "labels_match": true,
+      "path_stems_match": true,
+      "r50_count": 395,
+      "uni_count": 395
+    },
+    "val": {
+      "duplicate_stems": [],
+      "label_counts": {
+        "0": 10,
+        "1": 11,
+        "2": 9,
+        "3": 6,
+        "4": 8,
+        "5": 9,
+        "6": 12
+      },
+      "labels_match": true,
+      "path_stems_match": true,
+      "r50_count": 65,
+      "uni_count": 65
+    }
+  },
+  "uni_split": "/data15/data15_5/fanhao/datasets/BRACS/MIRMIL_FEATURES/metadata/BRACS_uni_split_official_full.csv"
+}

@@ -1,10 +1,10 @@
 General:
     MODEL_NAME: MIR_MIL
     seed: 2024
-    num_classes: 2
+    num_classes: 7
     num_epochs: 30
     device: 0
-    num_workers: 4
+    num_workers: 2
     best_model_metric: macro_auc
     earlystop:
         use: True
@@ -13,27 +13,27 @@ General:
         min_delta: 0.0
 
 Dataset:
-    DATASET_NAME: your_dataset_name
-    dataset_csv_path: /path/to/your/dataset.csv
+    DATASET_NAME: BRACS
+    dataset_csv_path: /data15/data15_5/fanhao/datasets/BRACS/MIRMIL_FEATURES/metadata/BRACS_r50_split_official_train_val.csv
     balanced_sampler:
         use: True
         replacement: True
 
 Logs:
-    log_root_dir: /path/to/your/log_dir
+    log_root_dir: /data15/data15_5/fanhao/projects/MIRMIL/artifacts/bracs_deep_opt/repro_default_r50_seed2024_pt
 
 Tracking:
     wandb:
-        enabled: False
+        enabled: True
         project: MIR-MIL
         entity: null
         mode: online
-        tags: [stage:pilot]
-        feature: unknown
-        variant: base
-        protocol: default
-        split_id: unspecified
-        comparison_id: null
+        tags: [dataset:BRACS, feature:r50, model:MIR_MIL, protocol:deep_opt_repro_default, stage:repro]
+        feature: r50
+        variant: frozen_default
+        protocol: bracs-deep-opt-repro-default
+        split_id: official-train-val
+        comparison_id: bracs-repro-default-r50-seed2024
         source_manifest_sha256: null
         feature_manifest_sha256: null
         coordinate_manifest_sha256: null

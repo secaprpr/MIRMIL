@@ -60,10 +60,67 @@ class ClampedCosineAnnealingLR:
         self.scheduler.load_state_dict(state_dict)
 
 
-def get_criterion(criterion, label_smoothing=0.0):
+class FocalCrossEntropyLoss(torch.nn.Module):
+    def __init__(
+        self,
+        weight=None,
+        gamma=2.0,
+        label_smoothing=0.0,
+        reduction="mean",
+    ):
+        super().__init__()
+        self.gamma = float(gamma)
+        self.label_smoothing = float(label_smoothing)
+        self.reduction = reduction
+        if weight is None:
+            self.register_buffer("weight", None)
+        else:
+            self.register_buffer("weight", weight.float())
+
+    def forward(self, input, target):
+        ce = torch.nn.functional.cross_entropy(
+            input,
+            target,
+            weight=self.weight,
+            label_smoothing=self.label_smoothing,
+            reduction="none",
+        )
+        log_pt = -torch.nn.functional.cross_entropy(
+            input,
+            target,
+            weight=None,
+            label_smoothing=0.0,
+            reduction="none",
+        )
+        focal = (1.0 - log_pt.exp()).clamp_min(0.0).pow(self.gamma)
+        loss = focal * ce
+        if self.reduction == "sum":
+            return loss.sum()
+        if self.reduction == "none":
+            return loss
+        return loss.mean()
+
+
+def get_criterion(
+    criterion,
+    label_smoothing=0.0,
+    class_weights=None,
+    focal_gamma=0.0,
+):
     if criterion == 'ce':
+        if class_weights is not None and not torch.is_tensor(class_weights):
+            class_weights = torch.tensor(class_weights, dtype=torch.float32)
+        if class_weights is not None:
+            class_weights = class_weights.float()
+        if float(focal_gamma or 0.0) > 0:
+            return FocalCrossEntropyLoss(
+                weight=class_weights,
+                gamma=float(focal_gamma),
+                label_smoothing=float(label_smoothing),
+            )
         return torch.nn.CrossEntropyLoss(
-            label_smoothing=float(label_smoothing)
+            weight=class_weights,
+            label_smoothing=float(label_smoothing),
         )
     elif criterion == 'bce':
         return torch.nn.BCEWithLogitsLoss()

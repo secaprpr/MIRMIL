@@ -55,6 +55,61 @@ class ExponentialMovingAverage:
         self.updates += 1
 
 
+class StochasticWeightAverage:
+    def __init__(self, model):
+        self.model = deepcopy(model).eval()
+        self.updates = 0
+        for parameter in self.model.parameters():
+            parameter.requires_grad_(False)
+
+    @torch.no_grad()
+    def update(self, model):
+        source = model.state_dict()
+        target = self.model.state_dict()
+        if self.updates == 0:
+            self.model.load_state_dict(source)
+        else:
+            weight = 1.0 / float(self.updates + 1)
+            for name, value in target.items():
+                source_value = source[name].detach()
+                if value.is_floating_point():
+                    value.mul_(1.0 - weight).add_(source_value, alpha=weight)
+                else:
+                    value.copy_(source_value)
+        self.updates += 1
+
+
+def _build_class_weights(args, train_dataset, device):
+    mode = str(getattr(args.Model, "class_weighting", "none")).lower()
+    if mode in {"", "none", "false", "off"}:
+        return None
+    labels = torch.tensor(train_dataset.labels_list, dtype=torch.long)
+    num_classes = int(args.General.num_classes)
+    counts = torch.bincount(labels, minlength=num_classes).float()
+    if torch.any(counts == 0):
+        raise ValueError(
+            "Cannot build class weights with missing train classes: "
+            f"counts={counts.tolist()}"
+        )
+    if mode == "inverse":
+        weights = counts.sum() / (num_classes * counts)
+    elif mode == "sqrt_inverse":
+        weights = torch.sqrt(counts.sum() / (num_classes * counts))
+    elif mode == "effective":
+        beta = float(getattr(args.Model, "class_weight_beta", 0.999))
+        effective_num = 1.0 - torch.pow(
+            torch.full_like(counts, beta), counts
+        )
+        weights = (1.0 - beta) / effective_num
+        weights = weights / weights.mean()
+    else:
+        raise ValueError(
+            "Unknown Model.class_weighting="
+            f"{mode}. Supported: none, inverse, sqrt_inverse, effective"
+        )
+    return weights.to(device)
+
+
 def process_MIR_MIL(args):
     dataset_class = (
         WSI_Coord_Dataset
@@ -126,11 +181,22 @@ def process_MIR_MIL(args):
         if ema_decay > 0
         else None
     )
+    swa_start_epoch = int(getattr(args.Model, "swa_start_epoch", 0) or 0)
+    swa = (
+        StochasticWeightAverage(model)
+        if swa_start_epoch > 0
+        else None
+    )
+    if ema is not None and swa is not None:
+        raise ValueError("Use EMA or SWA, not both, for MIR_MIL training")
     optimizer, base_lr = get_optimizer(args, model)
     scheduler, warmup_scheduler = get_scheduler(args, optimizer, base_lr)
+    class_weights = _build_class_weights(args, train_dataset, device)
     criterion = get_criterion(
         args.Model.criterion,
         label_smoothing=getattr(args.Model, "label_smoothing", 0.0),
+        class_weights=class_weights,
+        focal_gamma=getattr(args.Model, "focal_gamma", 0.0),
     )
 
     epoch_log = init_epoch_info_log()
@@ -153,7 +219,14 @@ def process_MIR_MIL(args):
         )
         if ema is not None:
             ema.update(model)
-        validation_model = ema.model if ema is not None else model
+        if swa is not None and epoch + 1 >= swa_start_epoch:
+            swa.update(model)
+        if ema is not None:
+            validation_model = ema.model
+        elif swa is not None and swa.updates > 0:
+            validation_model = swa.model
+        else:
+            validation_model = model
         val_loss, val_metrics = mir_val_loop(
             device,
             args.General.num_classes,
@@ -191,7 +264,12 @@ def process_MIR_MIL(args):
             break
 
     last_epoch = epoch_log["epoch"][-1]
-    final_model = ema.model if ema is not None else model
+    if ema is not None:
+        final_model = ema.model
+    elif swa is not None and swa.updates > 0:
+        final_model = swa.model
+    else:
+        final_model = model
     save_last_model(args, final_model.state_dict(), last_epoch)
     if not test_dataset.is_None_Dataset():
         checkpoints = glob.glob(
