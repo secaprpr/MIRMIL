@@ -337,3 +337,19 @@ Validation plan:
 
 - Run BRACS3 UNI official train/val only, seeds `2024/2025/2026`, 4096-instance budget.
 - Do not open BRACS official test unless BRACS validation is strong and PANDA sanity passes.
+
+BRACS3 validation-only result:
+
+| seed | best epoch | val macro-AUC | val acc | val bacc | val macro-F1 |
+|---:|---:|---:|---:|---:|---:|
+| 2024 | 6 | `0.921103` | `0.784615` | `0.769841` | `0.762356` |
+| 2025 | 8 | `0.894235` | `0.784615` | `0.715873` | `0.717063` |
+| 2026 | 10 | `0.921232` | `0.784615` | `0.739683` | `0.750629` |
+| mean ± std | - | `0.912190 ± 0.015550` | `0.784615 ± 0.000000` | `0.741799 ± 0.027046` | `0.743350 ± 0.023508` |
+
+Interpretation:
+
+- Compared with fixed multi-token readout, the gated variant has slightly higher validation macro-AUC (`0.912190` vs `0.909829`) and much stronger validation bacc/macro-F1.
+- Seed2025 remains weaker in AUC, so the improvement is not fully stable.
+- The candidate passes the BRACS validation gate, but only conditionally.
+- Next step is PANDA validation sanity with identical frozen settings. BRACS official test remains closed.
