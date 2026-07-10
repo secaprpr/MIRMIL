@@ -206,3 +206,27 @@ First smoke test:
 - logged components: `subset_consistency_loss=0.036721`, `subset_supervised_loss=0.934004`.
 
 Interpretation: the implementation path trains and logs correctly. The smoke result is not a performance claim. The next valid step is a BRACS3 validation-only ablation, followed by PANDA validation sanity only if BRACS validation improves.
+
+Validation-only ablation:
+
+- command root: `artifacts/bracs3_arch_ablation/uni/subset_consistency_w02`
+- seeds: `2024, 2025, 2026`
+- split: official BRACS3 train/val only
+- budget: `4096`
+- official BRACS test: not opened
+
+Results:
+
+| seed | best epoch | val macro-AUC | val acc | val bacc | val macro-F1 |
+|---:|---:|---:|---:|---:|---:|
+| 2024 | 3 | `0.875570` | `0.646154` | `0.665079` | `0.647560` |
+| 2025 | 3 | `0.889244` | `0.723077` | `0.688889` | `0.685290` |
+| 2026 | 2 | `0.891728` | `0.753846` | `0.676190` | `0.675432` |
+| mean ± std | - | `0.885514 ± 0.008701` | `0.707692 ± 0.055470` | `0.676720 ± 0.011914` | `0.669428 ± 0.019569` |
+
+Interpretation:
+
+- The hypothesis that simple full-bag to subset KL consistency is sufficient is not supported at this setting.
+- The validation result is below the rejected evidence branch validation result (`0.901497 ± 0.002426`), and it does not provide a strong candidate signal.
+- Because the validation gate failed, PANDA sanity and BRACS official-test evaluation are not justified for this candidate.
+- The implementation remains useful as a disabled generic regularizer, but it should not be claimed as an improvement.
