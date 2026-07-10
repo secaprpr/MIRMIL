@@ -172,3 +172,37 @@ Scientific interpretation:
 - The current bottleneck is therefore not simply missing class-aware evidence capacity. BRACS validation selection remains unreliable, and the evidence branch may amplify split-specific evidence or calibration artifacts.
 
 Next generic architecture work should not tune `evidence_weight` against BRACS test. The next step should first analyze validation/test divergence, including class confusion, calibration, bag-size dependence, and whether evidence logits become over-confident on BRACS test.
+
+## Second candidate: subset prediction consistency
+
+Motivation:
+
+- BRACS validation/test divergence suggests that the model is sensitive to which patches are observed under the 4096-instance budget.
+- BRACS class 1 appears especially sensitive to sparse or unstable evidence.
+- PANDA has stronger coarse labels and more stable global evidence, so a good generic improvement should not damage PANDA validation.
+
+The implemented candidate is a dataset-agnostic patch-subset consistency objective. For each training WSI, the model computes the usual full sampled-bag logits. It then samples one or more random patch subsets from the same bag and penalizes KL divergence between the full-bag predictive distribution and each subset predictive distribution. An optional supervised CE term on the subset views can be added.
+
+This is not BRACS-specific:
+
+- no dataset name, split, class label, class count, or BRACS category is hard-coded;
+- it uses only existing pre-extracted features;
+- it does not change the feature extractor;
+- it does not use BRACS test feedback;
+- it works for any `num_classes >= 2`.
+
+Implementation knobs, all disabled by default:
+
+- `Model.subset_consistency_weight`: KL consistency weight; default `0.0`.
+- `Model.subset_consistency_supervised_weight`: supervised CE weight on subset views; default `0.0`.
+- `Model.subset_consistency_fraction`: fraction of the sampled bag used per subset view; default `0.75`.
+- `Model.subset_consistency_views`: number of subset views; default `1`.
+- `Model.subset_consistency_temperature`: distillation temperature; default `1.0`.
+
+First smoke test:
+
+- command: `mamba run -n mirmil python experiments/run_benchmark.py ... --max-instances 512 --epochs 1 --model-option Model.subset_consistency_weight=0.2 --model-option Model.subset_consistency_supervised_weight=0.2 --model-option Model.subset_consistency_fraction=0.5 --model-option Model.subset_consistency_views=2`
+- result: completed one epoch on BRACS3 UNI official train/val split.
+- logged components: `subset_consistency_loss=0.036721`, `subset_supervised_loss=0.934004`.
+
+Interpretation: the implementation path trains and logs correctly. The smoke result is not a performance claim. The next valid step is a BRACS3 validation-only ablation, followed by PANDA validation sanity only if BRACS validation improves.

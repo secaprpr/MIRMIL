@@ -115,6 +115,8 @@ def mir_train_loop(device, model, loader, criterion, optimizer, scheduler):
         "classification_loss": 0.0,
         "ordinal_loss": 0.0,
         "stability_loss": 0.0,
+        "subset_consistency_loss": 0.0,
+        "subset_supervised_loss": 0.0,
         "lipschitz_loss": 0.0,
         "prototype_loss": 0.0,
     }
@@ -126,7 +128,8 @@ def mir_train_loop(device, model, loader, criterion, optimizer, scheduler):
         losses["loss"].backward()
         optimizer.step()
         for key in totals:
-            totals[key] += float(losses[key].detach().item())
+            if key in losses:
+                totals[key] += float(losses[key].detach().item())
     if scheduler is not None:
         scheduler.step()
     count = max(len(loader), 1)

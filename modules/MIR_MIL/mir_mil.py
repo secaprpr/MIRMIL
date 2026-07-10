@@ -726,6 +726,11 @@ class MIR_MIL(nn.Module):
         evidence_value_dim=128,
         evidence_temperature=1.0,
         evidence_dropout=0.0,
+        subset_consistency_weight=0.0,
+        subset_consistency_supervised_weight=0.0,
+        subset_consistency_fraction=0.75,
+        subset_consistency_views=1,
+        subset_consistency_temperature=1.0,
     ):
         super().__init__()
         if in_dim <= 0 or num_classes < 2:
@@ -801,6 +806,35 @@ class MIR_MIL(nn.Module):
         self.evidence_weight = float(evidence_weight)
         if self.evidence_weight < 0:
             raise ValueError("evidence_weight must be non-negative")
+        self.subset_consistency_weight = float(subset_consistency_weight)
+        self.subset_consistency_supervised_weight = float(
+            subset_consistency_supervised_weight
+        )
+        self.subset_consistency_fraction = float(
+            subset_consistency_fraction
+        )
+        self.subset_consistency_views = int(subset_consistency_views)
+        self.subset_consistency_temperature = float(
+            subset_consistency_temperature
+        )
+        if self.subset_consistency_weight < 0:
+            raise ValueError(
+                "subset_consistency_weight must be non-negative"
+            )
+        if self.subset_consistency_supervised_weight < 0:
+            raise ValueError(
+                "subset_consistency_supervised_weight must be non-negative"
+            )
+        if not 0 < self.subset_consistency_fraction <= 1:
+            raise ValueError(
+                "subset_consistency_fraction must be in (0, 1]"
+            )
+        if self.subset_consistency_views < 1:
+            raise ValueError("subset_consistency_views must be positive")
+        if self.subset_consistency_temperature <= 0:
+            raise ValueError(
+                "subset_consistency_temperature must be positive"
+            )
 
         self.encoder = nn.Sequential(
             nn.Linear(self.input_dim, hidden_dim),
@@ -1699,6 +1733,39 @@ class MIR_MIL(nn.Module):
             )
         return augmented
 
+    def subset_view(self, bag):
+        bag = self._normalize_bag(bag)
+        if bag.shape[0] <= 1 or self.subset_consistency_fraction >= 1:
+            return bag
+        count = max(
+            1,
+            int(math.ceil(bag.shape[0] * self.subset_consistency_fraction)),
+        )
+        if count >= bag.shape[0]:
+            return bag
+        indices = torch.randperm(bag.shape[0], device=bag.device)[:count]
+        return bag[indices]
+
+    def prediction_consistency_loss(self, teacher_logits, student_logits):
+        temperature = self.subset_consistency_temperature
+        teacher_probabilities = torch.softmax(
+            teacher_logits.detach() / temperature,
+            dim=1,
+        )
+        student_log_probabilities = torch.log_softmax(
+            student_logits / temperature,
+            dim=1,
+        )
+        return (
+            F.kl_div(
+                student_log_probabilities,
+                teacher_probabilities,
+                reduction="batchmean",
+            )
+            * temperature
+            * temperature
+        )
+
     def lipschitz_penalty(self, bag):
         if self.lipschitz_weight <= 0:
             return bag.new_zeros(())
@@ -1726,6 +1793,34 @@ class MIR_MIL(nn.Module):
             stability_loss = F.mse_loss(
                 output["logits"], augmented_logits
             )
+        subset_consistency_loss = bag.new_zeros(())
+        subset_supervised_loss = bag.new_zeros(())
+        if (
+            self.subset_consistency_weight > 0
+            or self.subset_consistency_supervised_weight > 0
+        ):
+            view_consistency_losses = []
+            view_supervised_losses = []
+            for _ in range(self.subset_consistency_views):
+                view_logits = self.forward(self.subset_view(bag))["logits"]
+                if self.subset_consistency_weight > 0:
+                    view_consistency_losses.append(
+                        self.prediction_consistency_loss(
+                            output["logits"], view_logits
+                        )
+                    )
+                if self.subset_consistency_supervised_weight > 0:
+                    view_supervised_losses.append(
+                        criterion(view_logits, label)
+                    )
+            if view_consistency_losses:
+                subset_consistency_loss = torch.stack(
+                    view_consistency_losses
+                ).mean()
+            if view_supervised_losses:
+                subset_supervised_loss = torch.stack(
+                    view_supervised_losses
+                ).mean()
         lipschitz_loss = self.lipschitz_penalty(bag)
         prototype_loss = bag.new_zeros(())
         if hasattr(self.potential, "regularization"):
@@ -1734,6 +1829,9 @@ class MIR_MIL(nn.Module):
             classification_loss
             + self.ordinal_weight * ordinal_loss
             + self.stability_weight * stability_loss
+            + self.subset_consistency_weight * subset_consistency_loss
+            + self.subset_consistency_supervised_weight
+            * subset_supervised_loss
             + self.lipschitz_weight * lipschitz_loss
             + self.prototype_regularization_weight * prototype_loss
         )
@@ -1742,6 +1840,8 @@ class MIR_MIL(nn.Module):
             "classification_loss": classification_loss,
             "ordinal_loss": ordinal_loss,
             "stability_loss": stability_loss,
+            "subset_consistency_loss": subset_consistency_loss,
+            "subset_supervised_loss": subset_supervised_loss,
             "lipschitz_loss": lipschitz_loss,
             "prototype_loss": prototype_loss,
         }

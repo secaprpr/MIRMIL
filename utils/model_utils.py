@@ -387,6 +387,23 @@ def get_model_from_yaml(yaml_args):
             evidence_dropout=_model_option(
                 yaml_args, "evidence_dropout", 0.0
             ),
+            subset_consistency_weight=_model_option(
+                yaml_args, "subset_consistency_weight", 0.0
+            ),
+            subset_consistency_supervised_weight=_model_option(
+                yaml_args,
+                "subset_consistency_supervised_weight",
+                0.0,
+            ),
+            subset_consistency_fraction=_model_option(
+                yaml_args, "subset_consistency_fraction", 0.75
+            ),
+            subset_consistency_views=_model_option(
+                yaml_args, "subset_consistency_views", 1
+            ),
+            subset_consistency_temperature=_model_option(
+                yaml_args, "subset_consistency_temperature", 1.0
+            ),
         )
     if model_name == 'OT_MIL':
         from modules.OT_MIL.ot_mil import OT_MIL
