@@ -1,0 +1,125 @@
+General:
+    MODEL_NAME: MIR_MIL
+    seed: 2024
+    num_classes: 6
+    num_epochs: 30
+    device: 0
+    num_workers: 2
+    best_model_metric: macro_auc
+    earlystop:
+        use: True
+        patience: 8
+        metric: macro_auc
+        min_delta: 0.0
+
+Dataset:
+    DATASET_NAME: PANDA
+    dataset_csv_path: /data15/data15_5/fanhao/datasets/PANDA/MIRMIL_FEATURES/metadata/PANDA_uni_split_v1_train_val_qc.csv
+    balanced_sampler:
+        use: True
+        replacement: True
+
+Logs:
+    log_root_dir: /data15/data15_5/fanhao/projects/MIRMIL/artifacts/panda_arch_ablation/uni/evidence_w005_seed2024
+
+Tracking:
+    wandb:
+        enabled: False
+        project: MIR-MIL
+        entity: null
+        mode: disabled
+        tags: [dataset:PANDA, feature:uni, model:MIR_MIL, variant:evidence_w005, protocol:arch_ablation]
+        feature: uni
+        variant: evidence_w005
+        protocol: panda-arch-ablation-val-only
+        split_id: split-v1-qc
+        comparison_id: panda-uni-mir-evidence-w005-seed2024
+        source_manifest_sha256: null
+        feature_manifest_sha256: null
+        coordinate_manifest_sha256: null
+        encoder_checkpoint_sha256: null
+        upload_checkpoints: False
+        max_artifact_mb: 50
+
+Model:
+    in_dim: 1024
+    coordinate_dim: 0
+    input_group_l2_normalize: False
+    input_group_size: 0
+    hidden_dim: 256
+    sketch_dim: 128
+    moment_order: 1
+    num_tail_scores: 8
+    tail_temperature: 0.25
+    num_local_routes: 12
+    local_route_dim: 32
+    local_route_temperature: 0.25
+    anchor_route_dim: 0
+    anchor_route_temperature: 1.0
+    anchor_route_identity: False
+    potential_hidden_dim: 128
+    dropout: 0.1
+    act: gelu
+    max_instances: 4096
+    sampling: random
+
+    stability_weight: 0.1
+    patch_dropout: 0.1
+    feature_noise_std: 0.01
+    coordinate_jitter_std: 0.01
+    lipschitz_weight: 0.0
+    lipschitz_target: 1.0
+    lipschitz_samples: 64
+    ordinal_weight: 0.0
+    potential_type: adaptive_multiscale
+    multiscale_gate_initial_bias: -0.5
+    multiscale_local_initial_scale: 0.5
+    multiscale_class_mix_initial: 0.5
+    multiscale_class_residual_initial_scale: 0.05
+    multiscale_prototype_initial_scale: 0.05
+    anchor_global_initial_scale: 0.1
+    anchor_local_initial_scale: 0.1
+    prototype_embedding_dim: 64
+    prototypes_per_class: 4
+    prototype_temperature: 0.2
+    prototype_mixture_temperature: 1.0
+    prototype_regularization_weight: 0.01
+    prototype_diversity_margin: 0.2
+    prototype_separation_margin: 0.0
+    prototype_residual_initial_scale: 0.0
+    evidence_weight: 0.05
+    evidence_query_dim: 64
+    evidence_value_dim: 128
+    evidence_temperature: 1.0
+    evidence_dropout: 0.0
+
+    criterion: ce
+    label_smoothing: 0.0
+    class_weighting: none
+    class_weight_beta: 0.999
+    focal_gamma: 0.0
+    ema_decay: 0.0
+    swa_start_epoch: 0
+    optimizer:
+        which: adamw
+        adam_config:
+            lr: 0.0002
+            weight_decay: 0.00001
+        adamw_config:
+            lr: 0.0002
+            weight_decay: 0.00001
+    scheduler:
+        warmup: 2
+        which: cosine
+        step_config:
+            step_size: 10
+            gamma: 0.5
+        multi_step_config:
+            milestones: [20, 35]
+            gamma: 0.5
+        exponential_config:
+            gamma: 0.95
+        cosine_config:
+            T_max: 28
+            eta_min: 0.000001
+            clamp_after_t_max: False
