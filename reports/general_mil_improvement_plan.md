@@ -129,3 +129,38 @@ Smoke checks completed on 2026-07-11:
 - One-epoch BRACS3 UNI training smoke on the official train/val split with `Model.evidence_weight=0.1`.
 
 The smoke result was `val_macro_auc=0.779278` at epoch 1 and is only a pipeline check, not a performance claim.
+
+## First ablation outcome
+
+`evidence_weight=0.05` was evaluated as the first controlled ablation.
+
+BRACS3 UNI validation:
+
+- seed2024: `0.902793` macro-AUC at epoch 20
+- seed2025: `0.902999` macro-AUC at epoch 15
+- seed2026: `0.898698` macro-AUC at epoch 3
+- mean ± std: `0.901497 ± 0.002426`
+
+PANDA UNI validation sanity:
+
+- seed2024 evidence_w005: `0.951225` macro-AUC at epoch 29
+- seed2024 archived/default MIR-MIL: `0.951178` macro-AUC
+
+Thus the module passed the PANDA sanity gate and did not behave like a BRACS-only trick on validation.
+
+However, the single frozen BRACS3 official-test evaluation failed:
+
+- budget128: `0.796290 ± 0.016543` macro-AUC
+- budget256: `0.789243 ± 0.015511` macro-AUC
+- budget512: `0.809526 ± 0.014712` macro-AUC
+
+This is worse than the archived `UNI + MIR_MIL` official-test result (`0.827973 ± 0.027678`) and much worse than `UNI + AC_MIL` (`0.852852 ± 0.009653`). Therefore `evidence_weight=0.05` must be discarded as an accepted improvement.
+
+Scientific interpretation:
+
+- The idea is generic and does not harm PANDA validation.
+- BRACS validation improves strongly and consistently.
+- The improvement does not transfer to BRACS official test.
+- The current bottleneck is therefore not simply missing class-aware evidence capacity. BRACS validation selection remains unreliable, and the evidence branch may amplify split-specific evidence or calibration artifacts.
+
+Next generic architecture work should not tune `evidence_weight` against BRACS test. The next step should first analyze validation/test divergence, including class confusion, calibration, bag-size dependence, and whether evidence logits become over-confident on BRACS test.
