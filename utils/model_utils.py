@@ -387,6 +387,24 @@ def get_model_from_yaml(yaml_args):
             evidence_dropout=_model_option(
                 yaml_args, "evidence_dropout", 0.0
             ),
+            multi_token_weight=_model_option(
+                yaml_args, "multi_token_weight", 0.0
+            ),
+            multi_token_count=_model_option(
+                yaml_args, "multi_token_count", 4
+            ),
+            multi_token_dim=_model_option(
+                yaml_args, "multi_token_dim", 64
+            ),
+            multi_token_readout_dim=_model_option(
+                yaml_args, "multi_token_readout_dim", 128
+            ),
+            multi_token_temperature=_model_option(
+                yaml_args, "multi_token_temperature", 1.0
+            ),
+            multi_token_dropout=_model_option(
+                yaml_args, "multi_token_dropout", 0.0
+            ),
             subset_consistency_weight=_model_option(
                 yaml_args, "subset_consistency_weight", 0.0
             ),

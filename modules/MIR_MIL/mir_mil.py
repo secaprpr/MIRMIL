@@ -673,6 +673,54 @@ class ClassAwareEvidenceHead(nn.Module):
         return logits.unsqueeze(0)
 
 
+class MultiTokenAttentionReadout(nn.Module):
+    """Dataset-agnostic multi-token attention readout over encoded patches."""
+
+    def __init__(
+        self,
+        hidden_dim,
+        num_classes,
+        num_tokens,
+        token_dim,
+        readout_dim,
+        temperature,
+        dropout,
+    ):
+        super().__init__()
+        if num_tokens <= 0:
+            raise ValueError("num_tokens must be positive")
+        if token_dim <= 0 or readout_dim <= 0:
+            raise ValueError("token_dim and readout_dim must be positive")
+        if temperature <= 0:
+            raise ValueError("multi-token temperature must be positive")
+        self.num_tokens = int(num_tokens)
+        self.token_dim = int(token_dim)
+        self.temperature = float(temperature)
+        self.key = nn.Linear(hidden_dim, self.token_dim)
+        self.value = nn.Linear(hidden_dim, int(readout_dim))
+        self.tokens = nn.Parameter(
+            torch.empty(self.num_tokens, self.token_dim)
+        )
+        self.output = nn.Sequential(
+            nn.LayerNorm(int(readout_dim) * self.num_tokens),
+            nn.Dropout(dropout),
+            nn.Linear(int(readout_dim) * self.num_tokens, num_classes),
+        )
+        with torch.random.fork_rng(devices=[]):
+            nn.init.normal_(
+                self.tokens, std=1.0 / math.sqrt(self.token_dim)
+            )
+
+    def forward(self, encoded):
+        keys = self.key(encoded)
+        values = self.value(encoded)
+        scale = math.sqrt(self.token_dim) * self.temperature
+        scores = torch.einsum("nd,td->nt", keys, self.tokens) / scale
+        attention = torch.softmax(scores, dim=0)
+        token_values = torch.einsum("nt,nv->tv", attention, values)
+        return self.output(token_values.flatten().unsqueeze(0))
+
+
 class MIR_MIL(nn.Module):
     """Neural measure potential with closed-form measure influence response."""
 
@@ -726,6 +774,12 @@ class MIR_MIL(nn.Module):
         evidence_value_dim=128,
         evidence_temperature=1.0,
         evidence_dropout=0.0,
+        multi_token_weight=0.0,
+        multi_token_count=4,
+        multi_token_dim=64,
+        multi_token_readout_dim=128,
+        multi_token_temperature=1.0,
+        multi_token_dropout=0.0,
         subset_consistency_weight=0.0,
         subset_consistency_supervised_weight=0.0,
         subset_consistency_fraction=0.75,
@@ -806,6 +860,25 @@ class MIR_MIL(nn.Module):
         self.evidence_weight = float(evidence_weight)
         if self.evidence_weight < 0:
             raise ValueError("evidence_weight must be non-negative")
+        self.multi_token_weight = float(multi_token_weight)
+        self.multi_token_count = int(multi_token_count)
+        self.multi_token_dim = int(multi_token_dim)
+        self.multi_token_readout_dim = int(multi_token_readout_dim)
+        self.multi_token_temperature = float(multi_token_temperature)
+        self.multi_token_dropout = float(multi_token_dropout)
+        if self.multi_token_weight < 0:
+            raise ValueError("multi_token_weight must be non-negative")
+        if self.multi_token_count <= 0:
+            raise ValueError("multi_token_count must be positive")
+        if self.multi_token_dim <= 0 or self.multi_token_readout_dim <= 0:
+            raise ValueError(
+                "multi_token_dim and multi_token_readout_dim must be "
+                "positive"
+            )
+        if self.multi_token_temperature <= 0:
+            raise ValueError("multi_token_temperature must be positive")
+        if not 0 <= self.multi_token_dropout < 1:
+            raise ValueError("multi_token_dropout must be in [0, 1)")
         self.subset_consistency_weight = float(subset_consistency_weight)
         self.subset_consistency_supervised_weight = float(
             subset_consistency_supervised_weight
@@ -1096,6 +1169,17 @@ class MIR_MIL(nn.Module):
                 temperature=evidence_temperature,
                 dropout=evidence_dropout,
             )
+        self.multi_token_head = None
+        if self.multi_token_weight > 0:
+            self.multi_token_head = MultiTokenAttentionReadout(
+                hidden_dim=hidden_dim,
+                num_classes=self.num_classes,
+                num_tokens=self.multi_token_count,
+                token_dim=self.multi_token_dim,
+                readout_dim=self.multi_token_readout_dim,
+                temperature=self.multi_token_temperature,
+                dropout=self.multi_token_dropout,
+            )
         self.apply(self._initialize)
         if isinstance(
             self.potential,
@@ -1258,6 +1342,18 @@ class MIR_MIL(nn.Module):
             anchor_scores,
         )
 
+    def residual_readout_logits(self, encoded):
+        logits = encoded.new_zeros((1, self.num_classes))
+        if self.evidence_head is not None:
+            logits = logits + self.evidence_weight * self.evidence_head(
+                encoded
+            )
+        if self.multi_token_head is not None:
+            logits = logits + self.multi_token_weight * self.multi_token_head(
+                encoded
+            )
+        return logits
+
     def forward(self, bag, return_state=False):
         (
             state,
@@ -1271,10 +1367,7 @@ class MIR_MIL(nn.Module):
             anchor_scores,
         ) = self.state_from_weighted_points(bag)
         logits = self.potential(state.unsqueeze(0))
-        if self.evidence_head is not None:
-            logits = logits + self.evidence_weight * self.evidence_head(
-                encoded
-            )
+        logits = logits + self.residual_readout_logits(encoded)
         output = {"logits": logits}
         if return_state:
             output.update(
@@ -1697,12 +1790,9 @@ class MIR_MIL(nn.Module):
             support, weights
         )[:2]
         perturbed_logits = self.potential(perturbed_state.unsqueeze(0))
-        if self.evidence_head is not None:
-            perturbed_logits = (
-                perturbed_logits
-                + self.evidence_weight
-                * self.evidence_head(perturbed_encoded)
-            )
+        perturbed_logits = perturbed_logits + self.residual_readout_logits(
+            perturbed_encoded
+        )
         perturbed_score = self.explained_score(
             perturbed_logits, target_class
         )

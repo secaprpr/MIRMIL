@@ -230,3 +230,41 @@ Interpretation:
 - The validation result is below the rejected evidence branch validation result (`0.901497 ± 0.002426`), and it does not provide a strong candidate signal.
 - Because the validation gate failed, PANDA sanity and BRACS official-test evaluation are not justified for this candidate.
 - The implementation remains useful as a disabled generic regularizer, but it should not be claimed as an improvement.
+
+## Third candidate: multi-token attention readout
+
+Motivation:
+
+- Evidence_w005 showed that class-owned queries can improve BRACS validation but fail official-test transfer, likely by over-amplifying split-specific class evidence.
+- Subset consistency showed that simple training regularization is not enough.
+- A more plausible generic direction is to improve readout capacity while avoiding hard class-specific evidence queries.
+
+The implemented candidate adds a dataset-agnostic multi-token attention residual head over the existing encoded patch features. It uses `K` learnable readout tokens shared across classes. Each token attends to patches, collects one evidence vector, concatenates all token evidence vectors, and maps them through a shared prediction layer to logits. The head is residual and disabled by default.
+
+Why this is generic:
+
+- no class label, class semantics, dataset name, or split information is hard-coded;
+- the same module works for any `num_classes >= 2`;
+- it uses only existing frozen R50/UNI features and MIR-MIL encoded patch representations;
+- it does not change the feature extractor or use raw WSI images;
+- it should help PANDA by preserving multiple high-level evidence modes and help BRACS by giving the readout more than one patch-evidence slot without BRACS-specific class queries.
+
+Implementation knobs, all disabled by default:
+
+- `Model.multi_token_weight`: residual logit weight; default `0.0`.
+- `Model.multi_token_count`: number of shared readout tokens; default `4`.
+- `Model.multi_token_dim`: token/key dimension; default `64`.
+- `Model.multi_token_readout_dim`: value dimension per token; default `128`.
+- `Model.multi_token_temperature`: attention temperature; default `1.0`.
+- `Model.multi_token_dropout`: classifier dropout; default `0.0`.
+
+Smoke tests:
+
+- synthetic forward/backward passed for `2`, `3`, and `6` classes.
+- one-epoch BRACS3 UNI training smoke with `Model.multi_token_weight=0.1`, `max_instances=512` completed.
+- smoke validation macro-AUC was `0.791066`; this is not a performance claim.
+
+Validation gate:
+
+- first controlled ablation will use `multi_token_weight=0.1`, `multi_token_count=4`, `multi_token_dim=64`, `multi_token_readout_dim=128`.
+- selection remains validation-only; BRACS official test is not opened unless the candidate passes BRACS validation and PANDA sanity.
