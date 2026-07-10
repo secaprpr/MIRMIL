@@ -268,3 +268,38 @@ Validation gate:
 
 - first controlled ablation will use `multi_token_weight=0.1`, `multi_token_count=4`, `multi_token_dim=64`, `multi_token_readout_dim=128`.
 - selection remains validation-only; BRACS official test is not opened unless the candidate passes BRACS validation and PANDA sanity.
+
+BRACS3 validation-only result:
+
+| seed | best epoch | val macro-AUC | val acc | val bacc | val macro-F1 |
+|---:|---:|---:|---:|---:|---:|
+| 2024 | 16 | `0.912108` | `0.738462` | `0.631746` | `0.594078` |
+| 2025 | 12 | `0.912276` | `0.723077` | `0.646032` | `0.631416` |
+| 2026 | 4 | `0.905103` | `0.784615` | `0.695238` | `0.685719` |
+| mean ± std | - | `0.909829 ± 0.004094` | `0.748718 ± 0.032026` | `0.657672 ± 0.033308` | `0.637071 ± 0.046082` |
+
+PANDA validation sanity:
+
+| setting | seed | best epoch | val macro-AUC | val acc | val bacc | val macro-F1 |
+|---|---:|---:|---:|---:|---:|---:|
+| PANDA UNI + MIR-MIL multi_token_w01 | 2024 | 30 | `0.953990` | `0.790391` | `0.747524` | `0.752952` |
+| archived/default PANDA UNI + MIR-MIL | 2024 | - | `0.951178` | - | - | - |
+
+This passes the PANDA sanity gate for seed2024. The candidate improves BRACS3 validation macro-AUC and does not show a PANDA validation drop.
+
+Frozen official BRACS3 test:
+
+| seed | official-test macro-AUC | acc | bacc | macro-F1 |
+|---:|---:|---:|---:|---:|
+| 2024 | `0.846060` | `0.678161` | `0.634964` | `0.612669` |
+| 2025 | `0.842400` | `0.666667` | `0.628623` | `0.613416` |
+| 2026 | `0.821327` | `0.666667` | `0.620471` | `0.590170` |
+| mean ± std | `0.836596 ± 0.013349` | `0.670498` | `0.628019` | `0.605418` |
+
+Reviewer-style interpretation:
+
+- The module is a real generic architecture candidate: it improves BRACS validation and passes PANDA seed2024 sanity.
+- It improves over the archived original `UNI + MIR_MIL` official-test result (`0.827973 ± 0.027678`).
+- It does not beat the stronger `UNI + MIR_MIL noES/bestval` result (`0.8403 ± 0.0184`) or `UNI + AC_MIL` / current BRACS3 target (`0.852852 ± 0.009653`).
+- Therefore it is not SOTA and should not be claimed as a final improvement.
+- The remaining gap is still validation-test transfer and class-boundary decision quality: BRACS validation macro-AUC is high, but validation/test F1 and balanced accuracy remain weaker than needed.
