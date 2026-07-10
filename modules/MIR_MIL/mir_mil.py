@@ -780,6 +780,9 @@ class MIR_MIL(nn.Module):
         multi_token_readout_dim=128,
         multi_token_temperature=1.0,
         multi_token_dropout=0.0,
+        multi_token_gated=False,
+        multi_token_gate_hidden_dim=64,
+        multi_token_gate_initial_bias=0.0,
         subset_consistency_weight=0.0,
         subset_consistency_supervised_weight=0.0,
         subset_consistency_fraction=0.75,
@@ -866,6 +869,11 @@ class MIR_MIL(nn.Module):
         self.multi_token_readout_dim = int(multi_token_readout_dim)
         self.multi_token_temperature = float(multi_token_temperature)
         self.multi_token_dropout = float(multi_token_dropout)
+        self.multi_token_gated = bool(multi_token_gated)
+        self.multi_token_gate_hidden_dim = int(multi_token_gate_hidden_dim)
+        self.multi_token_gate_initial_bias = float(
+            multi_token_gate_initial_bias
+        )
         if self.multi_token_weight < 0:
             raise ValueError("multi_token_weight must be non-negative")
         if self.multi_token_count <= 0:
@@ -879,6 +887,10 @@ class MIR_MIL(nn.Module):
             raise ValueError("multi_token_temperature must be positive")
         if not 0 <= self.multi_token_dropout < 1:
             raise ValueError("multi_token_dropout must be in [0, 1)")
+        if self.multi_token_gate_hidden_dim <= 0:
+            raise ValueError(
+                "multi_token_gate_hidden_dim must be positive"
+            )
         self.subset_consistency_weight = float(subset_consistency_weight)
         self.subset_consistency_supervised_weight = float(
             subset_consistency_supervised_weight
@@ -1170,6 +1182,7 @@ class MIR_MIL(nn.Module):
                 dropout=evidence_dropout,
             )
         self.multi_token_head = None
+        self.multi_token_gate = None
         if self.multi_token_weight > 0:
             self.multi_token_head = MultiTokenAttentionReadout(
                 hidden_dim=hidden_dim,
@@ -1180,7 +1193,23 @@ class MIR_MIL(nn.Module):
                 temperature=self.multi_token_temperature,
                 dropout=self.multi_token_dropout,
             )
+            if self.multi_token_gated:
+                self.multi_token_gate = nn.Sequential(
+                    nn.LayerNorm(state_dim),
+                    nn.Linear(state_dim, self.multi_token_gate_hidden_dim),
+                    _activation(act),
+                    nn.Linear(
+                        self.multi_token_gate_hidden_dim,
+                        self.num_classes,
+                    ),
+                )
         self.apply(self._initialize)
+        if self.multi_token_gate is not None:
+            final_gate_layer = self.multi_token_gate[-1]
+            nn.init.zeros_(final_gate_layer.weight)
+            nn.init.constant_(
+                final_gate_layer.bias, self.multi_token_gate_initial_bias
+            )
         if isinstance(
             self.potential,
             (
@@ -1342,16 +1371,24 @@ class MIR_MIL(nn.Module):
             anchor_scores,
         )
 
-    def residual_readout_logits(self, encoded):
+    def residual_readout_logits(self, encoded, state=None):
         logits = encoded.new_zeros((1, self.num_classes))
         if self.evidence_head is not None:
             logits = logits + self.evidence_weight * self.evidence_head(
                 encoded
             )
         if self.multi_token_head is not None:
-            logits = logits + self.multi_token_weight * self.multi_token_head(
-                encoded
-            )
+            multi_token_logits = self.multi_token_head(encoded)
+            if self.multi_token_gate is not None:
+                if state is None:
+                    raise ValueError(
+                        "state is required when multi_token_gated is enabled"
+                    )
+                gate = torch.sigmoid(
+                    self.multi_token_gate(state.unsqueeze(0))
+                )
+                multi_token_logits = gate * multi_token_logits
+            logits = logits + self.multi_token_weight * multi_token_logits
         return logits
 
     def forward(self, bag, return_state=False):
@@ -1367,7 +1404,7 @@ class MIR_MIL(nn.Module):
             anchor_scores,
         ) = self.state_from_weighted_points(bag)
         logits = self.potential(state.unsqueeze(0))
-        logits = logits + self.residual_readout_logits(encoded)
+        logits = logits + self.residual_readout_logits(encoded, state)
         output = {"logits": logits}
         if return_state:
             output.update(
@@ -1791,7 +1828,8 @@ class MIR_MIL(nn.Module):
         )[:2]
         perturbed_logits = self.potential(perturbed_state.unsqueeze(0))
         perturbed_logits = perturbed_logits + self.residual_readout_logits(
-            perturbed_encoded
+            perturbed_encoded,
+            perturbed_state,
         )
         perturbed_score = self.explained_score(
             perturbed_logits, target_class

@@ -303,3 +303,37 @@ Reviewer-style interpretation:
 - It does not beat the stronger `UNI + MIR_MIL noES/bestval` result (`0.8403 ± 0.0184`) or `UNI + AC_MIL` / current BRACS3 target (`0.852852 ± 0.009653`).
 - Therefore it is not SOTA and should not be claimed as a final improvement.
 - The remaining gap is still validation-test transfer and class-boundary decision quality: BRACS validation macro-AUC is high, but validation/test F1 and balanced accuracy remain weaker than needed.
+
+## Fourth candidate: sample-adaptive gated multi-token readout
+
+Motivation:
+
+- The fixed multi-token residual head is the first candidate that improves BRACS3 validation, passes PANDA sanity, and improves over the archived original MIR-MIL official test.
+- It still fails to reach the stronger MIR noES/bestval result or AC_MIL target.
+- The failure pattern is not simply low validation AUC. The issue is that a fixed residual readout can improve ranking while leaving decision-boundary quality unstable.
+
+The next candidate adds a generic sample-adaptive gate to the multi-token residual. The gate is predicted from the MIR-MIL slide state and modulates the multi-token residual logits per class. This lets the model learn when to trust the extra readout capacity for a given slide, instead of applying the same residual strength to all slides.
+
+Why this is generic:
+
+- it uses only the existing MIR-MIL slide state and encoded patches;
+- it contains no dataset name, split, class semantics, class count constant, or BRACS-specific branch;
+- it works for arbitrary `num_classes >= 2`;
+- it remains a residual module with defaults disabled.
+
+Implementation knobs, disabled by default:
+
+- `Model.multi_token_gated`: enable state-conditioned residual gate; default `False`.
+- `Model.multi_token_gate_hidden_dim`: gate MLP hidden dimension; default `64`.
+- `Model.multi_token_gate_initial_bias`: final gate bias before sigmoid; default `0.0`.
+
+Smoke tests:
+
+- synthetic forward/backward passed for `2`, `3`, and `6` classes.
+- one-epoch BRACS3 UNI smoke with `multi_token_gated=True`, `max_instances=512`, and otherwise frozen multi-token settings completed.
+- smoke validation macro-AUC was `0.771247`; this is not a performance claim.
+
+Validation plan:
+
+- Run BRACS3 UNI official train/val only, seeds `2024/2025/2026`, 4096-instance budget.
+- Do not open BRACS official test unless BRACS validation is strong and PANDA sanity passes.

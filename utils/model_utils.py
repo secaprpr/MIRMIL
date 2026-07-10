@@ -405,6 +405,15 @@ def get_model_from_yaml(yaml_args):
             multi_token_dropout=_model_option(
                 yaml_args, "multi_token_dropout", 0.0
             ),
+            multi_token_gated=_model_option(
+                yaml_args, "multi_token_gated", False
+            ),
+            multi_token_gate_hidden_dim=_model_option(
+                yaml_args, "multi_token_gate_hidden_dim", 64
+            ),
+            multi_token_gate_initial_bias=_model_option(
+                yaml_args, "multi_token_gate_initial_bias", 0.0
+            ),
             subset_consistency_weight=_model_option(
                 yaml_args, "subset_consistency_weight", 0.0
             ),
