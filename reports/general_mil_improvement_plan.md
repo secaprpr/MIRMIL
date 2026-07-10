@@ -148,13 +148,21 @@ PANDA UNI validation sanity:
 
 Thus the module passed the PANDA sanity gate and did not behave like a BRACS-only trick on validation.
 
-However, the single frozen BRACS3 official-test evaluation failed:
+However, the single frozen BRACS3 official-test evaluation failed.
+
+Protocol correction: the archived BRACS3 official-test matrix used `--max-instances 4096`. An initial evidence evaluation used the default diagnostic budgets `128/256/512`; those values are budget-sensitivity evidence, not the primary fair comparison.
+
+Fair 4096-budget official test:
+
+- budget4096: `0.808322 ± 0.024521` macro-AUC; `0.609195` accuracy; `0.573822` balanced accuracy; `0.556995` macro-F1
+
+Supplemental low-budget diagnostic official test:
 
 - budget128: `0.796290 ± 0.016543` macro-AUC
 - budget256: `0.789243 ± 0.015511` macro-AUC
 - budget512: `0.809526 ± 0.014712` macro-AUC
 
-This is worse than the archived `UNI + MIR_MIL` official-test result (`0.827973 ± 0.027678`) and much worse than `UNI + AC_MIL` (`0.852852 ± 0.009653`). Therefore `evidence_weight=0.05` must be discarded as an accepted improvement.
+The fair 4096 result is worse than the archived `UNI + MIR_MIL` official-test result (`0.827973 ± 0.027678`) and much worse than `UNI + AC_MIL` (`0.852852 ± 0.009653`). Therefore `evidence_weight=0.05` must be discarded as an accepted improvement.
 
 Scientific interpretation:
 
