@@ -110,3 +110,32 @@ The moment multi-token readout is the strongest positive update so far:
 - The remaining gap to the AC_MIL target `0.852852 ± 0.009653` is `0.010284` macro-AUC.
 
 This suggests the PANDA/BRACS gap is not caused by feature quality alone. A more distribution-aware evidence readout can help both datasets, but BRACS still likely requires more robust class-boundary evidence selection than the current generic moment-token branch provides.
+
+## Update: why later candidates did not close the BRACS gap
+
+The later candidates clarify the PANDA/BRACS difference further.
+
+Class-conditioned moment-token did not damage PANDA, but it also did not beat moment-token on PANDA:
+
+- PANDA seed2024: `0.956593`.
+- Moment-token PANDA seed2024: `0.958328`.
+- BRACS3 validation gain over moment-token was only about `0.001433` macro-AUC and decision metrics were unstable.
+
+Tail-aware token readout improved some BRACS3 decision metrics but not BRACS3 macro-AUC:
+
+- BRACS3 validation macro-AUC: `0.908273 ± 0.011531`.
+- This is below moment-token and fixed multi-token.
+- Interpretation: BRACS3 does contain sparse or local evidence, but hard top-k pooling alone does not produce better ranking.
+
+The logit-margin auxiliary objective directly targeted class separation, but increased seed sensitivity:
+
+- BRACS3 validation macro-AUC: `0.906968 ± 0.027732`.
+- One seed improved strongly, while seed2024 collapsed.
+- Interpretation: sharper margins can overfit small BRACS validation boundaries and are not a stable general fix.
+
+Current interpretation:
+
+- PANDA benefits from distribution-aware token statistics; moment-token improves PANDA to `0.958328`.
+- BRACS also benefits somewhat, but its remaining error is not fixed by residual readouts, hard tails, or simple margin regularization.
+- The most likely limitation is now the MIR-MIL state/readout interface itself: the model preserves strong global distributional information, but does not reliably learn class-boundary evidence under small, ambiguous BRACS splits.
+- Further progress to the AC_MIL target may require a larger, still generic architecture change rather than another small residual head.

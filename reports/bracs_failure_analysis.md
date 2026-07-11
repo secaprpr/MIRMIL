@@ -108,6 +108,46 @@ The subsequent moment multi-token evidence readout is a stronger positive contro
 
 This is the best current MIR-MIL BRACS3 official-test result and narrows the gap to AC_MIL target `0.852852` to `0.010284`. It supports the hypothesis that BRACS needs a more evidence-preserving readout, but it also shows the remaining gap is not solved by adding token-level second moments alone. The likely remaining weakness is class/boundary-specific evidence selection under a small, ambiguous BRACS split, especially because seed2026 transfers worse than seeds 2024/2025.
 
+## Later architecture/objective ablations: what is now rejected
+
+After moment-token became the best accepted MIR-MIL extension, three additional generic candidates were tested under validation-first gating:
+
+1. Class-conditioned moment-token readout.
+2. Tail-aware token readout.
+3. Multiclass logit-margin auxiliary objective.
+
+None of these opened BRACS official test except moment-token, because none passed the validation/PANDA gate strongly enough.
+
+Class-conditioned moment-token:
+
+- BRACS3 validation: `0.914885 ± 0.009920` macro-AUC.
+- This is only `+0.001433` over moment-token validation (`0.913452 ± 0.015874`).
+- PANDA seed2024 sanity: `0.956593`, which is above original MIR-MIL (`0.951178`) but below moment-token (`0.958328`).
+- Decision metrics were unstable: seed2024 had high AUC but weak bacc/F1.
+- Rejected because it was not a stronger general module than moment-token and its BRACS gain was too small relative to variance.
+
+Tail-aware token readout:
+
+- BRACS3 validation: `0.908273 ± 0.011531` macro-AUC.
+- Mean acc/bacc/macro-F1: `0.779487 ± 0.023500`, `0.714815 ± 0.061483`, `0.699343 ± 0.088432`.
+- It improved some operating-point metrics, but failed the primary macro-AUC ranking gate versus moment-token and fixed multi-token.
+- Rejected because hard top-response evidence alone improves threshold behavior more than ranking quality.
+
+Multiclass logit-margin auxiliary objective:
+
+- BRACS3 validation with moment-token + margin weight `0.05`: `0.906968 ± 0.027732` macro-AUC.
+- Seed results were highly unstable: seed2024 `0.875500`, seed2025 `0.927838`, seed2026 `0.917566`.
+- Rejected because it created one strong seed while damaging another and increasing seed sensitivity.
+
+These negative results narrow the failure mode:
+
+- The problem is not solved by simply making the readout more class-conditioned.
+- The problem is not solved by adding hard tail/top-k evidence.
+- The problem is not solved by forcing larger per-sample logit margins.
+- BRACS3 macro-AUC appears sensitive to seed and validation split effects; methods that improve bacc/F1 or one seed can still fail mean AUC and robustness.
+
+The strongest defensible conclusion is that the current MIR-MIL family has likely reached a local ceiling on BRACS3 under fixed features, official split, and conservative validation-gated testing. Moment-token is a real general improvement because it improves PANDA and BRACS official test, but the remaining `~0.0103` macro-AUC gap to the internal AC_MIL target probably requires a more substantial architecture change than residual readout heads or simple auxiliary objectives.
+
 ## Requirements for the next method
 
 A valid next method should:
