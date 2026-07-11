@@ -738,5 +738,19 @@ Interpretation:
 Decision:
 
 - Conditional candidate only.
-- Do not open BRACS official test directly.
-- Run PANDA UNI seed2024 sanity first. If PANDA drops, reject. If PANDA is preserved or improved, one frozen BRACS official-test evaluation may be considered, but the unstable decision metrics must be reported.
+- PANDA UNI seed2024 sanity was run before opening BRACS official test.
+
+PANDA sanity:
+
+- Best epoch: `29`.
+- PANDA validation macro-AUC: `0.956593`.
+- PANDA validation acc/bacc/macro-F1: `0.803109`, `0.764620`, `0.769579`.
+- Compared with original PANDA MIR-MIL seed2024 macro-AUC `0.951178`, class-moment improves by about `0.005415`.
+- Compared with the accepted moment-token candidate macro-AUC `0.958328`, class-moment is lower by about `0.001734`.
+
+Final decision:
+
+- Reject as a SOTA candidate.
+- Do not open BRACS official test.
+- The reason is not that class-moment damages PANDA; it does not. The reason is that it is weaker than the already accepted moment-token module on PANDA, while its BRACS validation advantage over moment-token is only about `0.001433` and has unstable decision metrics.
+- Current best accepted MIR-MIL extension remains moment-token w01: BRACS3 official test macro-AUC `0.842568 ± 0.009488`, PANDA seed2024 validation macro-AUC `0.958328`.
