@@ -813,3 +813,20 @@ Next step:
 
 - Run BRACS3 official train/val only, UNI, budget4096, seeds `2024/2025/2026`.
 - Do not run PANDA sanity or BRACS official test unless the validation gate is passed.
+
+Validation result:
+
+- BRACS3 official train/val, UNI, budget4096, seeds `2024/2025/2026`:
+  - seed2024: best epoch `10`, val macro-AUC `0.895102`, acc `0.784615`, bacc `0.728571`, macro-F1 `0.729717`.
+  - seed2025: best epoch `10`, val macro-AUC `0.913164`, acc `0.753846`, bacc `0.647619`, macro-F1 `0.599727`.
+  - seed2026: best epoch `8`, val macro-AUC `0.916552`, acc `0.800000`, bacc `0.768254`, macro-F1 `0.768586`.
+- Mean validation macro-AUC: `0.908273 ± 0.011531`.
+- Mean validation acc/bacc/macro-F1: `0.779487 ± 0.023500`, `0.714815 ± 0.061483`, `0.699343 ± 0.088432`.
+
+Decision:
+
+- Reject as a SOTA candidate.
+- Do not run PANDA sanity.
+- Do not open BRACS official test.
+- Tail-token improves decision metrics relative to moment-token, but fails the primary validation macro-AUC gate: it is below moment-token (`0.913452 ± 0.015874`) and below fixed multi-token (`0.909829 ± 0.004094`).
+- This suggests that hard tail evidence can help operating-point metrics but does not improve the ranking objective needed for SOTA macro-AUC.
