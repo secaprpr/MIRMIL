@@ -480,3 +480,35 @@ Interpretation:
 - The extra latent self-attention does not improve evidence stability at this setting; it likely adds optimization/regularization burden without addressing the validation-test transfer problem.
 - Because the BRACS validation gate fails, PANDA sanity and BRACS official-test evaluation are not justified.
 - This rejects the simple Perceiver-style residual readout as a standalone route to BRACS3 SOTA under the current settings.
+
+## Seventh candidate: ordinal calibration residual head
+
+Motivation:
+
+- BRACS3 and PANDA both have ordered diagnostic labels: benign/atypical/malignant for BRACS3 and grade-group severity for PANDA.
+- Existing MIR-MIL only computes `ordinal_cdf_loss` as an auxiliary loss term, and default `Model.ordinal_weight=0.0` means that term is monitored but not optimized in the current frozen protocols.
+- Prior residual readout candidates improved either ranking or decision-boundary metrics, but did not reliably solve calibration and validation/test transfer.
+
+The next candidate adds a generic ordinal calibration residual head. The head predicts one continuous severity score from the existing MIR-MIL slide state and compares it against a learnable monotonic threshold sequence. The threshold model produces a valid ordered class distribution for any `num_classes >= 2`; its log-probabilities are centered and added to the original logits with a small residual weight.
+
+Why this is generic:
+
+- it does not encode BRACS class names, BRACS split, or a fixed class count;
+- it applies to any ordered WSI-MIL classification task with `num_classes >= 2`;
+- it uses only the existing MIR-MIL slide state from frozen features;
+- it should preserve PANDA strength because PANDA labels are strongly severity-ordered;
+- it can help BRACS because ambiguous boundary classes may benefit from an explicit monotonic severity prior rather than independent class logits.
+
+Implementation knobs, disabled by default:
+
+- `Model.ordinal_head_weight`: residual logit weight; default `0.0`.
+- `Model.ordinal_head_hidden_dim`: severity MLP hidden dimension; default `64`.
+- `Model.ordinal_head_dropout`: severity MLP dropout; default `0.0`.
+- `Model.ordinal_head_temperature`: probability sharpening temperature; default `1.0`.
+
+Validation rule:
+
+- First verify synthetic forward/backward for multiple class counts and a one-epoch BRACS3 smoke.
+- Then run BRACS3 official train/val only, seeds `2024/2025/2026`, 4096-instance budget.
+- If BRACS validation macro-AUC improves over fixed multi-token or substantially improves bacc/F1 without hurting AUC, run PANDA seed2024 sanity.
+- BRACS official test remains closed unless both validation and PANDA sanity pass.

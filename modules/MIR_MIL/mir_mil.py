@@ -899,6 +899,67 @@ class LatentEvidenceTransformerReadout(nn.Module):
         return self.output(latent_values.flatten(start_dim=1))
 
 
+class OrdinalCalibrationHead(nn.Module):
+    """Monotonic-threshold ordinal residual over the MIR-MIL slide state."""
+
+    def __init__(
+        self,
+        state_dim,
+        num_classes,
+        hidden_dim,
+        dropout,
+        act,
+        temperature,
+    ):
+        super().__init__()
+        if num_classes < 2:
+            raise ValueError("num_classes must be >= 2")
+        if state_dim <= 0 or hidden_dim <= 0:
+            raise ValueError("state_dim and hidden_dim must be positive")
+        if temperature <= 0:
+            raise ValueError("ordinal_head_temperature must be positive")
+        self.num_classes = int(num_classes)
+        self.temperature = float(temperature)
+        self.score = nn.Sequential(
+            nn.LayerNorm(state_dim),
+            nn.Linear(state_dim, hidden_dim),
+            _activation(act),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, 1),
+        )
+        threshold_count = self.num_classes - 1
+        initial_increment = math.log(math.exp(1.0) - 1.0)
+        self.raw_threshold_increments = nn.Parameter(
+            torch.full((threshold_count,), initial_increment)
+        )
+        self.threshold_shift = nn.Parameter(torch.zeros(()))
+
+    def thresholds(self):
+        increments = F.softplus(self.raw_threshold_increments)
+        thresholds = torch.cumsum(increments, dim=0)
+        thresholds = thresholds - thresholds.mean()
+        return thresholds + self.threshold_shift
+
+    def forward(self, state):
+        score = self.score(state) / self.temperature
+        thresholds = self.thresholds().to(dtype=state.dtype)
+        survival = torch.sigmoid(score - thresholds.unsqueeze(0))
+        eps = torch.finfo(state.dtype).eps
+        probabilities = []
+        probabilities.append((1.0 - survival[:, :1]).clamp_min(eps))
+        if self.num_classes > 2:
+            probabilities.append(
+                (survival[:, :-1] - survival[:, 1:]).clamp_min(eps)
+            )
+        probabilities.append(survival[:, -1:].clamp_min(eps))
+        class_probabilities = torch.cat(probabilities, dim=1)
+        class_probabilities = class_probabilities / (
+            class_probabilities.sum(dim=1, keepdim=True).clamp_min(eps)
+        )
+        logits = torch.log(class_probabilities)
+        return logits - logits.mean(dim=1, keepdim=True)
+
+
 class MIR_MIL(nn.Module):
     """Neural measure potential with closed-form measure influence response."""
 
@@ -976,6 +1037,10 @@ class MIR_MIL(nn.Module):
         latent_readout_mlp_ratio=2.0,
         latent_readout_temperature=1.0,
         latent_readout_dropout=0.0,
+        ordinal_head_weight=0.0,
+        ordinal_head_hidden_dim=64,
+        ordinal_head_dropout=0.0,
+        ordinal_head_temperature=1.0,
         subset_consistency_weight=0.0,
         subset_consistency_supervised_weight=0.0,
         subset_consistency_fraction=0.75,
@@ -1142,6 +1207,18 @@ class MIR_MIL(nn.Module):
             )
         if not 0 <= self.latent_readout_dropout < 1:
             raise ValueError("latent_readout_dropout must be in [0, 1)")
+        self.ordinal_head_weight = float(ordinal_head_weight)
+        self.ordinal_head_hidden_dim = int(ordinal_head_hidden_dim)
+        self.ordinal_head_dropout = float(ordinal_head_dropout)
+        self.ordinal_head_temperature = float(ordinal_head_temperature)
+        if self.ordinal_head_weight < 0:
+            raise ValueError("ordinal_head_weight must be non-negative")
+        if self.ordinal_head_hidden_dim <= 0:
+            raise ValueError("ordinal_head_hidden_dim must be positive")
+        if not 0 <= self.ordinal_head_dropout < 1:
+            raise ValueError("ordinal_head_dropout must be in [0, 1)")
+        if self.ordinal_head_temperature <= 0:
+            raise ValueError("ordinal_head_temperature must be positive")
         self.subset_consistency_weight = float(subset_consistency_weight)
         self.subset_consistency_supervised_weight = float(
             subset_consistency_supervised_weight
@@ -1436,6 +1513,7 @@ class MIR_MIL(nn.Module):
         self.multi_token_gate = None
         self.class_token_head = None
         self.latent_readout_head = None
+        self.ordinal_head = None
         if self.multi_token_weight > 0:
             self.multi_token_head = MultiTokenAttentionReadout(
                 hidden_dim=hidden_dim,
@@ -1478,6 +1556,15 @@ class MIR_MIL(nn.Module):
                 mlp_ratio=self.latent_readout_mlp_ratio,
                 temperature=self.latent_readout_temperature,
                 dropout=self.latent_readout_dropout,
+            )
+        if self.ordinal_head_weight > 0:
+            self.ordinal_head = OrdinalCalibrationHead(
+                state_dim=state_dim,
+                num_classes=self.num_classes,
+                hidden_dim=self.ordinal_head_hidden_dim,
+                dropout=self.ordinal_head_dropout,
+                act=act,
+                temperature=self.ordinal_head_temperature,
             )
         self.apply(self._initialize)
         if self.multi_token_gate is not None:
@@ -1673,6 +1760,14 @@ class MIR_MIL(nn.Module):
             logits = logits + (
                 self.latent_readout_weight
                 * self.latent_readout_head(encoded)
+            )
+        if self.ordinal_head is not None:
+            if state is None:
+                raise ValueError(
+                    "state is required when ordinal_head is enabled"
+                )
+            logits = logits + self.ordinal_head_weight * self.ordinal_head(
+                state.unsqueeze(0)
             )
         return logits
 

@@ -459,6 +459,18 @@ def get_model_from_yaml(yaml_args):
             latent_readout_dropout=_model_option(
                 yaml_args, "latent_readout_dropout", 0.0
             ),
+            ordinal_head_weight=_model_option(
+                yaml_args, "ordinal_head_weight", 0.0
+            ),
+            ordinal_head_hidden_dim=_model_option(
+                yaml_args, "ordinal_head_hidden_dim", 64
+            ),
+            ordinal_head_dropout=_model_option(
+                yaml_args, "ordinal_head_dropout", 0.0
+            ),
+            ordinal_head_temperature=_model_option(
+                yaml_args, "ordinal_head_temperature", 1.0
+            ),
             subset_consistency_weight=_model_option(
                 yaml_args, "subset_consistency_weight", 0.0
             ),
