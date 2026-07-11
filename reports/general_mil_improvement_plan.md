@@ -512,3 +512,20 @@ Validation rule:
 - Then run BRACS3 official train/val only, seeds `2024/2025/2026`, 4096-instance budget.
 - If BRACS validation macro-AUC improves over fixed multi-token or substantially improves bacc/F1 without hurting AUC, run PANDA seed2024 sanity.
 - BRACS official test remains closed unless both validation and PANDA sanity pass.
+
+BRACS3 validation-only result:
+
+| seed | best epoch | val macro-AUC | val acc | val bacc | val macro-F1 |
+|---:|---:|---:|---:|---:|---:|
+| 2024 | 4 | `0.890097` | `0.738462` | `0.698413` | `0.697374` |
+| 2025 | 11 | `0.940283` | `0.753846` | `0.673016` | `0.654089` |
+| 2026 | 8 | `0.864064` | `0.753846` | `0.693651` | `0.693091` |
+| mean ± std | - | `0.898148 ± 0.031633` | `0.748718 ± 0.007252` | `0.688360 ± 0.011023` | `0.681518 ± 0.019474` |
+
+Interpretation:
+
+- The ordinal head has one very strong seed (`2025`, `0.940283`) but poor stability across seeds.
+- Mean validation macro-AUC is below fixed multi-token (`0.909829 ± 0.004094`) and class-token (`0.908484 ± 0.013847`).
+- The module does not improve bacc/F1 enough to compensate for AUC instability.
+- Because the BRACS validation gate fails, PANDA sanity and BRACS official-test evaluation are not justified.
+- This rejects a simple monotonic ordinal residual as a standalone path to SOTA, though the strong seed suggests ordinal structure may be useful only if paired with a more stable aggregation or training objective.
