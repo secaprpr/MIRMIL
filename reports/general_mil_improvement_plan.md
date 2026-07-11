@@ -562,3 +562,30 @@ Validation rule:
 - Then run BRACS3 official train/val only, seeds `2024/2025/2026`, 4096-instance budget.
 - If validation macro-AUC improves over fixed multi-token or improves stability/decision metrics without hurting AUC, run PANDA seed2024 sanity.
 - BRACS official test remains closed unless both validation and PANDA sanity pass.
+
+BRACS3 validation-only result, completed 2026-07-11:
+
+- seed2024: best epoch 5, val macro-AUC `0.928261`, val acc `0.769231`, val bacc `0.687302`, val macro-F1 `0.687488`.
+- seed2025: best epoch 8, val macro-AUC `0.923192`, val acc `0.830769`, val bacc `0.812698`, val macro-F1 `0.811111`.
+- seed2026: best epoch 4, val macro-AUC `0.928904`, val acc `0.861538`, val bacc `0.830159`, val macro-F1 `0.844444`.
+- mean ± sample std: val macro-AUC `0.926786 ± 0.003129`, val acc `0.820513 ± 0.047001`, val bacc `0.776720 ± 0.077929`, val macro-F1 `0.781015 ± 0.082693`.
+
+Interpretation:
+
+- The normalized cosine state residual is the strongest BRACS3 validation-only candidate so far by macro-AUC, exceeding fixed multi-token validation (`0.909829 ± 0.004094`) by about `0.016957`.
+- Stability by macro-AUC is good across three seeds, but bacc/F1 still vary materially, so this remains a candidate rather than an accepted improvement.
+- Per protocol, the next step is PANDA UNI seed2024 sanity. BRACS official test should be evaluated only if PANDA does not materially regress.
+
+PANDA sanity result, completed 2026-07-11:
+
+- seed2024: best epoch 17, val macro-AUC `0.941824`, val acc `0.756006`, val bacc `0.714216`, val macro-F1 `0.716769`.
+- Original PANDA UNI MIR-MIL seed2024 val macro-AUC was `0.951178`.
+- Fixed multi-token PANDA UNI seed2024 val macro-AUC was `0.953990`.
+- The cosine residual therefore drops PANDA by `0.009354` versus original MIR-MIL and by `0.012166` versus the best accepted generic extension.
+
+Decision:
+
+- Reject `cosine_head_w01` as an accepted general WSI-MIL improvement.
+- Do not run BRACS3 official test for this candidate.
+- Keep the implementation disabled by default as an informative ablation only.
+- This result strengthens the main failure diagnosis: BRACS validation can reward geometry/calibration changes that do not transfer to the broader PANDA protocol, so future architecture changes must be screened on PANDA before any BRACS test opening.

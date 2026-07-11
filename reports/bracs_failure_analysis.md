@@ -87,6 +87,19 @@ The HPO evidence is negative:
 
 Further tuning learning rate, weight decay, label smoothing, focal loss, or sampler settings is likely to increase validation over-selection unless a more general inductive bias is added and evaluated on both PANDA and BRACS.
 
+## Architecture-ablation update: validation gains are not enough
+
+Several generic residual modules have now been tested under the same discipline: BRACS3 official train/val first, PANDA sanity second, and BRACS3 official test only if both gates pass.
+
+The strongest BRACS3 validation-only candidate was the normalized cosine state residual:
+
+- BRACS3 UNI train/val, seeds 2024/2025/2026: `0.926786 ± 0.003129` macro-AUC.
+- This exceeds the fixed multi-token candidate validation result (`0.909829 ± 0.004094`) by about `0.016957`.
+- However, PANDA UNI seed2024 sanity reached only `0.941824` macro-AUC.
+- Original PANDA UNI MIR-MIL seed2024 was `0.951178`, and fixed multi-token was `0.953990`.
+
+This rejects the normalized cosine residual as an accepted general improvement. It also provides an important diagnostic: BRACS validation can strongly favor decision-geometry or calibration changes that do not preserve PANDA performance. Therefore, future architecture work should not optimize only for BRACS train/val macro-AUC. A credible general module must improve or preserve PANDA while improving BRACS, otherwise it is likely fitting the BRACS validation split rather than fixing the underlying MIL weakness.
+
 ## Requirements for the next method
 
 A valid next method should:
@@ -96,4 +109,3 @@ A valid next method should:
 - preserve the existing strong MIR-MIL measure-potential path;
 - add a direct class-aware or multi-token evidence path that is easy to ablate;
 - be evaluated on BRACS3 and PANDA before any SOTA claim.
-

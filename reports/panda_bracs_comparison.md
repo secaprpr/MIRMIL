@@ -82,3 +82,22 @@ The next architecture should not replace MIR-MIL's measure state, because that s
 
 This is a general WSI-MIL improvement, not a BRACS-only trick.
 
+## Update from architecture ablations
+
+The fixed multi-token residual is the best accepted generic extension so far:
+
+- BRACS3 validation: `0.909829 ± 0.004094` macro-AUC.
+- PANDA seed2024 sanity: `0.953990` macro-AUC, above original MIR-MIL seed2024 `0.951178`.
+- BRACS3 official test at 4096 instances: `0.836596 ± 0.013349`, improving the archived original MIR-MIL official test (`0.827973 ± 0.027678`) but still below the no-early-stop/best-val MIR setting (`0.8403 ± 0.0184`) and AC_MIL target (`0.852852 ± 0.009653`).
+
+The normalized cosine state residual is a useful negative control:
+
+- BRACS3 validation: `0.926786 ± 0.003129` macro-AUC, the strongest validation-only signal so far.
+- PANDA seed2024 sanity: only `0.941824` macro-AUC.
+- This is a drop of `0.009354` versus original MIR-MIL and `0.012166` versus fixed multi-token.
+
+Interpretation:
+
+- Improving BRACS validation alone is not a reliable criterion.
+- A module that only regularizes final-state decision geometry can fit BRACS train/val boundaries while damaging PANDA's stronger distributional signal.
+- The more plausible path remains a general evidence-preserving aggregation/readout improvement that does not suppress the original measure-state behavior.
