@@ -666,3 +666,15 @@ Gate:
 - Run BRACS3 official train/val only, seeds `2024/2025/2026`.
 - If validation is not competitive with moment-token or fixed multi-token, reject without PANDA/test.
 - If validation is competitive, run PANDA seed2024 sanity before any BRACS official test.
+
+Result:
+
+- BRACS3 validation macro-AUC: `0.909230 ± 0.009978`.
+- Seed results: seed2024 `0.899408`, seed2025 `0.908928`, seed2026 `0.919356`.
+- Mean bacc/F1 improved over fixed and moment-token, but the primary selection metric did not improve over moment-token (`0.913452 ± 0.015874`) and is slightly below fixed multi-token (`0.909829 ± 0.004094`).
+
+Decision:
+
+- Reject as a SOTA candidate.
+- Do not run PANDA sanity or BRACS official test.
+- The equal residual split did not preserve the strongest macro-AUC behavior of moment-token and did not sufficiently stabilize seed2024.
