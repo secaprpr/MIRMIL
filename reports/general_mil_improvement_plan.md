@@ -678,3 +678,42 @@ Decision:
 - Reject as a SOTA candidate.
 - Do not run PANDA sanity or BRACS official test.
 - The equal residual split did not preserve the strongest macro-AUC behavior of moment-token and did not sufficiently stabilize seed2024.
+
+## Eleventh candidate: class-conditioned moment-token readout
+
+Motivation:
+
+- Moment-token readout is the current best MIR-MIL official BRACS3 result and also improves PANDA, so second-order token evidence is a validated general direction.
+- Low-rank class-token readout improved BRACS decision metrics in earlier validation but was AUC-unstable, suggesting class-conditioned boundaries are useful but the first-order token representation was insufficient.
+- Mean+moment residual splitting failed, so simply adding two independent residual branches is not enough.
+
+Proposed module:
+
+- Use shared, dataset-agnostic attention tokens over encoded patches.
+- For each token, compute weighted mean and weighted variance of value features.
+- Project token statistics into a low-rank evidence space.
+- Each class learns low-rank factors over the shared token statistics to produce logits.
+
+Why this is generic:
+
+- No class names, dataset names, split identifiers, thresholds, or fixed class counts are encoded.
+- The attention tokens are shared across classes; classes only own a generic linear factorization over evidence statistics.
+- It works for arbitrary `num_classes >= 2`.
+- It preserves the original MIR-MIL measure-potential path and is disabled by default.
+
+Implementation knobs, disabled by default:
+
+- `Model.class_moment_token_weight`: residual logit weight; default `0.0`.
+- `Model.class_moment_token_count`: shared token count; default `4`.
+- `Model.class_moment_token_dim`: attention key/query dimension; default `64`.
+- `Model.class_moment_token_value_dim`: value dimension; default `128`.
+- `Model.class_moment_token_rank_dim`: low-rank class evidence dimension; default `32`.
+- `Model.class_moment_token_temperature`: attention temperature; default `1.0`.
+- `Model.class_moment_token_dropout`: readout dropout; default `0.0`.
+
+Gate:
+
+- Run synthetic forward/backward and one-epoch BRACS3 smoke.
+- Run BRACS3 official train/val only, seeds `2024/2025/2026`.
+- If validation macro-AUC does not beat moment-token or fixed multi-token, reject without PANDA/test.
+- If validation is competitive, run PANDA seed2024 sanity before any BRACS official test.

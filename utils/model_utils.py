@@ -432,6 +432,27 @@ def get_model_from_yaml(yaml_args):
             moment_token_dropout=_model_option(
                 yaml_args, "moment_token_dropout", 0.0
             ),
+            class_moment_token_weight=_model_option(
+                yaml_args, "class_moment_token_weight", 0.0
+            ),
+            class_moment_token_count=_model_option(
+                yaml_args, "class_moment_token_count", 4
+            ),
+            class_moment_token_dim=_model_option(
+                yaml_args, "class_moment_token_dim", 64
+            ),
+            class_moment_token_value_dim=_model_option(
+                yaml_args, "class_moment_token_value_dim", 128
+            ),
+            class_moment_token_rank_dim=_model_option(
+                yaml_args, "class_moment_token_rank_dim", 32
+            ),
+            class_moment_token_temperature=_model_option(
+                yaml_args, "class_moment_token_temperature", 1.0
+            ),
+            class_moment_token_dropout=_model_option(
+                yaml_args, "class_moment_token_dropout", 0.0
+            ),
             class_token_weight=_model_option(
                 yaml_args, "class_token_weight", 0.0
             ),

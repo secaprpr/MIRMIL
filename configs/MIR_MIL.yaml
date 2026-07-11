@@ -107,6 +107,13 @@ Model:
     moment_token_readout_dim: 128
     moment_token_temperature: 1.0
     moment_token_dropout: 0.0
+    class_moment_token_weight: 0.0
+    class_moment_token_count: 4
+    class_moment_token_dim: 64
+    class_moment_token_value_dim: 128
+    class_moment_token_rank_dim: 32
+    class_moment_token_temperature: 1.0
+    class_moment_token_dropout: 0.0
     class_token_weight: 0.0
     class_token_count: 4
     class_token_dim: 64
