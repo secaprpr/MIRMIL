@@ -414,6 +414,27 @@ def get_model_from_yaml(yaml_args):
             multi_token_gate_initial_bias=_model_option(
                 yaml_args, "multi_token_gate_initial_bias", 0.0
             ),
+            class_token_weight=_model_option(
+                yaml_args, "class_token_weight", 0.0
+            ),
+            class_token_count=_model_option(
+                yaml_args, "class_token_count", 4
+            ),
+            class_token_dim=_model_option(
+                yaml_args, "class_token_dim", 64
+            ),
+            class_token_value_dim=_model_option(
+                yaml_args, "class_token_value_dim", 128
+            ),
+            class_token_rank_dim=_model_option(
+                yaml_args, "class_token_rank_dim", 32
+            ),
+            class_token_temperature=_model_option(
+                yaml_args, "class_token_temperature", 1.0
+            ),
+            class_token_dropout=_model_option(
+                yaml_args, "class_token_dropout", 0.0
+            ),
             subset_consistency_weight=_model_option(
                 yaml_args, "subset_consistency_weight", 0.0
             ),

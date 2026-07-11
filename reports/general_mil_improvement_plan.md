@@ -368,3 +368,46 @@ Current architecture-level conclusion after four controlled candidates:
 - The current target/SOTA in the local matrix remains `UNI + AC_MIL = 0.852852 ± 0.009653`; the remaining gap from fixed multi-token MIR-MIL is `0.016256` macro-AUC.
 - Evidence residual and gated multi-token both show that BRACS validation can be improved without producing a reliable paper-grade result. This strengthens the diagnosis that the main blocker is not just learning-rate search; it is validation/test transfer plus BRACS class-boundary robustness.
 - Under the current MIR-MIL identity, reaching `0.8529` by more tuning alone is possible but unlikely. A credible path likely requires a model-level upgrade that changes how ambiguous/fine-grained BRACS evidence is represented, while preserving official split and fixed UNI/R50 features.
+
+## Fifth candidate: low-rank class-token readout
+
+Motivation:
+
+- `evidence_w005` used class-owned patch queries. It improved BRACS validation but failed BRACS official-test transfer, suggesting that fully class-specific patch retrieval can overfit small validation artifacts.
+- fixed multi-token readout used shared patch evidence tokens. It generalized better and passed PANDA sanity, but its BRACS class-boundary metrics remained weak.
+- gated multi-token improved BRACS validation bacc/F1 but damaged PANDA macro-AUC, so sample-adaptive gating is not currently a clean general improvement.
+
+The next candidate keeps shared evidence retrieval but adds a low-rank class-specific readout over those shared evidence modes. A small bank of shared learnable tokens attends to patches. Each token produces one evidence vector. A shared projector compresses each token evidence vector to a rank dimension. Each class then learns only a low-rank combination of the shared token evidence, rather than owning its own patch attention query.
+
+Why this is generic:
+
+- no dataset name, split, class semantics, or fixed class count is encoded;
+- the module supports arbitrary `num_classes >= 2`;
+- it uses only existing MIR-MIL encoded patch representations from frozen R50/UNI features;
+- it is a residual branch with default weight `0.0`, so the archived architecture is exactly recoverable;
+- it should preserve PANDA's global/distributional strength because patch retrieval remains shared, while giving BRACS-like tasks more class-boundary flexibility than a single shared linear readout.
+
+Implementation knobs, all disabled by default:
+
+- `Model.class_token_weight`: residual logit weight; default `0.0`.
+- `Model.class_token_count`: number of shared evidence tokens; default `4`.
+- `Model.class_token_dim`: token/key dimension; default `64`.
+- `Model.class_token_value_dim`: evidence value dimension; default `128`.
+- `Model.class_token_rank_dim`: low-rank class-combination dimension; default `32`.
+- `Model.class_token_temperature`: attention temperature; default `1.0`.
+- `Model.class_token_dropout`: projector dropout; default `0.0`.
+
+Initial implementation status:
+
+- implemented as `LowRankClassTokenReadout` in `modules/MIR_MIL/mir_mil.py`;
+- exposed through `configs/MIR_MIL.yaml` and `utils/model_utils.py`;
+- added reproducible config `configs/experiments/MIR_MIL_BRACS3_UNI_CLASS_TOKEN_W01.yaml`;
+- synthetic forward/backward smoke passed for `2`, `3`, and `6` classes;
+- default-disabled construction was verified.
+
+Validation rule:
+
+- First run only a BRACS3 UNI smoke to verify the training path.
+- Then run BRACS3 official train/val only for seeds `2024/2025/2026`.
+- Only if BRACS validation is competitive and stable should PANDA seed2024 sanity be run.
+- BRACS official test remains closed unless the candidate passes both BRACS validation and PANDA sanity.

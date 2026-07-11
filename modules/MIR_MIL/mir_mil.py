@@ -721,6 +721,83 @@ class MultiTokenAttentionReadout(nn.Module):
         return self.output(token_values.flatten().unsqueeze(0))
 
 
+class LowRankClassTokenReadout(nn.Module):
+    """Shared evidence tokens with a low-rank class-specific readout.
+
+    This differs from ClassAwareEvidenceHead: classes do not own patch
+    attention queries. A small shared token bank first extracts evidence
+    modes from the bag, then each class learns a low-rank combination of
+    those shared modes. This keeps the evidence retrieval dataset-agnostic
+    while allowing class boundaries to use different mixtures of evidence.
+    """
+
+    def __init__(
+        self,
+        hidden_dim,
+        num_classes,
+        num_tokens,
+        token_dim,
+        value_dim,
+        rank_dim,
+        temperature,
+        dropout,
+    ):
+        super().__init__()
+        if num_tokens <= 0:
+            raise ValueError("num_tokens must be positive")
+        if min(token_dim, value_dim, rank_dim) <= 0:
+            raise ValueError(
+                "token_dim, value_dim, and rank_dim must be positive"
+            )
+        if temperature <= 0:
+            raise ValueError("class-token temperature must be positive")
+        self.num_classes = int(num_classes)
+        self.num_tokens = int(num_tokens)
+        self.token_dim = int(token_dim)
+        self.value_dim = int(value_dim)
+        self.rank_dim = int(rank_dim)
+        self.temperature = float(temperature)
+        self.key = nn.Linear(hidden_dim, self.token_dim)
+        self.value = nn.Linear(hidden_dim, self.value_dim)
+        self.tokens = nn.Parameter(
+            torch.empty(self.num_tokens, self.token_dim)
+        )
+        self.token_projector = nn.Sequential(
+            nn.LayerNorm(self.value_dim),
+            nn.Dropout(dropout),
+            nn.Linear(self.value_dim, self.rank_dim),
+        )
+        self.class_factors = nn.Parameter(
+            torch.empty(
+                self.num_classes,
+                self.num_tokens,
+                self.rank_dim,
+            )
+        )
+        self.logit_bias = nn.Parameter(torch.zeros(self.num_classes))
+        with torch.random.fork_rng(devices=[]):
+            nn.init.normal_(
+                self.tokens, std=1.0 / math.sqrt(self.token_dim)
+            )
+            nn.init.normal_(
+                self.class_factors,
+                std=1.0 / math.sqrt(self.num_tokens * self.rank_dim),
+            )
+
+    def forward(self, encoded):
+        keys = self.key(encoded)
+        values = self.value(encoded)
+        scale = math.sqrt(self.token_dim) * self.temperature
+        scores = torch.einsum("nd,td->nt", keys, self.tokens) / scale
+        attention = torch.softmax(scores, dim=0)
+        token_values = torch.einsum("nt,nv->tv", attention, values)
+        token_evidence = self.token_projector(token_values)
+        logits = torch.einsum(
+            "tr,ctr->c", token_evidence, self.class_factors
+        ) + self.logit_bias
+        return logits.unsqueeze(0)
+
+
 class MIR_MIL(nn.Module):
     """Neural measure potential with closed-form measure influence response."""
 
@@ -783,6 +860,13 @@ class MIR_MIL(nn.Module):
         multi_token_gated=False,
         multi_token_gate_hidden_dim=64,
         multi_token_gate_initial_bias=0.0,
+        class_token_weight=0.0,
+        class_token_count=4,
+        class_token_dim=64,
+        class_token_value_dim=128,
+        class_token_rank_dim=32,
+        class_token_temperature=1.0,
+        class_token_dropout=0.0,
         subset_consistency_weight=0.0,
         subset_consistency_supervised_weight=0.0,
         subset_consistency_fraction=0.75,
@@ -891,6 +975,30 @@ class MIR_MIL(nn.Module):
             raise ValueError(
                 "multi_token_gate_hidden_dim must be positive"
             )
+        self.class_token_weight = float(class_token_weight)
+        self.class_token_count = int(class_token_count)
+        self.class_token_dim = int(class_token_dim)
+        self.class_token_value_dim = int(class_token_value_dim)
+        self.class_token_rank_dim = int(class_token_rank_dim)
+        self.class_token_temperature = float(class_token_temperature)
+        self.class_token_dropout = float(class_token_dropout)
+        if self.class_token_weight < 0:
+            raise ValueError("class_token_weight must be non-negative")
+        if self.class_token_count <= 0:
+            raise ValueError("class_token_count must be positive")
+        if min(
+            self.class_token_dim,
+            self.class_token_value_dim,
+            self.class_token_rank_dim,
+        ) <= 0:
+            raise ValueError(
+                "class_token_dim, class_token_value_dim, and "
+                "class_token_rank_dim must be positive"
+            )
+        if self.class_token_temperature <= 0:
+            raise ValueError("class_token_temperature must be positive")
+        if not 0 <= self.class_token_dropout < 1:
+            raise ValueError("class_token_dropout must be in [0, 1)")
         self.subset_consistency_weight = float(subset_consistency_weight)
         self.subset_consistency_supervised_weight = float(
             subset_consistency_supervised_weight
@@ -1183,6 +1291,7 @@ class MIR_MIL(nn.Module):
             )
         self.multi_token_head = None
         self.multi_token_gate = None
+        self.class_token_head = None
         if self.multi_token_weight > 0:
             self.multi_token_head = MultiTokenAttentionReadout(
                 hidden_dim=hidden_dim,
@@ -1203,6 +1312,17 @@ class MIR_MIL(nn.Module):
                         self.num_classes,
                     ),
                 )
+        if self.class_token_weight > 0:
+            self.class_token_head = LowRankClassTokenReadout(
+                hidden_dim=hidden_dim,
+                num_classes=self.num_classes,
+                num_tokens=self.class_token_count,
+                token_dim=self.class_token_dim,
+                value_dim=self.class_token_value_dim,
+                rank_dim=self.class_token_rank_dim,
+                temperature=self.class_token_temperature,
+                dropout=self.class_token_dropout,
+            )
         self.apply(self._initialize)
         if self.multi_token_gate is not None:
             final_gate_layer = self.multi_token_gate[-1]
@@ -1389,6 +1509,10 @@ class MIR_MIL(nn.Module):
                 )
                 multi_token_logits = gate * multi_token_logits
             logits = logits + self.multi_token_weight * multi_token_logits
+        if self.class_token_head is not None:
+            logits = logits + self.class_token_weight * self.class_token_head(
+                encoded
+            )
         return logits
 
     def forward(self, bag, return_state=False):
