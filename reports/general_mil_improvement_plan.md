@@ -830,3 +830,40 @@ Decision:
 - Do not open BRACS official test.
 - Tail-token improves decision metrics relative to moment-token, but fails the primary validation macro-AUC gate: it is below moment-token (`0.913452 ± 0.015874`) and below fixed multi-token (`0.909829 ± 0.004094`).
 - This suggests that hard tail evidence can help operating-point metrics but does not improve the ranking objective needed for SOTA macro-AUC.
+
+## Thirteenth candidate: multiclass logit-margin auxiliary objective
+
+Motivation:
+
+- Several BRACS3 candidates improved bacc/F1 or individual seeds without reliably improving macro-AUC.
+- Tail-token specifically improved decision metrics but not the ranking objective, suggesting that the next general change should target class separation/ranking rather than adding another pooling statistic.
+- CE can classify the current sample correctly while leaving small margins between the true class and competing classes. On small, fine-grained WSI datasets this can produce unstable validation selection and weak macro-AUC transfer.
+- A multiclass margin objective is generic for WSI-MIL: it only uses logits and labels, works for arbitrary class counts, and does not depend on dataset names, class semantics, splits, or feature extractors.
+
+Proposed objective:
+
+- Keep the current best accepted architecture path: moment-token w01.
+- Add an optional auxiliary loss:
+  - for each sample, take the true-class logit;
+  - compare it against every non-true class logit;
+  - penalize `margin + negative_logit - true_logit` when positive.
+- This is a smooth multiclass separation regularizer, not a BRACS-specific calibration rule.
+
+Why this is generic:
+
+- It applies to any multiclass WSI-MIL model that outputs logits.
+- It does not encode class names, class order, dataset names, split identifiers, thresholds, or BRACS-specific priors.
+- It can be enabled or disabled independently of the architecture and is logged as an explicit loss component.
+
+Implementation knobs, disabled by default:
+
+- `Model.logit_margin_loss_weight`: auxiliary loss weight; default `0.0`.
+- `Model.logit_margin`: positive margin between true and non-true logits; default `1.0`.
+
+Gate:
+
+- Implement default-disabled loss and expose it through YAML/model options.
+- Run synthetic loss smoke for `num_classes=2/3/6`.
+- Run BRACS3 official train/val only, UNI, budget4096, seeds `2024/2025/2026`, using moment-token w01 plus the margin objective as the single changed factor.
+- If validation macro-AUC does not beat moment-token or remains unstable, reject without PANDA/test.
+- If validation improves clearly, run PANDA seed2024 sanity before any BRACS official test.

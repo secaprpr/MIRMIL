@@ -1328,6 +1328,8 @@ class MIR_MIL(nn.Module):
         cosine_head_hidden_dim=128,
         cosine_head_dropout=0.0,
         cosine_head_initial_scale=8.0,
+        logit_margin_loss_weight=0.0,
+        logit_margin=1.0,
         subset_consistency_weight=0.0,
         subset_consistency_supervised_weight=0.0,
         subset_consistency_fraction=0.75,
@@ -1607,6 +1609,14 @@ class MIR_MIL(nn.Module):
             raise ValueError("cosine_head_dropout must be in [0, 1)")
         if self.cosine_head_initial_scale <= 0:
             raise ValueError("cosine_head_initial_scale must be positive")
+        self.logit_margin_loss_weight = float(logit_margin_loss_weight)
+        self.logit_margin = float(logit_margin)
+        if self.logit_margin_loss_weight < 0:
+            raise ValueError(
+                "logit_margin_loss_weight must be non-negative"
+            )
+        if self.logit_margin <= 0:
+            raise ValueError("logit_margin must be positive")
         self.subset_consistency_weight = float(subset_consistency_weight)
         self.subset_consistency_supervised_weight = float(
             subset_consistency_supervised_weight
@@ -2746,9 +2756,27 @@ class MIR_MIL(nn.Module):
         norms = gradients.norm(dim=1)
         return F.relu(norms - self.lipschitz_target).square().mean()
 
+    def logit_margin_loss(self, logits, label):
+        if self.logit_margin_loss_weight <= 0:
+            return logits.new_zeros(())
+        if logits.ndim != 2:
+            raise ValueError("logits must have shape [batch, num_classes]")
+        if logits.shape[1] < 2:
+            raise ValueError("logit margin loss requires at least 2 classes")
+        label = label.long().view(-1)
+        true_logits = logits.gather(1, label.unsqueeze(1))
+        negative_mask = torch.ones_like(logits, dtype=torch.bool)
+        negative_mask.scatter_(1, label.unsqueeze(1), False)
+        negative_logits = logits[negative_mask].view(logits.shape[0], -1)
+        violations = self.logit_margin + negative_logits - true_logits
+        return F.relu(violations).square().mean()
+
     def compute_loss(self, bag, label, criterion):
         output = self.forward(bag)
         classification_loss = criterion(output["logits"], label)
+        logit_margin_loss = self.logit_margin_loss(
+            output["logits"], label
+        )
         ordinal_loss = self.ordinal_cdf_loss(output["logits"], label)
         stability_loss = bag.new_zeros(())
         if self.stability_weight > 0:
@@ -2790,6 +2818,7 @@ class MIR_MIL(nn.Module):
             prototype_loss = self.potential.regularization()
         loss = (
             classification_loss
+            + self.logit_margin_loss_weight * logit_margin_loss
             + self.ordinal_weight * ordinal_loss
             + self.stability_weight * stability_loss
             + self.subset_consistency_weight * subset_consistency_loss
@@ -2801,6 +2830,7 @@ class MIR_MIL(nn.Module):
         return output, {
             "loss": loss,
             "classification_loss": classification_loss,
+            "logit_margin_loss": logit_margin_loss,
             "ordinal_loss": ordinal_loss,
             "stability_loss": stability_loss,
             "subset_consistency_loss": subset_consistency_loss,

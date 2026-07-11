@@ -544,6 +544,10 @@ def get_model_from_yaml(yaml_args):
             cosine_head_initial_scale=_model_option(
                 yaml_args, "cosine_head_initial_scale", 8.0
             ),
+            logit_margin_loss_weight=_model_option(
+                yaml_args, "logit_margin_loss_weight", 0.0
+            ),
+            logit_margin=_model_option(yaml_args, "logit_margin", 1.0),
             subset_consistency_weight=_model_option(
                 yaml_args, "subset_consistency_weight", 0.0
             ),
