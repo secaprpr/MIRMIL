@@ -411,3 +411,19 @@ Validation rule:
 - Then run BRACS3 official train/val only for seeds `2024/2025/2026`.
 - Only if BRACS validation is competitive and stable should PANDA seed2024 sanity be run.
 - BRACS official test remains closed unless the candidate passes both BRACS validation and PANDA sanity.
+
+BRACS3 validation-only result:
+
+| seed | best epoch | val macro-AUC | val acc | val bacc | val macro-F1 |
+|---:|---:|---:|---:|---:|---:|
+| 2024 | 4 | `0.908911` | `0.800000` | `0.779365` | `0.775735` |
+| 2025 | 10 | `0.891317` | `0.707692` | `0.630159` | `0.616197` |
+| 2026 | 5 | `0.925225` | `0.784615` | `0.739683` | `0.747868` |
+| mean ± std | - | `0.908484 ± 0.013847` | `0.764103 ± 0.040380` | `0.716402 ± 0.063098` | `0.713267 ± 0.069575` |
+
+Interpretation:
+
+- Macro-AUC is competitive but slightly below fixed multi-token readout (`0.909829 ± 0.004094`).
+- The class-token readout improves validation bacc/macro-F1 over fixed multi-token, but the seed2025 drop is large and the main selection metric does not improve.
+- Because the BRACS validation macro-AUC gate is not clearly passed, PANDA sanity and BRACS official-test evaluation are not justified.
+- This result suggests that low-rank class-specific token combination helps decision-boundary metrics, but it does not yet solve the AUC/stability gap needed for a SOTA claim.
