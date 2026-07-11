@@ -589,3 +589,41 @@ Decision:
 - Do not run BRACS3 official test for this candidate.
 - Keep the implementation disabled by default as an informative ablation only.
 - This result strengthens the main failure diagnosis: BRACS validation can reward geometry/calibration changes that do not transfer to the broader PANDA protocol, so future architecture changes must be screened on PANDA before any BRACS test opening.
+
+## Ninth candidate: moment multi-token evidence readout
+
+Motivation:
+
+- Fixed multi-token attention is the best accepted generic extension so far: it passes PANDA seed2024 sanity and improves BRACS3 official test over the archived original MIR-MIL setting.
+- Its limitation is that each evidence token currently summarizes patches only by an attention-weighted mean.
+- BRACS-like tasks may depend on both sparse diagnostic evidence and within-token heterogeneity, while PANDA benefits from distributional statistics.
+- The normalized cosine head failure shows that changing final logit geometry alone can damage PANDA; therefore the next candidate should improve evidence aggregation rather than final-state calibration.
+
+Proposed module:
+
+- Use shared, dataset-agnostic attention tokens over encoded patches.
+- For each token, compute both attention-weighted mean and attention-weighted variance of value features.
+- Concatenate mean and variance statistics across tokens and classify through a small LayerNorm/dropout/linear readout.
+
+Why this is generic:
+
+- It uses only frozen WSI patch features already consumed by MIR-MIL.
+- It does not encode dataset name, split, class semantics, or fixed class count.
+- It preserves the original MIR-MIL measure-potential path and adds only a residual evidence branch.
+- It generalizes fixed multi-token by adding second-order token statistics, matching the project’s broader measure-statistics philosophy.
+
+Implementation knobs, disabled by default:
+
+- `Model.moment_token_weight`: residual logit weight; default `0.0`.
+- `Model.moment_token_count`: number of shared evidence tokens; default `4`.
+- `Model.moment_token_dim`: attention key/query dimension; default `64`.
+- `Model.moment_token_readout_dim`: value dimension; default `128`.
+- `Model.moment_token_temperature`: attention temperature; default `1.0`.
+- `Model.moment_token_dropout`: readout dropout; default `0.0`.
+
+Validation rule:
+
+- First run synthetic forward/backward and one-epoch BRACS3 smoke.
+- Then run BRACS3 official train/val only, seeds `2024/2025/2026`, 4096-instance budget.
+- If validation is competitive with fixed multi-token and PANDA seed2024 sanity does not materially drop, consider one frozen BRACS3 official-test evaluation.
+- If PANDA drops as cosine did, reject without opening BRACS3 test.

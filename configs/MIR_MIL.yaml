@@ -101,6 +101,12 @@ Model:
     multi_token_gated: False
     multi_token_gate_hidden_dim: 64
     multi_token_gate_initial_bias: 0.0
+    moment_token_weight: 0.0
+    moment_token_count: 4
+    moment_token_dim: 64
+    moment_token_readout_dim: 128
+    moment_token_temperature: 1.0
+    moment_token_dropout: 0.0
     class_token_weight: 0.0
     class_token_count: 4
     class_token_dim: 64

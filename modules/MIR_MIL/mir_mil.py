@@ -721,6 +721,68 @@ class MultiTokenAttentionReadout(nn.Module):
         return self.output(token_values.flatten().unsqueeze(0))
 
 
+class MomentMultiTokenAttentionReadout(nn.Module):
+    """Multi-token attention readout with per-token mean and variance.
+
+    Fixed multi-token attention extracts one weighted value mean per token.
+    This variant preserves that generic evidence retrieval path while adding
+    second-order token statistics. It remains dataset-agnostic and works for
+    arbitrary class counts.
+    """
+
+    def __init__(
+        self,
+        hidden_dim,
+        num_classes,
+        num_tokens,
+        token_dim,
+        readout_dim,
+        temperature,
+        dropout,
+    ):
+        super().__init__()
+        if num_tokens <= 0:
+            raise ValueError("num_tokens must be positive")
+        if token_dim <= 0 or readout_dim <= 0:
+            raise ValueError("token_dim and readout_dim must be positive")
+        if temperature <= 0:
+            raise ValueError("moment-token temperature must be positive")
+        self.num_tokens = int(num_tokens)
+        self.token_dim = int(token_dim)
+        self.readout_dim = int(readout_dim)
+        self.temperature = float(temperature)
+        self.key = nn.Linear(hidden_dim, self.token_dim)
+        self.value = nn.Linear(hidden_dim, self.readout_dim)
+        self.tokens = nn.Parameter(
+            torch.empty(self.num_tokens, self.token_dim)
+        )
+        self.output = nn.Sequential(
+            nn.LayerNorm(2 * self.readout_dim * self.num_tokens),
+            nn.Dropout(dropout),
+            nn.Linear(2 * self.readout_dim * self.num_tokens, num_classes),
+        )
+        with torch.random.fork_rng(devices=[]):
+            nn.init.normal_(
+                self.tokens, std=1.0 / math.sqrt(self.token_dim)
+            )
+
+    def forward(self, encoded):
+        keys = self.key(encoded)
+        values = self.value(encoded)
+        scale = math.sqrt(self.token_dim) * self.temperature
+        scores = torch.einsum("nd,td->nt", keys, self.tokens) / scale
+        attention = torch.softmax(scores, dim=0)
+        token_mean = torch.einsum("nt,nv->tv", attention, values)
+        token_second = torch.einsum(
+            "nt,nv->tv", attention, values.square()
+        )
+        token_variance = (token_second - token_mean.square()).clamp_min(
+            0.0
+        )
+        token_statistics = torch.cat((token_mean, token_variance), dim=1)
+        return self.output(token_statistics.flatten().unsqueeze(0))
+
+
 class LowRankClassTokenReadout(nn.Module):
     """Shared evidence tokens with a low-rank class-specific readout.
 
@@ -1070,6 +1132,12 @@ class MIR_MIL(nn.Module):
         multi_token_gated=False,
         multi_token_gate_hidden_dim=64,
         multi_token_gate_initial_bias=0.0,
+        moment_token_weight=0.0,
+        moment_token_count=4,
+        moment_token_dim=64,
+        moment_token_readout_dim=128,
+        moment_token_temperature=1.0,
+        moment_token_dropout=0.0,
         class_token_weight=0.0,
         class_token_count=4,
         class_token_dim=64,
@@ -1202,6 +1270,28 @@ class MIR_MIL(nn.Module):
             raise ValueError(
                 "multi_token_gate_hidden_dim must be positive"
             )
+        self.moment_token_weight = float(moment_token_weight)
+        self.moment_token_count = int(moment_token_count)
+        self.moment_token_dim = int(moment_token_dim)
+        self.moment_token_readout_dim = int(moment_token_readout_dim)
+        self.moment_token_temperature = float(moment_token_temperature)
+        self.moment_token_dropout = float(moment_token_dropout)
+        if self.moment_token_weight < 0:
+            raise ValueError("moment_token_weight must be non-negative")
+        if self.moment_token_count <= 0:
+            raise ValueError("moment_token_count must be positive")
+        if (
+            self.moment_token_dim <= 0
+            or self.moment_token_readout_dim <= 0
+        ):
+            raise ValueError(
+                "moment_token_dim and moment_token_readout_dim must be "
+                "positive"
+            )
+        if self.moment_token_temperature <= 0:
+            raise ValueError("moment_token_temperature must be positive")
+        if not 0 <= self.moment_token_dropout < 1:
+            raise ValueError("moment_token_dropout must be in [0, 1)")
         self.class_token_weight = float(class_token_weight)
         self.class_token_count = int(class_token_count)
         self.class_token_dim = int(class_token_dim)
@@ -1580,6 +1670,7 @@ class MIR_MIL(nn.Module):
             )
         self.multi_token_head = None
         self.multi_token_gate = None
+        self.moment_token_head = None
         self.class_token_head = None
         self.latent_readout_head = None
         self.ordinal_head = None
@@ -1614,6 +1705,16 @@ class MIR_MIL(nn.Module):
                 rank_dim=self.class_token_rank_dim,
                 temperature=self.class_token_temperature,
                 dropout=self.class_token_dropout,
+            )
+        if self.moment_token_weight > 0:
+            self.moment_token_head = MomentMultiTokenAttentionReadout(
+                hidden_dim=hidden_dim,
+                num_classes=self.num_classes,
+                num_tokens=self.moment_token_count,
+                token_dim=self.moment_token_dim,
+                readout_dim=self.moment_token_readout_dim,
+                temperature=self.moment_token_temperature,
+                dropout=self.moment_token_dropout,
             )
         if self.latent_readout_weight > 0:
             self.latent_readout_head = LatentEvidenceTransformerReadout(
@@ -1835,6 +1936,10 @@ class MIR_MIL(nn.Module):
         if self.class_token_head is not None:
             logits = logits + self.class_token_weight * self.class_token_head(
                 encoded
+            )
+        if self.moment_token_head is not None:
+            logits = logits + (
+                self.moment_token_weight * self.moment_token_head(encoded)
             )
         if self.latent_readout_head is not None:
             logits = logits + (
