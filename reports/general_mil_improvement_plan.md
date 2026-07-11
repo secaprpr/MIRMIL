@@ -640,3 +640,29 @@ Decision:
 - It improves over archived original MIR-MIL official test (`0.827973 ± 0.027678`) and over the no-early-stop/best-val MIR reference (`0.8403 ± 0.0184`).
 - It remains below the AC_MIL target (`0.852852 ± 0.009653`) by `0.010284` macro-AUC, so it is not SOTA.
 - The result is scientifically cleaner than cosine head because it improves PANDA while improving BRACS official test, but BRACS validation seed variance remains a concern.
+
+## Tenth candidate: mean + moment token evidence readout
+
+Motivation:
+
+- Fixed multi-token readout is stable and PANDA-compatible, but its BRACS official test result (`0.836596 ± 0.013349`) is below the no-early-stop MIR reference.
+- Moment-token readout improves PANDA strongly and reaches the best current MIR-MIL BRACS official test (`0.842568 ± 0.009488`), but BRACS validation is less stable across seeds.
+- Combining the two verified generic evidence branches may preserve first-order token evidence while adding second-order token statistics.
+
+Proposed protocol:
+
+- Use the existing mean-token and moment-token branches together.
+- Keep the total residual evidence weight at `0.1`: `Model.multi_token_weight=0.05` and `Model.moment_token_weight=0.05`.
+- Keep all other MIR-MIL settings identical to the accepted architecture-ablation protocol.
+
+Why this is not BRACS-specific:
+
+- No dataset name, split, class count, or class semantics are encoded.
+- Both branches are generic for arbitrary `num_classes`.
+- The hypothesis is general: first- and second-order token evidence should be complementary for WSI-MIL.
+
+Gate:
+
+- Run BRACS3 official train/val only, seeds `2024/2025/2026`.
+- If validation is not competitive with moment-token or fixed multi-token, reject without PANDA/test.
+- If validation is competitive, run PANDA seed2024 sanity before any BRACS official test.

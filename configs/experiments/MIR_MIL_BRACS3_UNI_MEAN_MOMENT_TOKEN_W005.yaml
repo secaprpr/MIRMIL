@@ -1,0 +1,28 @@
+base: ../MIR_MIL.yaml
+
+Model:
+  evidence_weight: 0.0
+  multi_token_weight: 0.05
+  multi_token_count: 4
+  multi_token_dim: 64
+  multi_token_readout_dim: 128
+  multi_token_temperature: 1.0
+  multi_token_dropout: 0.0
+  multi_token_gated: False
+  moment_token_weight: 0.05
+  moment_token_count: 4
+  moment_token_dim: 64
+  moment_token_readout_dim: 128
+  moment_token_temperature: 1.0
+  moment_token_dropout: 0.0
+  class_token_weight: 0.0
+  latent_readout_weight: 0.0
+  ordinal_head_weight: 0.0
+  cosine_head_weight: 0.0
+  subset_consistency_weight: 0.0
+  subset_consistency_supervised_weight: 0.0
+  potential_type: adaptive_multiscale
+  num_local_routes: 12
+  multiscale_gate_initial_bias: -0.5
+  multiscale_local_initial_scale: 0.5
+  prototype_regularization_weight: 0.01
