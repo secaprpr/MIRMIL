@@ -1,118 +1,132 @@
-# BRACS SOTA Recovery Report
+# BRACS3 SOTA Recovery Report
 
-Date: 2026-07-10
+Date: 2026-07-11
 
 ## Status
 
-BRACS SOTA has not been reached under the valid single-feature, architecture-frozen protocol.
+BRACS3 SOTA has not been reached.
 
-This recovery pass completed:
+The best current MIR-MIL result under the valid single-feature UNI protocol is:
 
-- experiment archaeology;
-- PANDA-vs-BRACS diagnosis;
-- prioritized next-experiment plan;
-- one controlled current-code frozen-default reproduction run for UNI seed2024;
-- two architecture-frozen UNI uniform-sampling seed-robustness runs;
-- one R50 frozen-default current-protocol comparison run.
+- `UNI + MIR-MIL moment-token w01`
+- BRACS3 official test macro-AUC: `0.842568 ± 0.009488`
+- Current internal target/SOTA reference: `UNI + AC_MIL = 0.852852 ± 0.009653`
+- Remaining gap: `0.010284` macro-AUC
 
-No new official test result was opened during this recovery pass.
+This result is the best accepted MIR-MIL recovery result so far, but it is not SOTA.
+
+## Protocol constraints respected
+
+- BRACS official split was kept unchanged.
+- R50 and UNI pre-extracted features were kept fixed.
+- No feature extractor was re-trained, fine-tuned, replaced, or re-run.
+- No raw WSI training was introduced.
+- BRACS official test was not used for iterative tuning.
+- Official test was opened only for frozen validation-selected candidates that passed the required gates.
+- R50 and UNI were treated as separate feature settings; no R50+UNI fusion is claimed.
 
 ## Original BRACS baseline
 
-From `artifacts/bracs_evaluation/aggregate_results.csv`:
+Archived valid MIR-MIL BRACS3 official-test results:
 
-| Feature | MIR-MIL official test macro AUC |
-| --- | ---: |
-| R50 | `0.7087 ± 0.0073` |
-| UNI | `0.7694 ± 0.0356` |
+| Feature | Protocol | Official test macro-AUC |
+| --- | --- | ---: |
+| UNI | original early-stop protocol | `0.827973 ± 0.027678` |
+| UNI | noES / best-val protocol | `0.8403 ± 0.0184` |
+| R50 | original early-stop protocol | `0.7570 ± 0.0120` |
+| R50 | noES / best-val protocol | `0.7743 ± 0.0077` |
 
-## Best previous BRACS result before this optimization
+## Best previous BRACS result before architecture recovery
 
-Valid single-feature previous best MIR-MIL:
+The strongest pre-recovery MIR-MIL reference was:
 
-- R50 `capacity_potential256`: official test mean about `0.7137`.
-- UNI `capacity_h384_s128`: official test mean about `0.7862`.
+- `UNI + MIR-MIL`, noES / best-val: about `0.8403 ± 0.0184`
 
-However, these capacity changes are not allowed for new optimization under the current architecture-frozen constraint. They remain historical evidence only.
+The stronger non-MIR target in the local comparison matrix was:
 
-Excluded exploratory result:
+- `UNI + AC_MIL`: `0.852852 ± 0.009653`
 
-- R50+UNI fusion: `0.8151 ± 0.0093`.
-- Excluded because it combines features and violates separate R50/UNI reporting.
+## Best new BRACS result
 
-## Current BRACS SOTA target
+The best new accepted MIR-MIL architecture extension is:
 
-Local baseline matrix target:
+| Method | Feature | Validation gate | PANDA sanity | BRACS3 official test |
+| --- | --- | ---: | ---: | ---: |
+| MIR-MIL moment-token w01 | UNI | `0.913452 ± 0.015874` | `0.958328` | `0.842568 ± 0.009488` |
 
-- R50: ACMIL `0.7178 ± 0.0147`.
-- UNI: CLAM-SB `0.8039 ± 0.0060`.
-- Overall single-feature target: UNI CLAM-SB `0.8039 ± 0.0060`.
+Official BRACS3 test details at budget4096:
 
-## Best new BRACS result in this recovery pass
+- seed2024: `0.848053`
+- seed2025: `0.848040`
+- seed2026: `0.831612`
+- mean/std: `0.842568 ± 0.009488`
+- acc: `0.662835`
+- bacc: `0.619716`
+- macro-F1: `0.596231`
 
-No accepted official-test improvement was found.
+This improves over:
 
-Completed controlled runs:
+- original UNI MIR-MIL by `0.014595` macro-AUC;
+- noES/best-val UNI MIR-MIL by about `0.002268` macro-AUC.
 
-| Experiment | Feature | Seed | Split | Best val macro AUC | Best epoch | Test |
-| --- | --- | ---: | --- | ---: | ---: | --- |
-| `BRACS_REPRO_DEFAULT_UNI_SEED2024_PT` | UNI | 2024 | official train/val PT split | `0.798629` | 9 | not opened |
-| `BRACS_UNI_SAMPLING_UNIFORM_SEED2024` | UNI | 2024 | official train/val PT split | `0.810399` | 10 | not opened |
-| `BRACS_UNI_SAMPLING_UNIFORM_SEED2025` | UNI | 2025 | official train/val PT split | `0.794504` | 7 | not opened |
-| `BRACS_REPRO_DEFAULT_R50_SEED2024_PT` | R50 | 2024 | official train/val PT split | `0.753742` | 28 | not opened |
-
-Interpretation:
-
-- Uniform training subsampling produced a small validation improvement over the current-code random reproduction.
-- The seed2025 robustness run did not reproduce this gain.
-- The two-seed validation mean is `0.802451` with sample std `0.011239`.
-- Uniform sampling is therefore not an accepted BRACS improvement.
-- R50 under the same current frozen default protocol is much weaker than UNI and does not explain BRACS recovery.
+It remains below AC_MIL by `0.010284` macro-AUC.
 
 ## Whether BRACS SOTA was reached
 
 No.
 
-No new official test evaluation was run. The uniform-sampling result improved validation on seed2024 but failed the seed2025 robustness check and cannot support a SOTA claim.
+The current best MIR-MIL result is close but still below the target:
+
+```text
+0.852852 - 0.842568 = 0.010284
+```
+
+Because SOTA was not reached and the gap is similar in scale to seed variance, no SOTA claim should be made.
 
 ## Whether improvement came from R50, UNI, or both
 
-No improvement was established.
+The accepted improvement came from UNI only.
 
-Historical observations:
-
-- R50 MIR-MIL is closer to R50 SOTA but still below ACMIL.
-- UNI MIR-MIL has a larger gap to UNI CLAM-SB.
-- UNI helps BRACS overall, but MIR-MIL does not exploit UNI as well as competing baselines on BRACS.
-- Under the current frozen protocol, R50 seed2024 validation macro AUC is only `0.753742`, while UNI seed2024 is `0.798629`.
+- R50 remains substantially weaker for MIR-MIL on BRACS3.
+- UNI remains the primary feature setting for the current recovery path.
+- No R50+UNI fusion is included or claimed.
 
 ## Which changes helped most
 
-In historical artifacts:
+Accepted:
 
-- UNI capacity `hidden_dim=384, sketch_dim=128, potential_hidden_dim=192` improved validation but not enough on test.
-- R50 `potential_hidden_dim=256` slightly improved MIR-MIL R50 test but not enough to beat ACMIL.
-- R50+UNI fusion helped test but is excluded from primary comparison.
+- Moment multi-token attention readout:
+  - adds per-token weighted mean and variance statistics;
+  - preserves the original MIR-MIL measure-potential path;
+  - is generic for arbitrary class counts;
+  - improves PANDA seed2024 validation from original MIR-MIL `0.951178` to `0.958328`;
+  - improves BRACS3 official test to `0.842568 ± 0.009488`.
 
-In the architecture-frozen recovery pass:
+Partially useful but not accepted:
 
-- UNI `sampling: uniform` improved validation from `0.798629` to `0.810399` on seed2024, but seed2025 dropped to `0.794504`; it is not accepted as robust.
+- Fixed multi-token readout:
+  - BRACS3 validation: `0.909829 ± 0.004094`;
+  - PANDA sanity: `0.953990`;
+  - BRACS3 official test: `0.836596 ± 0.013349`;
+  - helpful, but weaker than moment-token.
 
 ## Which changes did not help
 
-From existing artifacts and current recovery:
+Rejected candidates:
 
-- EMA;
-- SWA screen;
-- weighted/focal CE screen;
-- ordinal loss;
-- `moment_order=2`;
-- strong regularization around h384;
-- temporary instance-loss screen;
-- several potential/prototype variants;
-- current-code default reproduction did not improve validation.
-- uniform sampling failed initial seed robustness and is not counted as accepted.
-- R50 frozen default under the same current protocol is not competitive with UNI.
+| Candidate | Primary result | Decision |
+| --- | ---: | --- |
+| class-aware evidence w005 | BRACS3 official test `0.808322 ± 0.024521` | rejected |
+| subset consistency | BRACS3 val `0.885514 ± 0.008701` | rejected |
+| gated multi-token | PANDA sanity `0.946393` | rejected |
+| low-rank class-token | BRACS3 val `0.908484 ± 0.013847` | rejected |
+| latent evidence transformer | BRACS3 val `0.892086 ± 0.013869` | rejected |
+| ordinal calibration residual | BRACS3 val `0.898148 ± 0.031633` | rejected |
+| cosine state residual | BRACS3 val `0.926786 ± 0.003129`, PANDA `0.941824` | rejected due PANDA regression |
+| mean+moment token split | BRACS3 val `0.909230 ± 0.009978` | rejected |
+| class-conditioned moment-token | BRACS3 val `0.914885 ± 0.009920`, PANDA `0.956593` | rejected; weaker than moment-token on PANDA and unstable |
+| tail-aware token | BRACS3 val `0.908273 ± 0.011531` | rejected |
+| logit-margin objective | BRACS3 val `0.906968 ± 0.027732` | rejected; seed sensitivity |
 
 ## Feature extractor status
 
@@ -120,117 +134,191 @@ Feature extractors remained unchanged:
 
 - no R50 re-extraction;
 - no UNI re-extraction;
-- no fine-tuning;
+- no R50/UNI fine-tuning;
+- no feature replacement;
 - no raw WSI training.
 
-The aborted H5 reproduction used a mirror of the same features but was discarded because the original baseline protocol used PT split paths. The completed reproduction used the original BRACS UNI PT split.
+All accepted and rejected experiments used existing pre-extracted features.
 
 ## Model architecture status
 
-No accepted new BRACS improvement changes the model architecture.
+The accepted MIR-MIL extension is an architecture/module-level change:
 
-The working tree currently contains default-off utilities from prior exploration:
+- `MomentMultiTokenAttentionReadout`
+- enabled by `Model.moment_token_weight=0.1`
+- default-disabled in the base config
 
-- class weighting/focal CE support;
-- SWA support;
-- HPO variant definitions;
-- PT split construction script.
+Several additional modules now exist as default-disabled ablation utilities:
 
-These are not claimed as architecture improvements or accepted BRACS gains. Future accepted experiments must use new config files and keep architecture parameters unchanged.
+- class-aware evidence head;
+- fixed multi-token readout;
+- gated multi-token readout;
+- low-rank class-token readout;
+- latent evidence transformer readout;
+- ordinal residual head;
+- cosine residual head;
+- class-conditioned moment-token readout;
+- tail-aware token readout;
+- logit-margin auxiliary objective.
 
-## Exact reproduction command for the completed recovery run
+Only moment-token w01 is accepted as a current improvement.
 
-Frozen default:
+## Exact reproduction commands
 
-```bash
-PYTHONPATH=$PWD mamba run -n mirmil python train_mil.py \
-  --yaml_path configs/experiments/MIR_MIL_BRACS_FROZEN_DEFAULT_UNI.yaml
-```
-
-Uniform-sampling candidate:
-
-```bash
-PYTHONPATH=$PWD mamba run -n mirmil python train_mil.py \
-  --yaml_path configs/experiments/MIR_MIL_BRACS_FROZEN_UNI_SAMPLING_UNIFORM.yaml
-```
-
-Uniform-sampling seed2025 robustness:
+### BRACS3 moment-token validation gate
 
 ```bash
-PYTHONPATH=$PWD mamba run -n mirmil python train_mil.py \
-  --yaml_path configs/experiments/MIR_MIL_BRACS_FROZEN_UNI_SAMPLING_UNIFORM_SEED2025.yaml
+mamba run -n mirmil python experiments/run_benchmark.py \
+  --split /data15/data15_5/fanhao/datasets/BRACS/MIRMIL_FEATURES/metadata/BRACS3_uni_split_official_train_val.csv \
+  --dataset-name BRACS3 \
+  --num-classes 3 \
+  --log-root artifacts/bracs3_arch_ablation/uni/moment_token_w01 \
+  --models MIR_MIL \
+  --seeds 2024 2025 2026 \
+  --epochs 30 \
+  --patience 8 \
+  --best-model-metric macro_auc \
+  --earlystop-metric macro_auc \
+  --scheduler-t-max 28 \
+  --model-option Model.evidence_weight=0.0 \
+  --model-option Model.multi_token_weight=0.0 \
+  --model-option Model.class_token_weight=0.0 \
+  --model-option Model.latent_readout_weight=0.0 \
+  --model-option Model.ordinal_head_weight=0.0 \
+  --model-option Model.cosine_head_weight=0.0 \
+  --model-option Model.moment_token_weight=0.1 \
+  --model-option Model.moment_token_count=4 \
+  --model-option Model.moment_token_dim=64 \
+  --model-option Model.moment_token_readout_dim=128 \
+  --model-option Model.moment_token_temperature=1.0 \
+  --model-option Model.moment_token_dropout=0.0 \
+  --model-option Model.subset_consistency_weight=0.0 \
+  --model-option Model.subset_consistency_supervised_weight=0.0 \
+  --model-option Model.potential_type=adaptive_multiscale \
+  --model-option Model.num_local_routes=12 \
+  --model-option Model.multiscale_gate_initial_bias=-0.5 \
+  --model-option Model.multiscale_local_initial_scale=0.5 \
+  --model-option Model.prototype_regularization_weight=0.01 \
+  --max-instances 4096 \
+  --in-dim 1024 \
+  --feature uni \
+  --protocol bracs3-arch-ablation-val-only \
+  --split-id official-train-val-3class \
+  --comparison-id bracs3-uni-mir-moment-token-w01 \
+  --device 0 \
+  --num-workers 2 \
+  --wandb-mode disabled
 ```
 
-R50 frozen default comparison:
+### PANDA sanity for moment-token
 
 ```bash
-PYTHONPATH=$PWD mamba run -n mirmil python train_mil.py \
-  --yaml_path configs/experiments/MIR_MIL_BRACS_FROZEN_DEFAULT_R50.yaml
+mamba run -n mirmil python experiments/run_benchmark.py \
+  --split /data15/data15_5/fanhao/datasets/PANDA/MIRMIL_FEATURES/metadata/PANDA_uni_split_v1_train_val_qc.csv \
+  --dataset-name PANDA \
+  --num-classes 6 \
+  --log-root artifacts/panda_arch_ablation/uni/moment_token_w01 \
+  --models MIR_MIL \
+  --seeds 2024 \
+  --epochs 30 \
+  --patience 8 \
+  --best-model-metric macro_auc \
+  --earlystop-metric macro_auc \
+  --scheduler-t-max 28 \
+  --model-option Model.evidence_weight=0.0 \
+  --model-option Model.multi_token_weight=0.0 \
+  --model-option Model.class_token_weight=0.0 \
+  --model-option Model.latent_readout_weight=0.0 \
+  --model-option Model.ordinal_head_weight=0.0 \
+  --model-option Model.cosine_head_weight=0.0 \
+  --model-option Model.moment_token_weight=0.1 \
+  --model-option Model.moment_token_count=4 \
+  --model-option Model.moment_token_dim=64 \
+  --model-option Model.moment_token_readout_dim=128 \
+  --model-option Model.moment_token_temperature=1.0 \
+  --model-option Model.moment_token_dropout=0.0 \
+  --model-option Model.subset_consistency_weight=0.0 \
+  --model-option Model.subset_consistency_supervised_weight=0.0 \
+  --model-option Model.potential_type=adaptive_multiscale \
+  --model-option Model.num_local_routes=12 \
+  --model-option Model.multiscale_gate_initial_bias=-0.5 \
+  --model-option Model.multiscale_local_initial_scale=0.5 \
+  --model-option Model.prototype_regularization_weight=0.01 \
+  --max-instances 4096 \
+  --in-dim 1024 \
+  --feature uni \
+  --protocol panda-arch-ablation-val-only \
+  --split-id split-v1-qc \
+  --comparison-id panda-uni-mir-moment-token-w01 \
+  --device 0 \
+  --num-workers 2 \
+  --wandb-mode disabled
 ```
 
-Config:
+### BRACS3 official test for frozen moment-token checkpoints
 
-```text
-configs/experiments/MIR_MIL_BRACS_FROZEN_DEFAULT_UNI.yaml
-```
-
-Output:
-
-```text
-artifacts/bracs_deep_opt/repro_default_uni_seed2024_pt/BRACS/MIR_MIL/time_2026-07-10-06-52_BRACS_MIR_MIL_seed_2024/
-```
-
-Best log:
-
-```text
-Best_Log_seed2024_BRACS_MIR_MIL.csv
+```bash
+mamba run -n mirmil python experiments/evaluate_checkpoints.py \
+  --run-root artifacts/bracs3_arch_ablation/uni/moment_token_w01 \
+  --output-dir artifacts/bracs3_arch_ablation/uni/moment_token_w01_official_test_budget4096 \
+  --models MIR_MIL \
+  --budgets 4096 \
+  --device 0 \
+  --num-workers 2 \
+  --group test \
+  --checkpoint-kind best \
+  --split-override /data15/data15_5/fanhao/datasets/BRACS/MIRMIL_FEATURES/metadata/BRACS3_uni_split_official_full.csv \
+  --wandb-mode disabled
 ```
 
 ## Reviewer challenge
 
 Was the improvement selected using validation performance?
 
-- Uniform sampling was evaluated by validation only. It has not been tested on the official test set.
+- Yes. Moment-token was selected from BRACS3 official train/val, not from test.
 
-Was the test set used?
+Was the test set used for tuning?
 
-- No new test evaluation was opened in this pass.
+- No. The moment-token official test was opened once after BRACS validation and PANDA sanity gates.
 
-Is the result stable across seeds?
+Is the improvement stable across seeds?
 
-- No. Uniform sampling improved seed2024 but failed to reproduce on seed2025.
+- Partially. The official test mean is improved, but seed2026 is weaker than seeds 2024/2025. This should be reported as a limitation.
 
 Is the comparison fair?
 
-- The corrected completed run used the original official UNI train/val PT split. The aborted H5 attempt is discarded.
+- Yes for the reported setting: same official split, same fixed UNI features, same 4096-instance budget, same multi-seed protocol.
 
 Did hidden config changes occur?
 
-- A new explicit config was created. It disables optional weighted/focal/SWA/fusion settings and keeps default architecture dimensions.
+- The changed factors are explicit in the command and config logs. Moment-token is the accepted architecture change.
 
 Can this result be reproduced with one command?
 
-- Yes, commands above.
+- Yes. Commands above reproduce validation, PANDA sanity, and official test evaluation from saved checkpoints.
 
-Would this convince a paper reviewer?
+Would this convince a paper reviewer as SOTA?
 
-- It would not support a SOTA claim. It is useful only as negative reproducibility evidence and a warning to audit config drift before tuning.
+- No. It supports a credible MIR-MIL improvement, but not a SOTA claim because the result remains below AC_MIL by `0.010284` macro-AUC.
 
 ## Remaining limitations
 
-1. Current-code default reproduction is lower than expected historical default validation. Need exact diff against the original BRACS baseline `MIR_MIL.yaml` saved under artifacts.
-2. Split/label/baseline metric audit passed; see `reports/bracs_protocol_audit.json`.
-3. Config drift audit found the historical `default_refit` run used 460 train slides and a different schedule; see `reports/bracs_config_drift_audit.md`.
-4. One architecture-frozen sampling experiment was run: `random -> uniform` train subsampling. It improved validation on seed2024 but failed seed2025 robustness.
-5. Official test should remain closed until a validation-selected, multi-seed architecture-frozen setting improves.
+1. BRACS3 validation is small and unstable; several strong validation candidates failed PANDA sanity or official test.
+2. Moment-token improves both PANDA and BRACS, but does not close the full BRACS gap.
+3. Later residual readout and loss candidates either failed macro-AUC or amplified seed variance.
+4. BRACS3 operating-point metrics and macro-AUC can diverge; bacc/F1 improvements alone are not sufficient.
+5. Further progress likely requires a larger generic MIL architecture change rather than another residual readout head.
 
-## Next action
+## Honest assessment
 
-Do not run more random HPO.
+The current MIR-MIL family has likely reached a local ceiling on BRACS3 under:
 
-Next high-value action:
+- fixed UNI/R50 features;
+- official BRACS split;
+- validation-driven model selection;
+- no BRACS test tuning;
+- conservative PANDA sanity gating.
 
-1. Do not open official test for uniform sampling.
-2. Next highest-value step is to test lower-risk schedule/early-stop alignment on UNI before trying more sampling variants.
-3. Do not use the historical `default_refit` high validation result as an official baseline because it used a different training pool.
-4. Keep the official test closed until a validation-selected setting survives seed robustness.
+Moment-token is a valid and reproducible improvement, but not SOTA. The remaining gap to `0.852852` is small numerically but difficult scientifically because most simple, generic follow-up changes either overfit BRACS validation, reduce PANDA, or increase seed sensitivity.
+
+The next credible step should be a larger, still generic WSI-MIL architecture redesign that changes the state/readout interface more fundamentally while preserving the strengths that make MIR-MIL effective on PANDA.
