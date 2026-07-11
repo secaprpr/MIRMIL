@@ -717,3 +717,26 @@ Gate:
 - Run BRACS3 official train/val only, seeds `2024/2025/2026`.
 - If validation macro-AUC does not beat moment-token or fixed multi-token, reject without PANDA/test.
 - If validation is competitive, run PANDA seed2024 sanity before any BRACS official test.
+
+Result:
+
+- Synthetic smoke passed for `num_classes=2/3/6`; default-disabled behavior was verified.
+- One-epoch BRACS3 smoke passed at `max_instances=512`.
+- BRACS3 official train/val, UNI, budget4096, seeds `2024/2025/2026`:
+  - seed2024: best epoch `14`, val macro-AUC `0.917290`, acc `0.723077`, bacc `0.615873`, macro-F1 `0.576343`.
+  - seed2025: best epoch `9`, val macro-AUC `0.903984`, acc `0.800000`, bacc `0.734921`, macro-F1 `0.738367`.
+  - seed2026: best epoch `6`, val macro-AUC `0.923381`, acc `0.815385`, bacc `0.774603`, macro-F1 `0.788557`.
+- Mean validation macro-AUC: `0.914885 ± 0.009920`.
+- Mean validation acc/bacc/macro-F1: `0.779487 ± 0.049455`, `0.708466 ± 0.082606`, `0.701089 ± 0.110910`.
+
+Interpretation:
+
+- Class-conditioned moment-token readout slightly improves validation macro-AUC over moment-token (`0.914885` vs `0.913452`), but the gain is small relative to seed variance.
+- Decision metrics are unstable: seed2024 has high AUC but weak bacc/F1, indicating ranking quality does not reliably translate into a robust operating point on BRACS3 validation.
+- This should not be treated as an accepted BRACS improvement or SOTA evidence.
+
+Decision:
+
+- Conditional candidate only.
+- Do not open BRACS official test directly.
+- Run PANDA UNI seed2024 sanity first. If PANDA drops, reject. If PANDA is preserved or improved, one frozen BRACS official-test evaluation may be considered, but the unstable decision metrics must be reported.
