@@ -529,3 +529,36 @@ Interpretation:
 - The module does not improve bacc/F1 enough to compensate for AUC instability.
 - Because the BRACS validation gate fails, PANDA sanity and BRACS official-test evaluation are not justified.
 - This rejects a simple monotonic ordinal residual as a standalone path to SOTA, though the strong seed suggests ordinal structure may be useful only if paired with a more stable aggregation or training objective.
+
+## Eighth candidate: normalized cosine state residual head
+
+Motivation:
+
+- Several residual readout modules improved some validation slices but were unstable across seeds.
+- Evidence and ordinal candidates suggest BRACS validation can over-select high-confidence but fragile decision boundaries.
+- A common failure pattern is sensitivity to state/logit scale rather than a complete lack of signal.
+
+The next candidate adds a normalized cosine classifier residual over the existing MIR-MIL slide state. The head applies LayerNorm to the state, maps it to an embedding, L2-normalizes the embedding and class prototypes, then produces cosine logits with a learnable positive scale. This constrains prediction geometry and reduces sensitivity to state magnitude shifts.
+
+Why this is generic:
+
+- no dataset name, split, class semantics, or fixed class count is encoded;
+- it works for arbitrary `num_classes >= 2`;
+- it uses only the existing MIR-MIL slide state from frozen features;
+- it should preserve PANDA strength because PANDA's distributional state remains the primary path;
+- it may help BRACS by regularizing decision boundaries under small-split/domain-shift conditions.
+
+Implementation knobs, disabled by default:
+
+- `Model.cosine_head_weight`: residual logit weight; default `0.0`.
+- `Model.cosine_head_dim`: normalized embedding dimension; default `64`.
+- `Model.cosine_head_hidden_dim`: projection hidden dimension; default `128`.
+- `Model.cosine_head_dropout`: projection dropout; default `0.0`.
+- `Model.cosine_head_initial_scale`: initial cosine logit scale; default `8.0`.
+
+Validation rule:
+
+- First verify synthetic forward/backward for multiple class counts and a one-epoch BRACS3 smoke.
+- Then run BRACS3 official train/val only, seeds `2024/2025/2026`, 4096-instance budget.
+- If validation macro-AUC improves over fixed multi-token or improves stability/decision metrics without hurting AUC, run PANDA seed2024 sanity.
+- BRACS official test remains closed unless both validation and PANDA sanity pass.

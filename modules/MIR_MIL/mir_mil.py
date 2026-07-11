@@ -960,6 +960,54 @@ class OrdinalCalibrationHead(nn.Module):
         return logits - logits.mean(dim=1, keepdim=True)
 
 
+class CosineStateResidualHead(nn.Module):
+    """Normalized cosine classifier over the MIR-MIL slide state."""
+
+    def __init__(
+        self,
+        state_dim,
+        num_classes,
+        embedding_dim,
+        hidden_dim,
+        dropout,
+        act,
+        initial_scale,
+    ):
+        super().__init__()
+        if state_dim <= 0 or num_classes < 2:
+            raise ValueError("state_dim must be positive and classes >= 2")
+        if embedding_dim <= 0 or hidden_dim <= 0:
+            raise ValueError(
+                "embedding_dim and hidden_dim must be positive"
+            )
+        if initial_scale <= 0:
+            raise ValueError("cosine_head_initial_scale must be positive")
+        self.projector = nn.Sequential(
+            nn.LayerNorm(state_dim),
+            nn.Linear(state_dim, hidden_dim),
+            _activation(act),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, embedding_dim),
+        )
+        self.class_prototypes = nn.Parameter(
+            torch.empty(num_classes, embedding_dim)
+        )
+        self.log_scale = nn.Parameter(
+            torch.tensor(math.log(float(initial_scale)))
+        )
+        with torch.random.fork_rng(devices=[]):
+            nn.init.normal_(
+                self.class_prototypes, std=1.0 / math.sqrt(embedding_dim)
+            )
+
+    def forward(self, state):
+        embedding = F.normalize(self.projector(state), dim=-1)
+        prototypes = F.normalize(self.class_prototypes, dim=-1)
+        logits = embedding @ prototypes.T
+        scale = self.log_scale.exp().clamp(max=100.0)
+        return scale * logits
+
+
 class MIR_MIL(nn.Module):
     """Neural measure potential with closed-form measure influence response."""
 
@@ -1041,6 +1089,11 @@ class MIR_MIL(nn.Module):
         ordinal_head_hidden_dim=64,
         ordinal_head_dropout=0.0,
         ordinal_head_temperature=1.0,
+        cosine_head_weight=0.0,
+        cosine_head_dim=64,
+        cosine_head_hidden_dim=128,
+        cosine_head_dropout=0.0,
+        cosine_head_initial_scale=8.0,
         subset_consistency_weight=0.0,
         subset_consistency_supervised_weight=0.0,
         subset_consistency_fraction=0.75,
@@ -1219,6 +1272,22 @@ class MIR_MIL(nn.Module):
             raise ValueError("ordinal_head_dropout must be in [0, 1)")
         if self.ordinal_head_temperature <= 0:
             raise ValueError("ordinal_head_temperature must be positive")
+        self.cosine_head_weight = float(cosine_head_weight)
+        self.cosine_head_dim = int(cosine_head_dim)
+        self.cosine_head_hidden_dim = int(cosine_head_hidden_dim)
+        self.cosine_head_dropout = float(cosine_head_dropout)
+        self.cosine_head_initial_scale = float(cosine_head_initial_scale)
+        if self.cosine_head_weight < 0:
+            raise ValueError("cosine_head_weight must be non-negative")
+        if self.cosine_head_dim <= 0 or self.cosine_head_hidden_dim <= 0:
+            raise ValueError(
+                "cosine_head_dim and cosine_head_hidden_dim must be "
+                "positive"
+            )
+        if not 0 <= self.cosine_head_dropout < 1:
+            raise ValueError("cosine_head_dropout must be in [0, 1)")
+        if self.cosine_head_initial_scale <= 0:
+            raise ValueError("cosine_head_initial_scale must be positive")
         self.subset_consistency_weight = float(subset_consistency_weight)
         self.subset_consistency_supervised_weight = float(
             subset_consistency_supervised_weight
@@ -1514,6 +1583,7 @@ class MIR_MIL(nn.Module):
         self.class_token_head = None
         self.latent_readout_head = None
         self.ordinal_head = None
+        self.cosine_head = None
         if self.multi_token_weight > 0:
             self.multi_token_head = MultiTokenAttentionReadout(
                 hidden_dim=hidden_dim,
@@ -1565,6 +1635,16 @@ class MIR_MIL(nn.Module):
                 dropout=self.ordinal_head_dropout,
                 act=act,
                 temperature=self.ordinal_head_temperature,
+            )
+        if self.cosine_head_weight > 0:
+            self.cosine_head = CosineStateResidualHead(
+                state_dim=state_dim,
+                num_classes=self.num_classes,
+                embedding_dim=self.cosine_head_dim,
+                hidden_dim=self.cosine_head_hidden_dim,
+                dropout=self.cosine_head_dropout,
+                act=act,
+                initial_scale=self.cosine_head_initial_scale,
             )
         self.apply(self._initialize)
         if self.multi_token_gate is not None:
@@ -1767,6 +1847,14 @@ class MIR_MIL(nn.Module):
                     "state is required when ordinal_head is enabled"
                 )
             logits = logits + self.ordinal_head_weight * self.ordinal_head(
+                state.unsqueeze(0)
+            )
+        if self.cosine_head is not None:
+            if state is None:
+                raise ValueError(
+                    "state is required when cosine_head is enabled"
+                )
+            logits = logits + self.cosine_head_weight * self.cosine_head(
                 state.unsqueeze(0)
             )
         return logits

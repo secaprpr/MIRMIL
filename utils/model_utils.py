@@ -471,6 +471,21 @@ def get_model_from_yaml(yaml_args):
             ordinal_head_temperature=_model_option(
                 yaml_args, "ordinal_head_temperature", 1.0
             ),
+            cosine_head_weight=_model_option(
+                yaml_args, "cosine_head_weight", 0.0
+            ),
+            cosine_head_dim=_model_option(
+                yaml_args, "cosine_head_dim", 64
+            ),
+            cosine_head_hidden_dim=_model_option(
+                yaml_args, "cosine_head_hidden_dim", 128
+            ),
+            cosine_head_dropout=_model_option(
+                yaml_args, "cosine_head_dropout", 0.0
+            ),
+            cosine_head_initial_scale=_model_option(
+                yaml_args, "cosine_head_initial_scale", 8.0
+            ),
             subset_consistency_weight=_model_option(
                 yaml_args, "subset_consistency_weight", 0.0
             ),

@@ -1,10 +1,10 @@
 General:
     MODEL_NAME: MIR_MIL
     seed: 2024
-    num_classes: 2
+    num_classes: 3
     num_epochs: 30
     device: 0
-    num_workers: 4
+    num_workers: 2
     best_model_metric: macro_auc
     earlystop:
         use: True
@@ -13,27 +13,27 @@ General:
         min_delta: 0.0
 
 Dataset:
-    DATASET_NAME: your_dataset_name
-    dataset_csv_path: /path/to/your/dataset.csv
+    DATASET_NAME: BRACS3
+    dataset_csv_path: /data15/data15_5/fanhao/datasets/BRACS/MIRMIL_FEATURES/metadata/BRACS3_uni_split_official_train_val.csv
     balanced_sampler:
         use: True
         replacement: True
 
 Logs:
-    log_root_dir: /path/to/your/log_dir
+    log_root_dir: /data15/data15_5/fanhao/projects/MIRMIL/artifacts/bracs3_arch_ablation/uni/cosine_head_w01_seed2024
 
 Tracking:
     wandb:
         enabled: False
         project: MIR-MIL
         entity: null
-        mode: online
-        tags: [stage:pilot]
-        feature: unknown
-        variant: base
-        protocol: default
-        split_id: unspecified
-        comparison_id: null
+        mode: disabled
+        tags: [dataset:BRACS3, feature:uni, model:MIR_MIL, variant:cosine_head_w01, protocol:arch_ablation]
+        feature: uni
+        variant: cosine_head_w01
+        protocol: bracs3-arch-ablation-val-only
+        split_id: official-train-val-3class
+        comparison_id: bracs3-uni-mir-cosine-head-w01-seed2024
         source_manifest_sha256: null
         feature_manifest_sha256: null
         coordinate_manifest_sha256: null
@@ -120,7 +120,7 @@ Model:
     ordinal_head_hidden_dim: 64
     ordinal_head_dropout: 0.0
     ordinal_head_temperature: 1.0
-    cosine_head_weight: 0.0
+    cosine_head_weight: 0.1
     cosine_head_dim: 64
     cosine_head_hidden_dim: 128
     cosine_head_dropout: 0.0
