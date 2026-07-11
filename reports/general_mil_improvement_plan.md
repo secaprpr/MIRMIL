@@ -627,3 +627,16 @@ Validation rule:
 - Then run BRACS3 official train/val only, seeds `2024/2025/2026`, 4096-instance budget.
 - If validation is competitive with fixed multi-token and PANDA seed2024 sanity does not materially drop, consider one frozen BRACS3 official-test evaluation.
 - If PANDA drops as cosine did, reject without opening BRACS3 test.
+
+Results, completed 2026-07-11:
+
+- BRACS3 validation, seeds 2024/2025/2026: `0.913452 ± 0.015874` macro-AUC.
+- PANDA seed2024 sanity: `0.958328` macro-AUC, improving over original MIR-MIL seed2024 (`0.951178`) and fixed multi-token seed2024 (`0.953990`).
+- BRACS3 official test, budget 4096, seeds 2024/2025/2026: `0.842568 ± 0.009488` macro-AUC.
+
+Decision:
+
+- Keep `moment_token_w01` as the current best MIR-MIL architecture extension.
+- It improves over archived original MIR-MIL official test (`0.827973 ± 0.027678`) and over the no-early-stop/best-val MIR reference (`0.8403 ± 0.0184`).
+- It remains below the AC_MIL target (`0.852852 ± 0.009653`) by `0.010284` macro-AUC, so it is not SOTA.
+- The result is scientifically cleaner than cosine head because it improves PANDA while improving BRACS official test, but BRACS validation seed variance remains a concern.

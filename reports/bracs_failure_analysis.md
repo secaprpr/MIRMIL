@@ -100,6 +100,14 @@ The strongest BRACS3 validation-only candidate was the normalized cosine state r
 
 This rejects the normalized cosine residual as an accepted general improvement. It also provides an important diagnostic: BRACS validation can strongly favor decision-geometry or calibration changes that do not preserve PANDA performance. Therefore, future architecture work should not optimize only for BRACS train/val macro-AUC. A credible general module must improve or preserve PANDA while improving BRACS, otherwise it is likely fitting the BRACS validation split rather than fixing the underlying MIL weakness.
 
+The subsequent moment multi-token evidence readout is a stronger positive control:
+
+- BRACS3 validation: `0.913452 ± 0.015874` macro-AUC.
+- PANDA seed2024 sanity: `0.958328` macro-AUC, higher than both original MIR-MIL (`0.951178`) and fixed multi-token (`0.953990`) on the same PANDA split/seed.
+- BRACS3 official test at 4096 instances: `0.842568 ± 0.009488` macro-AUC.
+
+This is the best current MIR-MIL BRACS3 official-test result and narrows the gap to AC_MIL target `0.852852` to `0.010284`. It supports the hypothesis that BRACS needs a more evidence-preserving readout, but it also shows the remaining gap is not solved by adding token-level second moments alone. The likely remaining weakness is class/boundary-specific evidence selection under a small, ambiguous BRACS split, especially because seed2026 transfers worse than seeds 2024/2025.
+
 ## Requirements for the next method
 
 A valid next method should:

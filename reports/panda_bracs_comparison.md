@@ -101,3 +101,12 @@ Interpretation:
 - Improving BRACS validation alone is not a reliable criterion.
 - A module that only regularizes final-state decision geometry can fit BRACS train/val boundaries while damaging PANDA's stronger distributional signal.
 - The more plausible path remains a general evidence-preserving aggregation/readout improvement that does not suppress the original measure-state behavior.
+
+The moment multi-token readout is the strongest positive update so far:
+
+- It extends fixed multi-token readout by adding per-token weighted variance statistics, not by changing final logit geometry.
+- PANDA seed2024 reaches `0.958328` macro-AUC, exceeding original MIR-MIL and fixed multi-token.
+- BRACS3 official test reaches `0.842568 ± 0.009488`, the best current MIR-MIL result.
+- The remaining gap to the AC_MIL target `0.852852 ± 0.009653` is `0.010284` macro-AUC.
+
+This suggests the PANDA/BRACS gap is not caused by feature quality alone. A more distribution-aware evidence readout can help both datasets, but BRACS still likely requires more robust class-boundary evidence selection than the current generic moment-token branch provides.
