@@ -464,3 +464,19 @@ Validation rule:
 - Then run BRACS3 official train/val only, seeds `2024/2025/2026`, 4096-instance budget.
 - If BRACS validation macro-AUC clearly exceeds fixed multi-token and is not unstable, run PANDA seed2024 sanity.
 - Only if PANDA does not materially drop should a single frozen BRACS official-test evaluation be considered.
+
+BRACS3 validation-only result:
+
+| seed | best epoch | val macro-AUC | val acc | val bacc | val macro-F1 |
+|---:|---:|---:|---:|---:|---:|
+| 2024 | 8 | `0.876040` | `0.738462` | `0.677778` | `0.677587` |
+| 2025 | 7 | `0.909877` | `0.800000` | `0.734921` | `0.752610` |
+| 2026 | 4 | `0.890340` | `0.738462` | `0.676190` | `0.678846` |
+| mean ± std | - | `0.892086 ± 0.013869` | `0.758974 ± 0.029010` | `0.696296 ± 0.027319` | `0.703014 ± 0.035073` |
+
+Interpretation:
+
+- The latent evidence transformer readout trains, but its validation macro-AUC is clearly below fixed multi-token (`0.909829 ± 0.004094`) and class-token (`0.908484 ± 0.013847`).
+- The extra latent self-attention does not improve evidence stability at this setting; it likely adds optimization/regularization burden without addressing the validation-test transfer problem.
+- Because the BRACS validation gate fails, PANDA sanity and BRACS official-test evaluation are not justified.
+- This rejects the simple Perceiver-style residual readout as a standalone route to BRACS3 SOTA under the current settings.
