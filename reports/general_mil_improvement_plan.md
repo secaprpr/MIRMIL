@@ -867,3 +867,26 @@ Gate:
 - Run BRACS3 official train/val only, UNI, budget4096, seeds `2024/2025/2026`, using moment-token w01 plus the margin objective as the single changed factor.
 - If validation macro-AUC does not beat moment-token or remains unstable, reject without PANDA/test.
 - If validation improves clearly, run PANDA seed2024 sanity before any BRACS official test.
+
+Initial checks:
+
+- `py_compile` passed for `modules/MIR_MIL/mir_mil.py`, `utils/model_utils.py`, and `utils/loop_utils.py`.
+- Synthetic `compute_loss` smoke passed for `num_classes=2/3/6`.
+- Default-disabled smoke passed: `logit_margin_loss == 0.0` when `Model.logit_margin_loss_weight=0.0`.
+
+Validation result:
+
+- BRACS3 official train/val, UNI, budget4096, moment-token w01 plus `logit_margin_loss_weight=0.05`, seeds `2024/2025/2026`:
+  - seed2024: best epoch `3`, val macro-AUC `0.875500`, acc `0.692308`, bacc `0.676190`, macro-F1 `0.671909`.
+  - seed2025: best epoch `8`, val macro-AUC `0.927838`, acc `0.784615`, bacc `0.720635`, macro-F1 `0.717200`.
+  - seed2026: best epoch `6`, val macro-AUC `0.917566`, acc `0.784615`, bacc `0.698413`, macro-F1 `0.697292`.
+- Mean validation macro-AUC: `0.906968 ± 0.027732`.
+- Mean validation acc/bacc/macro-F1: `0.753846 ± 0.053294`, `0.698413 ± 0.022222`, `0.695467 ± 0.022701`.
+
+Decision:
+
+- Reject as a SOTA candidate.
+- Do not run PANDA sanity.
+- Do not open BRACS official test.
+- The margin objective creates one strong seed but substantially damages seed2024 and increases AUC variance. It is worse than moment-token (`0.913452 ± 0.015874`) on mean validation macro-AUC and less stable.
+- This rejects the simple per-sample logit-margin objective as a robust ranking fix; future objective changes should not amplify seed sensitivity.
