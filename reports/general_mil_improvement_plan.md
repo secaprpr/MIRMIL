@@ -352,4 +352,19 @@ Interpretation:
 - Compared with fixed multi-token readout, the gated variant has slightly higher validation macro-AUC (`0.912190` vs `0.909829`) and much stronger validation bacc/macro-F1.
 - Seed2025 remains weaker in AUC, so the improvement is not fully stable.
 - The candidate passes the BRACS validation gate, but only conditionally.
-- Next step is PANDA validation sanity with identical frozen settings. BRACS official test remains closed.
+- PANDA seed2024 sanity with identical frozen settings completed and failed the generalization gate:
+  - best epoch: `25`
+  - PANDA validation macro-AUC: `0.946393`
+  - validation acc/bacc/macro-F1: `0.787094` / `0.744651` / `0.746873`
+  - reference PANDA seed2024 original MIR-MIL validation macro-AUC: `0.951178`
+  - reference PANDA seed2024 fixed multi-token validation macro-AUC: `0.953990`
+- Therefore the gated candidate should be rejected as a general architecture upgrade. It improves BRACS validation bacc/F1, but damages PANDA macro-AUC enough that it is not a clean method-level improvement.
+- BRACS official test must remain closed for this candidate.
+
+Current architecture-level conclusion after four controlled candidates:
+
+- The archived original MIR-MIL architecture is already sealed at `c2bddd3` / tag `archive/bracs3-mirmil-current`.
+- The best accepted generic extension so far is fixed multi-token readout, but it reaches only `0.836596 ± 0.013349` BRACS3 official-test macro-AUC.
+- The current target/SOTA in the local matrix remains `UNI + AC_MIL = 0.852852 ± 0.009653`; the remaining gap from fixed multi-token MIR-MIL is `0.016256` macro-AUC.
+- Evidence residual and gated multi-token both show that BRACS validation can be improved without producing a reliable paper-grade result. This strengthens the diagnosis that the main blocker is not just learning-rate search; it is validation/test transfer plus BRACS class-boundary robustness.
+- Under the current MIR-MIL identity, reaching `0.8529` by more tuning alone is possible but unlikely. A credible path likely requires a model-level upgrade that changes how ambiguous/fine-grained BRACS evidence is represented, while preserving official split and fixed UNI/R50 features.
