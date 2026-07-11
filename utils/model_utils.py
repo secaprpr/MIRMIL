@@ -432,6 +432,25 @@ def get_model_from_yaml(yaml_args):
             moment_token_dropout=_model_option(
                 yaml_args, "moment_token_dropout", 0.0
             ),
+            tail_token_weight=_model_option(
+                yaml_args, "tail_token_weight", 0.0
+            ),
+            tail_token_count=_model_option(
+                yaml_args, "tail_token_count", 4
+            ),
+            tail_token_dim=_model_option(yaml_args, "tail_token_dim", 64),
+            tail_token_readout_dim=_model_option(
+                yaml_args, "tail_token_readout_dim", 128
+            ),
+            tail_token_temperature=_model_option(
+                yaml_args, "tail_token_temperature", 1.0
+            ),
+            tail_token_topk_fraction=_model_option(
+                yaml_args, "tail_token_topk_fraction", 0.05
+            ),
+            tail_token_dropout=_model_option(
+                yaml_args, "tail_token_dropout", 0.0
+            ),
             class_moment_token_weight=_model_option(
                 yaml_args, "class_moment_token_weight", 0.0
             ),

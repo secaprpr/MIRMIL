@@ -783,6 +783,72 @@ class MomentMultiTokenAttentionReadout(nn.Module):
         return self.output(token_statistics.flatten().unsqueeze(0))
 
 
+class TailTokenAttentionReadout(nn.Module):
+    """Multi-token readout that preserves both average and tail evidence.
+
+    A soft attention mean captures distributed evidence, while a per-token
+    top-k mean captures rare high-response patches that can be diluted by
+    whole-bag averaging. The module is dataset-agnostic: tokens are shared
+    across classes, the top-k fraction is independent of dataset identity, and
+    the final linear readout works for arbitrary class counts.
+    """
+
+    def __init__(
+        self,
+        hidden_dim,
+        num_classes,
+        num_tokens,
+        token_dim,
+        readout_dim,
+        temperature,
+        topk_fraction,
+        dropout,
+    ):
+        super().__init__()
+        if num_tokens <= 0:
+            raise ValueError("num_tokens must be positive")
+        if token_dim <= 0 or readout_dim <= 0:
+            raise ValueError("token_dim and readout_dim must be positive")
+        if temperature <= 0:
+            raise ValueError("tail-token temperature must be positive")
+        if not 0 < topk_fraction <= 1:
+            raise ValueError("tail-token topk_fraction must be in (0, 1]")
+        self.num_tokens = int(num_tokens)
+        self.token_dim = int(token_dim)
+        self.readout_dim = int(readout_dim)
+        self.temperature = float(temperature)
+        self.topk_fraction = float(topk_fraction)
+        self.key = nn.Linear(hidden_dim, self.token_dim)
+        self.value = nn.Linear(hidden_dim, self.readout_dim)
+        self.tokens = nn.Parameter(
+            torch.empty(self.num_tokens, self.token_dim)
+        )
+        self.output = nn.Sequential(
+            nn.LayerNorm(2 * self.readout_dim * self.num_tokens),
+            nn.Dropout(dropout),
+            nn.Linear(2 * self.readout_dim * self.num_tokens, num_classes),
+        )
+        with torch.random.fork_rng(devices=[]):
+            nn.init.normal_(
+                self.tokens, std=1.0 / math.sqrt(self.token_dim)
+            )
+
+    def forward(self, encoded):
+        keys = self.key(encoded)
+        values = self.value(encoded)
+        scale = math.sqrt(self.token_dim) * self.temperature
+        scores = torch.einsum("nd,td->nt", keys, self.tokens) / scale
+        attention = torch.softmax(scores, dim=0)
+        token_mean = torch.einsum("nt,nv->tv", attention, values)
+        k = max(1, math.ceil(encoded.shape[0] * self.topk_fraction))
+        k = min(k, encoded.shape[0])
+        top_indices = torch.topk(scores, k=k, dim=0).indices
+        top_values = values[top_indices]
+        token_tail_mean = top_values.mean(dim=0)
+        token_statistics = torch.cat((token_mean, token_tail_mean), dim=1)
+        return self.output(token_statistics.flatten().unsqueeze(0))
+
+
 class LowRankClassMomentTokenReadout(nn.Module):
     """Class-conditioned readout over shared moment-token evidence.
 
@@ -1224,6 +1290,13 @@ class MIR_MIL(nn.Module):
         moment_token_readout_dim=128,
         moment_token_temperature=1.0,
         moment_token_dropout=0.0,
+        tail_token_weight=0.0,
+        tail_token_count=4,
+        tail_token_dim=64,
+        tail_token_readout_dim=128,
+        tail_token_temperature=1.0,
+        tail_token_topk_fraction=0.05,
+        tail_token_dropout=0.0,
         class_moment_token_weight=0.0,
         class_moment_token_count=4,
         class_moment_token_dim=64,
@@ -1385,6 +1458,29 @@ class MIR_MIL(nn.Module):
             raise ValueError("moment_token_temperature must be positive")
         if not 0 <= self.moment_token_dropout < 1:
             raise ValueError("moment_token_dropout must be in [0, 1)")
+        self.tail_token_weight = float(tail_token_weight)
+        self.tail_token_count = int(tail_token_count)
+        self.tail_token_dim = int(tail_token_dim)
+        self.tail_token_readout_dim = int(tail_token_readout_dim)
+        self.tail_token_temperature = float(tail_token_temperature)
+        self.tail_token_topk_fraction = float(tail_token_topk_fraction)
+        self.tail_token_dropout = float(tail_token_dropout)
+        if self.tail_token_weight < 0:
+            raise ValueError("tail_token_weight must be non-negative")
+        if self.tail_token_count <= 0:
+            raise ValueError("tail_token_count must be positive")
+        if self.tail_token_dim <= 0 or self.tail_token_readout_dim <= 0:
+            raise ValueError(
+                "tail_token_dim and tail_token_readout_dim must be positive"
+            )
+        if self.tail_token_temperature <= 0:
+            raise ValueError("tail_token_temperature must be positive")
+        if not 0 < self.tail_token_topk_fraction <= 1:
+            raise ValueError(
+                "tail_token_topk_fraction must be in (0, 1]"
+            )
+        if not 0 <= self.tail_token_dropout < 1:
+            raise ValueError("tail_token_dropout must be in [0, 1)")
         self.class_moment_token_weight = float(
             class_moment_token_weight
         )
@@ -1804,6 +1900,7 @@ class MIR_MIL(nn.Module):
         self.multi_token_head = None
         self.multi_token_gate = None
         self.moment_token_head = None
+        self.tail_token_head = None
         self.class_moment_token_head = None
         self.class_token_head = None
         self.latent_readout_head = None
@@ -1849,6 +1946,17 @@ class MIR_MIL(nn.Module):
                 readout_dim=self.moment_token_readout_dim,
                 temperature=self.moment_token_temperature,
                 dropout=self.moment_token_dropout,
+            )
+        if self.tail_token_weight > 0:
+            self.tail_token_head = TailTokenAttentionReadout(
+                hidden_dim=hidden_dim,
+                num_classes=self.num_classes,
+                num_tokens=self.tail_token_count,
+                token_dim=self.tail_token_dim,
+                readout_dim=self.tail_token_readout_dim,
+                temperature=self.tail_token_temperature,
+                topk_fraction=self.tail_token_topk_fraction,
+                dropout=self.tail_token_dropout,
             )
         if self.class_moment_token_weight > 0:
             self.class_moment_token_head = LowRankClassMomentTokenReadout(
@@ -2085,6 +2193,10 @@ class MIR_MIL(nn.Module):
         if self.moment_token_head is not None:
             logits = logits + (
                 self.moment_token_weight * self.moment_token_head(encoded)
+            )
+        if self.tail_token_head is not None:
+            logits = logits + (
+                self.tail_token_weight * self.tail_token_head(encoded)
             )
         if self.class_moment_token_head is not None:
             logits = logits + (

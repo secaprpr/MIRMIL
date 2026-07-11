@@ -107,6 +107,13 @@ Model:
     moment_token_readout_dim: 128
     moment_token_temperature: 1.0
     moment_token_dropout: 0.0
+    tail_token_weight: 0.0
+    tail_token_count: 4
+    tail_token_dim: 64
+    tail_token_readout_dim: 128
+    tail_token_temperature: 1.0
+    tail_token_topk_fraction: 0.05
+    tail_token_dropout: 0.0
     class_moment_token_weight: 0.0
     class_moment_token_count: 4
     class_moment_token_dim: 64

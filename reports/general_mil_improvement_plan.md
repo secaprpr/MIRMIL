@@ -754,3 +754,62 @@ Final decision:
 - Do not open BRACS official test.
 - The reason is not that class-moment damages PANDA; it does not. The reason is that it is weaker than the already accepted moment-token module on PANDA, while its BRACS validation advantage over moment-token is only about `0.001433` and has unstable decision metrics.
 - Current best accepted MIR-MIL extension remains moment-token w01: BRACS3 official test macro-AUC `0.842568 ± 0.009488`, PANDA seed2024 validation macro-AUC `0.958328`.
+
+## Twelfth candidate: tail-aware token readout
+
+Motivation:
+
+- BRACS3 underperformance appears partly related to fine-grained histology and operating-point instability: a slide-level ranking signal can be high while bacc/F1 remain weak.
+- For fine-grained MIL, a small number of highly discriminative patches may be more important than the global bag average.
+- Existing fixed multi-token and moment-token readouts summarize each token with soft attention moments; they can still dilute rare high-response evidence when the bag is large.
+- PANDA should not be harmed by this idea because high-grade or severe regions can also be sparse relative to all sampled patches. Therefore the hypothesis is a general WSI-MIL readout improvement, not a BRACS-specific rule.
+
+Proposed module:
+
+- Use shared attention tokens over encoded patches.
+- For each token, compute:
+  - the standard soft-attention weighted mean;
+  - a tail mean over the top-response patches for that token.
+- Concatenate mean and tail evidence and map them to residual logits.
+
+Why this is generic:
+
+- No dataset name, class name, split, class count, threshold, or BRACS-specific prior is encoded.
+- The top-k fraction is relative to bag size and applies to arbitrary WSI datasets.
+- The final classifier works for arbitrary `num_classes >= 2`.
+- The original MIR-MIL measure-potential path is preserved and the module is disabled by default.
+
+Implementation knobs, disabled by default:
+
+- `Model.tail_token_weight`: residual logit weight; default `0.0`.
+- `Model.tail_token_count`: shared token count; default `4`.
+- `Model.tail_token_dim`: attention key/query dimension; default `64`.
+- `Model.tail_token_readout_dim`: value/readout dimension; default `128`.
+- `Model.tail_token_temperature`: attention temperature; default `1.0`.
+- `Model.tail_token_topk_fraction`: fraction of patches used for tail mean; default `0.05`.
+- `Model.tail_token_dropout`: readout dropout; default `0.0`.
+
+Gate:
+
+- Run synthetic forward/backward and default-disabled smoke.
+- Run a one-epoch BRACS3 smoke at reduced budget.
+- Run BRACS3 official train/val only, UNI, budget4096, seeds `2024/2025/2026`.
+- If validation does not beat current accepted moment-token or is unstable, reject without PANDA/test.
+- If validation is competitive, run PANDA seed2024 sanity before any BRACS official test.
+
+Initial checks:
+
+- `py_compile` passed for `modules/MIR_MIL/mir_mil.py` and `utils/model_utils.py`.
+- Synthetic forward/backward passed for `num_classes=2/3/6`.
+- Default-disabled smoke passed: `tail_token_head is None` when `Model.tail_token_weight=0.0`.
+- BRACS3 one-epoch smoke at `max_instances=512` passed:
+  - val macro-AUC `0.723045`;
+  - acc `0.538462`;
+  - bacc `0.528571`;
+  - macro-F1 `0.515604`.
+- The smoke result is not a performance estimate; it only verifies implementation and training/logging integration.
+
+Next step:
+
+- Run BRACS3 official train/val only, UNI, budget4096, seeds `2024/2025/2026`.
+- Do not run PANDA sanity or BRACS official test unless the validation gate is passed.

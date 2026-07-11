@@ -1,0 +1,23 @@
+Model:
+  evidence_weight: 0.0
+  multi_token_weight: 0.0
+  moment_token_weight: 0.0
+  tail_token_weight: 0.1
+  tail_token_count: 4
+  tail_token_dim: 64
+  tail_token_readout_dim: 128
+  tail_token_temperature: 1.0
+  tail_token_topk_fraction: 0.05
+  tail_token_dropout: 0.0
+  class_moment_token_weight: 0.0
+  class_token_weight: 0.0
+  latent_readout_weight: 0.0
+  ordinal_head_weight: 0.0
+  cosine_head_weight: 0.0
+  subset_consistency_weight: 0.0
+  subset_consistency_supervised_weight: 0.0
+  potential_type: adaptive_multiscale
+  num_local_routes: 12
+  multiscale_gate_initial_bias: -0.5
+  multiscale_local_initial_scale: 0.5
+  prototype_regularization_weight: 0.01
