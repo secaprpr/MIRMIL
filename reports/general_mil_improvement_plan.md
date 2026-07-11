@@ -427,3 +427,40 @@ Interpretation:
 - The class-token readout improves validation bacc/macro-F1 over fixed multi-token, but the seed2025 drop is large and the main selection metric does not improve.
 - Because the BRACS validation macro-AUC gate is not clearly passed, PANDA sanity and BRACS official-test evaluation are not justified.
 - This result suggests that low-rank class-specific token combination helps decision-boundary metrics, but it does not yet solve the AUC/stability gap needed for a SOTA claim.
+
+## Sixth candidate: latent evidence transformer readout
+
+Motivation:
+
+- fixed multi-token readout is the best accepted generic extension so far, but its independent tokens do not communicate before classification.
+- low-rank class-token readout improves validation bacc/F1 but is unstable in macro-AUC, suggesting that token evidence can help class boundaries but needs a more stable shared interaction mechanism.
+- full patch self-attention over 4096 sampled instances would be too expensive and would change the method identity more aggressively.
+
+The next candidate uses a small bank of shared latent evidence tokens. Each latent token cross-attends to encoded patches exactly like a multi-token readout, so complexity is `O(NK)` rather than `O(N^2)`. The resulting latent evidence tokens then pass through a small transformer block over the `K` latent tokens only, allowing evidence modes to interact before classification. This is a Perceiver-style MIL readout, but kept as a residual branch on top of MIR-MIL's existing measure state.
+
+Why this is generic:
+
+- no dataset name, split, class semantics, or fixed class count is encoded;
+- it works for arbitrary `num_classes >= 2`;
+- it uses only frozen-feature MIR-MIL encoded patch representations;
+- it keeps PANDA's distributional measure-state path intact;
+- it can help BRACS-like tasks because sparse/fine-grained evidence modes can interact before the final prediction;
+- it can help PANDA because multiple grade-related tissue modes can be represented jointly rather than independently.
+
+Implementation knobs, all disabled by default:
+
+- `Model.latent_readout_weight`: residual logit weight; default `0.0`.
+- `Model.latent_readout_count`: number of latent evidence tokens; default `4`.
+- `Model.latent_readout_dim`: latent/key/value dimension; default `128`.
+- `Model.latent_readout_heads`: self-attention heads among latent tokens; default `4`.
+- `Model.latent_readout_layers`: number of latent transformer blocks; default `1`.
+- `Model.latent_readout_mlp_ratio`: latent FFN expansion ratio; default `2.0`.
+- `Model.latent_readout_temperature`: patch cross-attention temperature; default `1.0`.
+- `Model.latent_readout_dropout`: latent transformer/classifier dropout; default `0.0`.
+
+Validation rule:
+
+- First verify synthetic forward/backward for multiple class counts and a one-epoch BRACS3 smoke.
+- Then run BRACS3 official train/val only, seeds `2024/2025/2026`, 4096-instance budget.
+- If BRACS validation macro-AUC clearly exceeds fixed multi-token and is not unstable, run PANDA seed2024 sanity.
+- Only if PANDA does not materially drop should a single frozen BRACS official-test evaluation be considered.

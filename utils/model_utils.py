@@ -435,6 +435,30 @@ def get_model_from_yaml(yaml_args):
             class_token_dropout=_model_option(
                 yaml_args, "class_token_dropout", 0.0
             ),
+            latent_readout_weight=_model_option(
+                yaml_args, "latent_readout_weight", 0.0
+            ),
+            latent_readout_count=_model_option(
+                yaml_args, "latent_readout_count", 4
+            ),
+            latent_readout_dim=_model_option(
+                yaml_args, "latent_readout_dim", 128
+            ),
+            latent_readout_heads=_model_option(
+                yaml_args, "latent_readout_heads", 4
+            ),
+            latent_readout_layers=_model_option(
+                yaml_args, "latent_readout_layers", 1
+            ),
+            latent_readout_mlp_ratio=_model_option(
+                yaml_args, "latent_readout_mlp_ratio", 2.0
+            ),
+            latent_readout_temperature=_model_option(
+                yaml_args, "latent_readout_temperature", 1.0
+            ),
+            latent_readout_dropout=_model_option(
+                yaml_args, "latent_readout_dropout", 0.0
+            ),
             subset_consistency_weight=_model_option(
                 yaml_args, "subset_consistency_weight", 0.0
             ),

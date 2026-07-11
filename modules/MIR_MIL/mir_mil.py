@@ -798,6 +798,107 @@ class LowRankClassTokenReadout(nn.Module):
         return logits.unsqueeze(0)
 
 
+class LatentEvidenceTransformerReadout(nn.Module):
+    """Perceiver-style latent evidence readout over encoded patches.
+
+    Latent tokens cross-attend to patches in O(NK), then interact through
+    self-attention over only K latent tokens before classification. This
+    keeps the branch practical for large WSI bags while allowing retrieved
+    evidence modes to condition each other.
+    """
+
+    def __init__(
+        self,
+        hidden_dim,
+        num_classes,
+        num_latents,
+        latent_dim,
+        num_heads,
+        num_layers,
+        mlp_ratio,
+        temperature,
+        dropout,
+    ):
+        super().__init__()
+        if num_latents <= 0:
+            raise ValueError("num_latents must be positive")
+        if latent_dim <= 0:
+            raise ValueError("latent_dim must be positive")
+        if num_heads <= 0 or latent_dim % num_heads:
+            raise ValueError(
+                "num_heads must be positive and divide latent_dim"
+            )
+        if num_layers < 0:
+            raise ValueError("num_layers must be non-negative")
+        if mlp_ratio <= 0:
+            raise ValueError("mlp_ratio must be positive")
+        if temperature <= 0:
+            raise ValueError("latent readout temperature must be positive")
+        self.num_latents = int(num_latents)
+        self.latent_dim = int(latent_dim)
+        self.temperature = float(temperature)
+        self.key = nn.Linear(hidden_dim, self.latent_dim)
+        self.value = nn.Linear(hidden_dim, self.latent_dim)
+        self.latents = nn.Parameter(
+            torch.empty(self.num_latents, self.latent_dim)
+        )
+        self.blocks = nn.ModuleList()
+        ffn_dim = max(int(round(self.latent_dim * mlp_ratio)), 1)
+        for _ in range(int(num_layers)):
+            self.blocks.append(
+                nn.ModuleDict(
+                    {
+                        "norm1": nn.LayerNorm(self.latent_dim),
+                        "attn": nn.MultiheadAttention(
+                            embed_dim=self.latent_dim,
+                            num_heads=int(num_heads),
+                            dropout=dropout,
+                            batch_first=True,
+                        ),
+                        "norm2": nn.LayerNorm(self.latent_dim),
+                        "ffn": nn.Sequential(
+                            nn.Linear(self.latent_dim, ffn_dim),
+                            nn.GELU(),
+                            nn.Dropout(dropout),
+                            nn.Linear(ffn_dim, self.latent_dim),
+                            nn.Dropout(dropout),
+                        ),
+                    }
+                )
+            )
+        self.output = nn.Sequential(
+            nn.LayerNorm(self.latent_dim * self.num_latents),
+            nn.Dropout(dropout),
+            nn.Linear(self.latent_dim * self.num_latents, num_classes),
+        )
+        with torch.random.fork_rng(devices=[]):
+            nn.init.normal_(
+                self.latents, std=1.0 / math.sqrt(self.latent_dim)
+            )
+
+    def forward(self, encoded):
+        keys = self.key(encoded)
+        values = self.value(encoded)
+        scale = math.sqrt(self.latent_dim) * self.temperature
+        scores = torch.einsum("nd,kd->nk", keys, self.latents) / scale
+        attention = torch.softmax(scores, dim=0)
+        latent_values = torch.einsum("nk,nd->kd", attention, values)
+        latent_values = latent_values.unsqueeze(0)
+        for block in self.blocks:
+            normalized = block["norm1"](latent_values)
+            attended, _ = block["attn"](
+                normalized,
+                normalized,
+                normalized,
+                need_weights=False,
+            )
+            latent_values = latent_values + attended
+            latent_values = latent_values + block["ffn"](
+                block["norm2"](latent_values)
+            )
+        return self.output(latent_values.flatten(start_dim=1))
+
+
 class MIR_MIL(nn.Module):
     """Neural measure potential with closed-form measure influence response."""
 
@@ -867,6 +968,14 @@ class MIR_MIL(nn.Module):
         class_token_rank_dim=32,
         class_token_temperature=1.0,
         class_token_dropout=0.0,
+        latent_readout_weight=0.0,
+        latent_readout_count=4,
+        latent_readout_dim=128,
+        latent_readout_heads=4,
+        latent_readout_layers=1,
+        latent_readout_mlp_ratio=2.0,
+        latent_readout_temperature=1.0,
+        latent_readout_dropout=0.0,
         subset_consistency_weight=0.0,
         subset_consistency_supervised_weight=0.0,
         subset_consistency_fraction=0.75,
@@ -999,6 +1108,40 @@ class MIR_MIL(nn.Module):
             raise ValueError("class_token_temperature must be positive")
         if not 0 <= self.class_token_dropout < 1:
             raise ValueError("class_token_dropout must be in [0, 1)")
+        self.latent_readout_weight = float(latent_readout_weight)
+        self.latent_readout_count = int(latent_readout_count)
+        self.latent_readout_dim = int(latent_readout_dim)
+        self.latent_readout_heads = int(latent_readout_heads)
+        self.latent_readout_layers = int(latent_readout_layers)
+        self.latent_readout_mlp_ratio = float(latent_readout_mlp_ratio)
+        self.latent_readout_temperature = float(
+            latent_readout_temperature
+        )
+        self.latent_readout_dropout = float(latent_readout_dropout)
+        if self.latent_readout_weight < 0:
+            raise ValueError("latent_readout_weight must be non-negative")
+        if self.latent_readout_count <= 0:
+            raise ValueError("latent_readout_count must be positive")
+        if self.latent_readout_dim <= 0:
+            raise ValueError("latent_readout_dim must be positive")
+        if (
+            self.latent_readout_heads <= 0
+            or self.latent_readout_dim % self.latent_readout_heads
+        ):
+            raise ValueError(
+                "latent_readout_heads must be positive and divide "
+                "latent_readout_dim"
+            )
+        if self.latent_readout_layers < 0:
+            raise ValueError("latent_readout_layers must be non-negative")
+        if self.latent_readout_mlp_ratio <= 0:
+            raise ValueError("latent_readout_mlp_ratio must be positive")
+        if self.latent_readout_temperature <= 0:
+            raise ValueError(
+                "latent_readout_temperature must be positive"
+            )
+        if not 0 <= self.latent_readout_dropout < 1:
+            raise ValueError("latent_readout_dropout must be in [0, 1)")
         self.subset_consistency_weight = float(subset_consistency_weight)
         self.subset_consistency_supervised_weight = float(
             subset_consistency_supervised_weight
@@ -1292,6 +1435,7 @@ class MIR_MIL(nn.Module):
         self.multi_token_head = None
         self.multi_token_gate = None
         self.class_token_head = None
+        self.latent_readout_head = None
         if self.multi_token_weight > 0:
             self.multi_token_head = MultiTokenAttentionReadout(
                 hidden_dim=hidden_dim,
@@ -1322,6 +1466,18 @@ class MIR_MIL(nn.Module):
                 rank_dim=self.class_token_rank_dim,
                 temperature=self.class_token_temperature,
                 dropout=self.class_token_dropout,
+            )
+        if self.latent_readout_weight > 0:
+            self.latent_readout_head = LatentEvidenceTransformerReadout(
+                hidden_dim=hidden_dim,
+                num_classes=self.num_classes,
+                num_latents=self.latent_readout_count,
+                latent_dim=self.latent_readout_dim,
+                num_heads=self.latent_readout_heads,
+                num_layers=self.latent_readout_layers,
+                mlp_ratio=self.latent_readout_mlp_ratio,
+                temperature=self.latent_readout_temperature,
+                dropout=self.latent_readout_dropout,
             )
         self.apply(self._initialize)
         if self.multi_token_gate is not None:
@@ -1512,6 +1668,11 @@ class MIR_MIL(nn.Module):
         if self.class_token_head is not None:
             logits = logits + self.class_token_weight * self.class_token_head(
                 encoded
+            )
+        if self.latent_readout_head is not None:
+            logits = logits + (
+                self.latent_readout_weight
+                * self.latent_readout_head(encoded)
             )
         return logits
 
