@@ -124,7 +124,45 @@ HDF5_USE_FILE_LOCKING=FALSE mamba run -n mirmil python create_h5_patches.py \
   --multiprocess_slide 1
 ```
 
-Current status: running.
+Final patch-coordinate audit on 2026-07-14:
+
+- process-list rows: `926`
+- standard processed/already-existing slides: `923`
+- sparse fallback slides: `3`
+- valid patch H5 files: `926 / 926`
+- corrupted patch H5 files: `0`
+- total patch coordinates: `51,359,422`
+- maximum patch coordinates in one slide: `390,656`
+
+Three very large single-level SVS files failed standard CLAM segmentation because
+the segmentation path refused to build a level-0 mask for slides whose
+dimensions exceed the safety threshold. They were recovered with the repository
+fallback coordinate script in sparse tile mode:
+
+```bash
+mamba run -n mirmil python experiments/fallback_wsi_thumbnail_patches.py \
+  --method sparse \
+  --sample-stride 4096 \
+  --sample-size 256 \
+  --wsi <failed_single_level_svs> \
+  --output-h5 /data15/data15_5/fanhao/datasets/TCGA-RCC/patches_level0_256/patches/<slide_id>.h5 \
+  --mask-output /data15/data15_5/fanhao/datasets/TCGA-RCC/patches_level0_256/masks/<slide_id>_sparse_fallback_mask.png \
+  --patch-size 256 \
+  --step-size 256 \
+  --overwrite
+```
+
+Recovered fallback slides:
+
+| slide_id | coords | fallback_method |
+| --- | ---: | --- |
+| TCGA-5P-A9KA-01Z-00-DX1.6F4914E0-AB5D-4D5F-8BF6-FB862AA63A87 | 355,072 | sparse_tile_tissue_mask |
+| TCGA-5P-A9KC-01Z-00-DX1.F3D67C35-111C-4EE6-A5F7-05CF8D01E783 | 390,656 | sparse_tile_tissue_mask |
+| TCGA-UZ-A9PQ-01Z-00-DX1.C2CB0E94-2548-4399-BCAB-E4D556D533EF | 57,088 | sparse_tile_tissue_mask |
+
+The fallback only writes CLAM-compatible patch coordinate H5 files from existing
+WSIs. It does not extract features, fine-tune encoders, alter R50/UNI, or change
+the downstream MIL architecture.
 
 ## Feature extraction plan
 
@@ -170,4 +208,3 @@ mamba run -n mirmil python experiments/prepare_tcga_rcc_pipeline.py \
   --seed 2024 \
   --require-features
 ```
-
