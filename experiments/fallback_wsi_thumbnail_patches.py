@@ -176,7 +176,11 @@ def write_h5(path, coords, patch_size, step_size, source_wsi, scale, fallback_me
     if tmp_path.exists():
         tmp_path.unlink()
     with h5py.File(tmp_path, "w") as handle:
-        handle.create_dataset("coords", data=coords, dtype="int64")
+        coords_dataset = handle.create_dataset("coords", data=coords, dtype="int64")
+        coords_dataset.attrs["patch_level"] = int(0)
+        coords_dataset.attrs["patch_size"] = int(patch_size)
+        coords_dataset.attrs["real_patch_size"] = int(patch_size)
+        coords_dataset.attrs["step_size"] = int(step_size)
         handle.attrs["patch_size"] = int(patch_size)
         handle.attrs["step_size"] = int(step_size)
         handle.attrs["patch_level"] = 0
