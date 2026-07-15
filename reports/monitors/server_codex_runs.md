@@ -1135,3 +1135,17 @@
   - R50 benchmark controller remains running on GPU6; active child remains `RRT_MIL`, seed `2024`.
   - UNI benchmark controller remains running on GPU0; active child remains `AC_MIL`, seed `2024`.
   - No additional `Best_Log` result was present beyond the 04:15 checkpoint.
+
+## 2026-07-16 04:17 CST
+
+- Task: active long-run status check.
+- COADREAD GDC WSI download remains active.
+  - PID/session leader: `4011479`; child Python PID: `4011484`.
+  - Current raw size: about `1.8G`.
+  - Size-matched complete files: `0 / 624`; partial files: `4`; missing files: `620`.
+  - Byte progress estimate: `1.73 GiB / 336.99 GiB`.
+  - The same four partial downloads continue to grow; no completion/status file exists yet.
+- NSCLC benchmark status:
+  - R50 benchmark controller remains running on GPU6; active child remains `RRT_MIL`, seed `2024`.
+  - UNI benchmark controller remains running on GPU0; active child advanced to `MO_MIL`, seed `2024`.
+  - Newly observed UNI `AC_MIL` result: best epoch `8`, val macro AUC `0.9842358122310079`, test acc `0.9292452830188679`, test bacc `0.9282407407407407`, test macro AUC `0.991898148148148`.
