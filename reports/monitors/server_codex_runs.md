@@ -1399,3 +1399,21 @@
     - Newly observed MT-config result for seed `2024`: best epoch `5`, val macro AUC `0.9885897307576819`, test acc `0.9528301886792453`, test bacc `0.9524572649572649`, test macro AUC `0.988425925925926`.
     - Note: the result directory/model label still appears as `MIR_MIL` even for the MT config launch; interpret this row by controller/config context (`configs/releases/MIR_MIL_MT_V1.yaml`), not the printed `Model Info`.
     - Controller advanced to `MIR_MIL`, seed `2025`; log confirms it reached at least epoch `2`.
+
+## 2026-07-16 04:37 CST
+
+- Task: active long-run status check.
+- COADREAD GDC WSI download remains active and still making byte-level progress.
+  - PID/session leader: `4011479`; child Python PID: `4011484`.
+  - Current raw size: about `4.1G`.
+  - Size-matched complete files: `2 / 624`; partial files: `4`; missing files: `618`.
+  - Byte progress estimate: `4.08 GiB / 336.99 GiB`.
+  - No new complete file since the 04:36 check; partial file sizes increased.
+- NSCLC benchmark status:
+  - R50 benchmark controller remains running on GPU6.
+    - Active model: `WIKG_MIL`, seed `2024`.
+    - Log shows training reached epoch `24`; no R50 `WIKG_MIL` `Best_Log` yet.
+  - Corrected UNI remaining controller remains running on GPU1.
+    - Active model: `MIR_MIL`, seed `2025`.
+    - Log shows training reached epoch `6`; no seed `2025` `Best_Log` yet.
+- Decision: no recovery action needed at this checkpoint; continue polling.
