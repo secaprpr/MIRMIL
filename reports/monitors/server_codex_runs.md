@@ -882,3 +882,25 @@
   - The failed initial MIR_MIL_MT_V1 launch `blca_uni_os_mirmt_seed2024_setsid_20260716_034634` remains recorded as `exit_code=1`; corrected run `blca_uni_os_mirmt_seed2024_setsid_20260716_034709` is still active.
   - No BLCA UNI OS final status files were present yet for the valid runs.
 - Scheduling decision: did not launch BLCA UNI OS MEAN_MIL/MAX_MIL at this checkpoint because existing BLCA UNI OS jobs plus NSCLC R50/UNI benchmark jobs are still active; wait for a BLCA or NSCLC GPU/CPU slot to finish before adding more prognosis runs.
+
+## 2026-07-16 03:52 CST
+
+- Task: BLCA UNI OS prognosis status update
+- Completed: BLCA UNI OS + MIR_MIL_MT_V1 corrected run, status `exit_code=0`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/blca_uni_os_mirmt_seed2024_setsid_20260716_034709.log`
+  - Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/blca_uni_os_mirmt_seed2024_setsid_20260716_034709.status`
+  - Split: `/data15/data15_5/fanhao/datasets/TCGA-BLCA/metadata/TCGA_BLCA_PROGNOSIS_UNI_OS_split.csv`
+  - Result from controller log: loaded `Best_EPOCH_2.pth`; final test c-index `0.6372180451127819`, CI `[0.5394515504312384, 0.7455460091838602]`, event_count `35`, sample_count `77`.
+- Still running:
+  - BLCA UNI OS + RRT_MIL, GPU `1`, PID/session `3922282`; latest observed epoch `12`, best observed validation c-index `0.5983606557377049`.
+  - BLCA UNI OS + MIR_MIL, GPU `2`, PID/session `3922284`; latest observed epoch `11`, best observed validation c-index `0.5542244640605296`.
+  - BLCA UNI OS + AB_MIL, GPU `5`, PID/session `3931478`; latest observed epoch `9`, best observed validation c-index `0.5372005044136192`.
+  - NSCLC R50 benchmark, current active child `DS_MIL`, seed `2024`.
+  - NSCLC UNI benchmark, current active child `RRT_MIL`, seed `2024`.
+- Launched: BLCA UNI OS + MEAN_MIL, seed `2024`, after MIR_MIL_MT_V1 released GPU `3`.
+  - PID/session leader: `3958001`
+  - GPU: `3` via `CUDA_VISIBLE_DEVICES=3`
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/blca_uni_os_mean_seed2024_setsid_20260716_035214.log`
+  - Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/blca_uni_os_mean_seed2024_setsid_20260716_035214.status`
+  - Command core: `train_mil.py --yaml_path configs/SURVIVAL_MIL.yaml --options Dataset.DATASET_NAME=TCGA_BLCA_UNI_OS Dataset.dataset_csv_path=/data15/data15_5/fanhao/datasets/TCGA-BLCA/metadata/TCGA_BLCA_PROGNOSIS_UNI_OS_split.csv Model.backbone=MEAN_MIL Model.backbone_config=configs/MEAN_MIL.yaml Model.in_dim=1024 Model.max_instances=4096 Model.survival.patient_level=true`
+  - Verification: initialized, loaded survival cutpoints `[7.05, 13.34, 22.32]`, and entered `Train_Val_Test`.
