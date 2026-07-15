@@ -1253,3 +1253,19 @@
   - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_uni_remaining_gpu1_20260716_042417.log`.
   - Status: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_uni_remaining_gpu1_20260716_042417.status`.
   - Verified the log started correctly and printed the expected benchmark manifest for `TCGA_NSCLC_LUAD_LUSC_UNI`.
+
+## 2026-07-16 04:25 CST
+
+- Task: active long-run status check.
+- COADREAD GDC WSI download remains active.
+  - PID/session leader: `4011479`; child Python PID: `4011484`.
+  - Current raw size: about `2.7G`.
+  - Size-matched complete files: `1 / 624`; partial files: `3`; missing files: `620`.
+  - Byte progress estimate: `2.67 GiB / 336.99 GiB`.
+  - First completed file: `TCGA-3L-AA1B-01Z-00-DX2.17CE3683-F4B1-4978-A281-8F620C4D77B4.svs`.
+- NSCLC benchmark status:
+  - R50 benchmark controller remains running on GPU6; active child remains `WIKG_MIL`, seed `2024`.
+  - Corrected UNI remaining controller remains running on GPU1.
+    - PID/session leader: `4080568`; child controller PID: `4080570`.
+    - Active model: `MIR_MIL`, seed `2024`.
+    - Log confirms training entered the loop and reached at least epoch `2`; no `Best_Log` result yet for the resumed MIR models.
