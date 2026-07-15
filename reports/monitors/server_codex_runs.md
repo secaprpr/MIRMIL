@@ -293,3 +293,15 @@
 - Still running: KIRC UNI OS + RRT_MIL, PID/session `3670893`; reached epoch 8; recent val c-index `0.7736013986013986`.
 - Still running: KIRC R50 PFS + RRT_MIL, PID/session `3678267`; reached epoch 4; recent val c-index `0.6476377952755905`.
 - Still running: KIRC UNI PFS + MIR_MIL, PID/session `3684131`; reached epoch 1; recent val c-index `0.6309055118110236`.
+
+## 2026-07-16 02:40 CST
+
+- Task: Handoff continuation status check
+- NSCLC: download PID `3566032`, monitor PID `3651599`, and auto-start PID `3669077` still alive. Current status remains `patches=1046 files, 772M`; `r50=893 files, 41G`; `uni=1040 files, 48G`; no download `] done` marker found, so NSCLC benchmarks must still wait.
+- Running prognosis jobs:
+  - KIRC R50 OS + RRT_MIL, PID/session `3638325`, reached epoch 19; recent val c-index `0.6407342657342657`.
+  - KIRC R50 OS + MIR_MIL_MT_V1, PID/session `3654883`, reached epoch 16; recent val c-index `0.5743006993006993`.
+  - KIRC UNI OS + RRT_MIL, PID/session `3670893`, reached epoch 10; recent val c-index `0.708916083916084`.
+  - KIRC R50 PFS + RRT_MIL, PID/session `3678267`, reached epoch 6; recent val c-index `0.6269685039370079`.
+  - KIRC UNI PFS + MIR_MIL, PID/session `3684131`, reached epoch 3; recent val c-index `0.735236220472441`.
+- GPU decision: GPUs `0/1/2/3/5` are occupied by current prognosis jobs; GPUs `4/6/7` appear occupied by other long-running workloads. No new training task started in this check.
