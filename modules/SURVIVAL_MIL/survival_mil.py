@@ -60,7 +60,10 @@ class SurvivalMILWrapper(nn.Module):
         try:
             return self.backbone(x, return_WSI_feature=True)
         except TypeError:
-            return self.backbone(x)
+            try:
+                return self.backbone(x, return_state=True)
+            except TypeError:
+                return self.backbone(x)
 
     def _select_representation(self, output):
         if isinstance(output, dict):
@@ -68,10 +71,12 @@ class SurvivalMILWrapper(nn.Module):
                 return output[self.representation]
             if self.representation == "auto" and "WSI_feature" in output:
                 return output["WSI_feature"]
+            if self.representation == "auto" and "state" in output:
+                return output["state"]
             if self.require_wsi_feature:
                 raise KeyError(
-                    "SurvivalMILWrapper requires a backbone WSI_feature for "
-                    "comparable survival heads. Set "
+                    "SurvivalMILWrapper requires a backbone WSI_feature or "
+                    "state representation for comparable survival heads. Set "
                     "Model.survival.require_wsi_feature=false only for "
                     "diagnostic ablations."
                 )

@@ -76,8 +76,12 @@ class SurvivalWSIDataset(Dataset):
             ).tolist()
 
     def _read_records(self, time_column, event_column, label_source, patient_column):
+        slide_path_column = f"{self.group}_slide_path"
+        feature_path_column = f"{self.group}_feature_path"
+        if slide_path_column not in self.dataset_df and feature_path_column in self.dataset_df:
+            slide_path_column = feature_path_column
         columns = {
-            "slide_path": f"{self.group}_slide_path",
+            "slide_path": slide_path_column,
             "time": f"{self.group}_{time_column}",
             "event": f"{self.group}_{event_column}",
         }
