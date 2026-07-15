@@ -515,3 +515,28 @@
 - Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_uni_gpu0_manual_20260716_030702.status`
 - Split: `/data15/data15_5/fanhao/datasets/TCGA-NSCLC/metadata/TCGA_NSCLC_LUAD_LUSC_UNI_split.csv`
 - Verification: benchmark entered `AB_MIL` seed `2024` training; no immediate failure.
+
+## 2026-07-16 03:11 CST
+
+- Task: NSCLC benchmark progress check
+- R50 benchmark remains running.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_r50_gpu6_manual_20260716_030702.log`
+  - Progress: `AB_MIL`, seed `2024`, completed epoch `1`.
+  - Epoch 1 validation: acc `0.605`, bacc `0.6141026924231808`, macro_auc `0.7419677709938945`.
+  - Epoch 1 test snapshot: acc `0.6698113207547169`, bacc `0.6643518518518519`, macro_auc `0.7886396011396012`.
+- UNI benchmark remains running.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_uni_gpu0_manual_20260716_030702.log`
+  - Progress: `AB_MIL`, seed `2024`, completed epoch `1`.
+  - Epoch 1 validation: acc `0.88`, bacc `0.8825943349014113`, macro_auc `0.9611650485436893`.
+  - Epoch 1 test snapshot: acc `0.9009433962264151`, bacc `0.899394586894587`, macro_auc `0.9824608262108262`.
+- Decision: keep both NSCLC benchmark controllers running; no duplicate NSCLC job launched.
+
+- Task: COADREAD feature/WSI availability recheck
+- Dataset-root search result: still no COADREAD `.pt`, `.h5`, `.svs`, `.tif`, `.mrxs`, or `.ndpi` files found under `/data15/data15_5/fanhao/datasets/TCGA-COADREAD`.
+- Alias directory search under `/data15/data15_5/fanhao/datasets` found only `/data15/data15_5/fanhao/datasets/TCGA-COADREAD` metadata and no alternate COAD/READ feature directory.
+- Current COADREAD dataset size remains metadata-only, about `25M`.
+- Consequence: COADREAD prognosis split generation/training is still blocked by missing feature or WSI paths. Do not start COADREAD prognosis until actual feature/WSI location is supplied or generated.
+
+- Task: KIRC prognosis concurrency decision
+- Current running KIRC jobs: R50 OS + AB_MIL, R50 PFS + AB_MIL, UNI OS + AB_MIL, UNI PFS + AB_MIL, R50 OS + MEAN_MIL.
+- Decision: do not launch additional KIRC MEAN/MAX jobs in this checkpoint because two NSCLC benchmark controllers and five KIRC prognosis controllers are already active. Add the next KIRC MEAN/MAX jobs when one or more current controllers finish.
