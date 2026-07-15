@@ -1547,3 +1547,22 @@
     - Log shows training reached epoch `11`; no seed `2026` MT `Best_Log` yet.
     - Note: MT launch still prints `Model Info:MIR_MIL`; interpret MT rows by controller/config context (`configs/releases/MIR_MIL_MT_V1.yaml`).
 - Decision: no recovery action needed at this checkpoint; continue polling active long tasks.
+
+## 2026-07-16 04:55 CST
+
+- Task: active long-run status check.
+- COADREAD GDC WSI download remains active and continues byte-level progress.
+  - PID/session leader: `4011479`; child Python PID: `4011484`.
+  - Size-matched complete files: `4 / 624`; partial files: `4`; missing files: `616`.
+  - Byte progress estimate: `6.15 GiB / 336.99 GiB`.
+  - Newly complete file:
+    - `TCGA-4N-A93T-01Z-00-DX2.875E7F95-A6D4-4BEB-A331-F9D8080898C2.svs`
+- NSCLC benchmark status:
+  - Corrected UNI remaining controller finished successfully.
+    - Status: `nsclc_uni_remaining_gpu1_20260716_042417.status` reports `exit_code=0`.
+    - Newly observed UNI MT-config seed `2026` result: best epoch `11`, val macro AUC `0.9794815333800421`, test acc `0.9622641509433962`, test bacc `0.9622507122507122`, test macro AUC `0.9866452991452991`.
+    - This completes the corrected UNI remaining MIRMIL/MIRMIL-MT seed set launched after the original UNI controller failed at coordinate-dependent `MAMBA2D_MIL`.
+  - R50 benchmark controller remains running on GPU6.
+    - Active model: `AC_MIL`, seed `2024`.
+    - Log shows training reached epoch `23`; no R50 `AC_MIL` `Best_Log` yet.
+- Decision: no UNI recovery needed; continue monitoring R50 controller and COADREAD download.
