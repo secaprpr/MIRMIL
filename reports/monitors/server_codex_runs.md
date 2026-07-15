@@ -630,3 +630,23 @@
 - Task: KIRC prognosis status checkpoint
 - Still running: KIRC R50 OS + MEAN_MIL, KIRC R50 PFS + MEAN_MIL, KIRC UNI OS + MEAN_MIL, KIRC UNI PFS + MEAN_MIL.
 - No new KIRC job launched in this checkpoint because the next MEAN tasks are already active and MAX jobs should wait for another controller to finish to avoid overloading concurrent CPU/I/O.
+
+## 2026-07-16 03:29 CST
+
+- Task: KIRC prognosis status update
+- Completed: KIRC R50 OS + MEAN_MIL, status `exit_code=0`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_r50_os_mean_seed2024_setsid_20260716_030040.log`
+  - Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_r50_os_mean_seed2024_setsid_20260716_030040.status`
+  - Split: `/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_R50_OS_split.csv`
+  - Result from controller log: loaded `Best_EPOCH_29.pth`; final test c-index `0.6042677012609118`, CI `[0.4957872743721191, 0.7066098365438]`, event_count `25`, sample_count `74`.
+- Still running: NSCLC R50 benchmark, NSCLC UNI benchmark, KIRC R50 PFS + MEAN_MIL, KIRC UNI OS + MEAN_MIL, KIRC UNI PFS + MEAN_MIL.
+- COADREAD status remains metadata-only: `/data15/data15_5/fanhao/datasets/TCGA-COADREAD/metadata` is about `25M`; no `.pt`, `.h5`, or WSI files found under the dataset directory.
+
+- Task: KIRC R50 OS prognosis, MAX_MIL backbone, seed 2024, `setsid`
+- PID/session leader: `3839797`
+- GPU: `5` via `CUDA_VISIBLE_DEVICES=5`
+- Command: `train_mil.py --yaml_path configs/SURVIVAL_MIL.yaml --options General.seed=2024 General.num_epochs=30 General.best_model_metric=c_index Dataset.DATASET_NAME=TCGA_KIRC_R50_OS Dataset.dataset_csv_path=/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_R50_OS_split.csv Model.backbone=MAX_MIL Model.backbone_config=configs/MAX_MIL.yaml Model.in_dim=1024 Model.max_instances=4096 Model.survival.patient_level=true`
+- Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_r50_os_max_seed2024_setsid_20260716_032906.log`
+- Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_r50_os_max_seed2024_setsid_20260716_032906.status`
+- Split: `/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_R50_OS_split.csv`
+- Verification: training initialized, survival cutpoints loaded.
