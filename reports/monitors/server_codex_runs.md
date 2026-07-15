@@ -2057,3 +2057,31 @@
     - `TCGA-A6-2686-01Z-00-DX1.0540a027-2a0c-46c7-9af0-7b8672631de7.svs`: `360710144 / 497633503` bytes.
     - `TCGA-A6-3807-01Z-00-DX1.c3de2064-4f8d-4786-9ff9-2e0f44293717.svs`: `310378496 / 368808405` bytes.
   - Status file still absent, so do not start COADREAD patching or feature extraction yet.
+
+## 2026-07-16 06:33 CST
+
+- Task: active NSCLC/COADREAD checkpoint.
+- Git synchronization.
+  - Previously pending local commit `1a97384` was pushed successfully to `origin/main`.
+  - Current tracked branch status after push: `main...origin/main`; only unrelated untracked user files remain.
+- NSCLC missing-seed progress.
+  - UNI `AB_MIL` seed `2025` completed and produced a new Best_Log.
+    - Run directory: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/TCGA_NSCLC_LUAD_LUSC_UNI/AB_MIL/time_2026-07-16-06-26_TCGA_NSCLC_LUAD_LUSC_UNI_AB_MIL_seed_2025`.
+    - Val macro AUC: `0.9863877489740767`.
+    - Test acc: `0.9575471698113207`.
+    - Test macro AUC: `0.9894052706552706`.
+  - R50 non-MAMBA baselines seed `2025/2026` remain active on GPU `2`; latest observed active run: `AB_MIL` seed `2025`, epoch `16 / 30`.
+  - UNI non-MAMBA baselines seed `2025/2026` remain active on GPU `3`; latest observed active run: `CLAM_SB_MIL` seed `2025`, epoch `5 / 30`.
+  - R50 MAMBA2D seed `2024` remains active on GPU `0`; latest observed epoch `5 / 30`.
+  - UNI MAMBA2D seed `2024` remains active on GPU `1`; latest observed epoch `5 / 30`.
+  - R50 MAMBA2D seed `2025/2026` remains active on GPU `5`; seed `2025` epoch `1` completed.
+  - UNI MAMBA2D seed `2025/2026` remains active on GPU `6`; seed `2025` epoch `1` completed.
+  - Current Best_Log count: R50 `15`; UNI `16`.
+- COADREAD GDC WSI download remains active.
+  - PID/session leader: `4011479`; child Python PID: `4011484`.
+  - Size-matched complete files: `23 / 624`; partial files: `4`; missing files: `597`.
+  - Byte progress estimate: `17.46 GiB / 336.99 GiB`; raw directory size: `18G`.
+  - Newly complete files since the previous checkpoint include:
+    - `TCGA-A6-2685-01Z-00-DX1.c69e23f4-34c9-41ff-a037-44bf7bbf33cd.svs`
+    - `TCGA-A6-3807-01Z-00-DX1.c3de2064-4f8d-4786-9ff9-2e0f44293717.svs`
+  - Status file still absent, so do not start COADREAD patching or feature extraction yet.
