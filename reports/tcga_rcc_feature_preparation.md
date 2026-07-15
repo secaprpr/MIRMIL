@@ -196,6 +196,30 @@ mamba run -n mirmil python experiments/extract_panda_features.py \
   --num-workers 4
 ```
 
+Final feature audit on 2026-07-15:
+
+- R50 H5 files: `926 / 926`
+- R50 PT files: `926 / 926`
+- UNI H5 files: `926 / 926`
+- UNI PT files: `926 / 926`
+- R50 audited feature rows: `51,359,422`
+- UNI audited feature rows: `51,359,422`
+- audit failures: `0`
+
+The lightweight audit checked every slide against its patch-coordinate H5:
+
+- feature H5 exists;
+- PT file exists and is non-empty;
+- `features` shape is `(num_patch_coords, 1024)`;
+- `coords` shape is `(num_patch_coords, 2)`.
+
+Feature storage footprint:
+
+| feature | h5_files | pt_files | total |
+| --- | ---: | ---: | ---: |
+| R50 | 202G | 196G | 398G |
+| UNI | 202G | 196G | 398G |
+
 After extraction, rerun:
 
 ```bash
@@ -207,4 +231,11 @@ mamba run -n mirmil python experiments/prepare_tcga_rcc_pipeline.py \
   --output-dir /data15/data15_5/fanhao/datasets/TCGA-RCC/metadata \
   --seed 2024 \
   --require-features
+```
+
+This final `--require-features` check completed successfully and refreshed the
+R50/UNI split CSVs under:
+
+```text
+/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/
 ```
