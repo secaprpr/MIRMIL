@@ -932,3 +932,34 @@
   - Command core: `train_mil.py --yaml_path configs/SURVIVAL_MIL.yaml --options Dataset.DATASET_NAME=TCGA_BLCA_UNI_OS_MIR Dataset.dataset_csv_path=/data15/data15_5/fanhao/datasets/TCGA-BLCA/metadata/TCGA_BLCA_PROGNOSIS_UNI_OS_split.csv Model.backbone=MIR_MIL Model.backbone_config=configs/MIR_MIL.yaml Model.in_dim=1024 Model.max_instances=4096 Model.survival.patient_level=true`
   - Verification: initialized, loaded survival cutpoints `[7.05, 13.34, 22.32]`, and entered `Train_Val_Test`.
 - Scheduling: BLCA UNI OS + MAX_MIL still pending. No GPU was available after launching the isolated RRT/MIR retries; active jobs remain NSCLC R50/UNI plus BLCA UNI OS AB/MEAN/RRT-isolated/MIR-isolated.
+
+## 2026-07-16 03:58 CST
+
+- Task: BLCA UNI OS prognosis and NSCLC benchmark status update.
+- Completed: BLCA UNI OS + AB_MIL, seed `2024`, status `exit_code=0`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/blca_uni_os_ab_seed2024_setsid_20260716_034833.log`
+  - Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/blca_uni_os_ab_seed2024_setsid_20260716_034833.status`
+  - Result from controller log: loaded `Best_EPOCH_8.pth`; final test c-index `0.6322055137844611`, CI `[0.5323975981030817, 0.7336397456067255]`, event_count `35`, sample_count `77`.
+- Completed: BLCA UNI OS + MEAN_MIL, seed `2024`, status `exit_code=0`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/blca_uni_os_mean_seed2024_setsid_20260716_035214.log`
+  - Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/blca_uni_os_mean_seed2024_setsid_20260716_035214.status`
+  - Result from controller log: loaded `Best_EPOCH_2.pth`; final test c-index `0.6322055137844611`, CI `[0.5321516965595571, 0.7263577836005778]`, event_count `35`, sample_count `77`.
+- Launched isolated BLCA UNI OS + MAX_MIL, seed `2024`.
+  - Dataset namespace: `TCGA_BLCA_UNI_OS_MAX`
+  - PID/session leader: `3990563`
+  - GPU: `3` via `CUDA_VISIBLE_DEVICES=3`
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/blca_uni_os_max_isolated_seed2024_setsid_20260716_035806.log`
+  - Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/blca_uni_os_max_isolated_seed2024_setsid_20260716_035806.status`
+  - Command core: `train_mil.py --yaml_path configs/SURVIVAL_MIL.yaml --options Dataset.DATASET_NAME=TCGA_BLCA_UNI_OS_MAX Dataset.dataset_csv_path=/data15/data15_5/fanhao/datasets/TCGA-BLCA/metadata/TCGA_BLCA_PROGNOSIS_UNI_OS_split.csv Model.backbone=MAX_MIL Model.backbone_config=configs/MAX_MIL.yaml Model.in_dim=1024 Model.max_instances=4096 Model.survival.patient_level=true`
+  - Verification: process started on GPU `3`.
+- BLCA UNI OS isolated retries remain running:
+  - RRT_MIL isolated retry: latest observed validation c-index sequence includes best observed `0.5983606557377049`; no status file yet at this checkpoint.
+  - MIR_MIL isolated retry: latest observed validation c-index sequence includes best observed `0.542875157629256`; no status file yet at this checkpoint.
+- Completed: NSCLC R50 `DS_MIL`, seed `2024`.
+  - Best log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/TCGA_NSCLC_LUAD_LUSC_R50/DS_MIL/time_2026-07-16-03-44_TCGA_NSCLC_LUAD_LUSC_R50_DS_MIL_seed_2024/Best_Log_seed2024_TCGA_NSCLC_LUAD_LUSC_R50_DS_MIL.csv`
+  - Best epoch `29`; validation macro_auc `0.8760884796316686`; test acc `0.8537735849056604`, test bacc `0.8532763532763532`, test macro_auc `0.9180911680911681`.
+  - R50 benchmark controller remains running and has moved to `TRANS_MIL`, seed `2024`.
+- Completed: NSCLC UNI `RRT_MIL`, seed `2024`.
+  - Best log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/TCGA_NSCLC_LUAD_LUSC_UNI/RRT_MIL/time_2026-07-16-03-49_TCGA_NSCLC_LUAD_LUSC_UNI_RRT_MIL_seed_2024/Best_Log_seed2024_TCGA_NSCLC_LUAD_LUSC_UNI_RRT_MIL.csv`
+  - Best epoch `7`; validation macro_auc `0.9822840556500851`; test acc `0.9575471698113207`, test bacc `0.9577991452991452`, test macro_auc `0.9895833333333333`.
+  - UNI benchmark controller remains running and has moved to `WIKG_MIL`, seed `2024`.
