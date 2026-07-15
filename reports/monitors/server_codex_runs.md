@@ -135,3 +135,24 @@
 - Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/blca_r50_os_ab_seed2024_setsid_20260716_021823.status`
 - Split: `/data15/data15_5/fanhao/datasets/TCGA-BLCA/metadata/TCGA_BLCA_PROGNOSIS_R50_OS_split.csv`
 - Verification: initialized data/model and entered training.
+
+## 2026-07-16 02:21 CST
+
+- Task: NSCLC download status check and monitor restart
+- Download PID: `3566032`
+- Previous monitor PID: `3614892` had exited.
+- First restart attempt PID `3649230` also exited after one check under the tool session.
+- Persistent restarted monitor PID: `3651599`
+- Command: `setsid bash -lc 'cd /data15/data15_5/fanhao/projects/MIRMIL; exec reports/monitors/nsclc_download_watch.sh' > reports/monitors/nsclc_download_watch.nohup.log 2>&1 < /dev/null &`
+- Monitor log: `reports/monitors/nsclc_download_watch.log`
+- PID file: `reports/monitors/nsclc_download_watch.pid`
+- Current status: `patches=1046 files, r50=893 files, uni=763 files`; download still running with HuggingFace retry messages; NSCLC experiments still not started.
+
+- Task: KIRC R50 PFS prognosis, MIR_MIL backbone, seed 2024, `setsid`
+- PID/session leader: `3650041`
+- GPU: `2` via `CUDA_VISIBLE_DEVICES=2`
+- Command: `setsid bash -lc '... train_mil.py --yaml_path configs/SURVIVAL_MIL.yaml ... Dataset.DATASET_NAME=TCGA_KIRC_R50_PFS ... Model.backbone=MIR_MIL Model.backbone_config=configs/MIR_MIL.yaml ...'`
+- Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_r50_pfs_mir_seed2024_setsid_20260716_022150.log`
+- Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_r50_pfs_mir_seed2024_setsid_20260716_022150.status`
+- Split: `/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_R50_PFS_split.csv`
+- Verification: session started; detailed epoch output pending.
