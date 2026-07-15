@@ -59,6 +59,7 @@ def add_epoch_info_log(epoch_info_log,epoch,train_loss,val_loss,test_loss,val_me
     epoch_info_log['train_loss'].append(train_loss)
     epoch_info_log['val_loss'].append(val_loss)
     epoch_info_log['test_loss'].append(test_loss)
+    current_index = len(epoch_info_log['epoch']) - 1
     if val_metrics == None and test_metrics == None:
         for key in epoch_info_log.keys():
             if key != 'epoch' and key != 'train_loss' and key != 'val_loss' and key != 'test_loss':
@@ -66,16 +67,28 @@ def add_epoch_info_log(epoch_info_log,epoch,train_loss,val_loss,test_loss,val_me
         return 0
     if val_metrics != None:
         for key in val_metrics.keys():
-            epoch_info_log['val_'+key].append(val_metrics[key])
+            log_key = 'val_' + key
+            if log_key not in epoch_info_log:
+                epoch_info_log[log_key] = [None] * current_index
+            epoch_info_log[log_key].append(val_metrics[key])
     else:
         for key in test_metrics.keys():
-            epoch_info_log['val_'+key].append(None)
+            log_key = 'val_' + key
+            if log_key not in epoch_info_log:
+                epoch_info_log[log_key] = [None] * current_index
+            epoch_info_log[log_key].append(None)
     if test_metrics != None:
         for key in test_metrics.keys():
-            epoch_info_log['test_'+key].append(test_metrics[key])
+            log_key = 'test_' + key
+            if log_key not in epoch_info_log:
+                epoch_info_log[log_key] = [None] * current_index
+            epoch_info_log[log_key].append(test_metrics[key])
     else:
         for key in val_metrics.keys():
-            epoch_info_log['test_'+key].append(None)
+            log_key = 'test_' + key
+            if log_key not in epoch_info_log:
+                epoch_info_log[log_key] = [None] * current_index
+            epoch_info_log[log_key].append(None)
     tracker = active_training_tracker()
     if tracker is not None and val_metrics is not None:
         tracker.log_epoch(

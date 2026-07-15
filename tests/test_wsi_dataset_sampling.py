@@ -95,6 +95,45 @@ class WSIDatasetSamplingTest(unittest.TestCase):
         self.assertEqual(values.shape, (10, 4))
         self.assertLessEqual(values[:, -2:].abs().max().item(), 1.0)
 
+    def test_coordinate_dataset_uses_companion_h5_for_pt_features(self):
+        feature_root = os.path.join(self.temp_dir.name, "r50")
+        pt_dir = os.path.join(feature_root, "pt_files")
+        h5_dir = os.path.join(feature_root, "h5_files")
+        os.makedirs(pt_dir)
+        os.makedirs(h5_dir)
+        pt_path = os.path.join(pt_dir, "case.pt")
+        h5_path = os.path.join(h5_dir, "case.h5")
+        torch.save(torch.from_numpy(self.features), pt_path)
+        with h5py.File(h5_path, "w") as file:
+            file.create_dataset("features", data=self.features)
+            file.create_dataset(
+                "coords",
+                data=np.arange(200, dtype=np.float32).reshape(100, 2),
+            )
+
+        dataset = WSI_Coord_Dataset(
+            self._csv(pt_path), "val", max_instances=10, sampling="uniform"
+        )
+        values, _ = dataset[0]
+
+        indices = np.linspace(0, 99, 10, dtype=np.int64)
+        self.assertTrue(
+            torch.equal(values[:, :2], torch.from_numpy(self.features[indices]))
+        )
+        self.assertLessEqual(values[:, -2:].abs().max().item(), 1.0)
+
+    def test_coordinate_normalization_uses_full_slide_extent(self):
+        dataset = WSI_Coord_Dataset(
+            self._csv(self.h5_path),
+            "test",
+            max_instances=10,
+            sampling="head",
+        )
+
+        values, _ = dataset[0]
+
+        assert values[:, -2:].max().item() < 0.1
+
     def test_build_wsi_datasets_uses_random_train_and_uniform_eval(self):
         config = Dict(
             {

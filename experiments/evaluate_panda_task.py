@@ -9,6 +9,16 @@ from pathlib import Path
 import pandas as pd
 import torch
 from torch.utils.data import DataLoader
+from sklearn.metrics import (
+    accuracy_score,
+    balanced_accuracy_score,
+    cohen_kappa_score,
+    confusion_matrix,
+    f1_score,
+    precision_score,
+    recall_score,
+    roc_auc_score,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -22,10 +32,68 @@ from utils.wsi_utils import WSI_Coord_Dataset, WSI_Dataset
 from utils.yaml_utils import read_yaml
 
 
+def cal_independent_scores(scores, labels, num_classes):
+    scores = torch.tensor(scores)
+    labels = torch.tensor(labels).view(-1)
+    predicted_classes = torch.argmax(scores, dim=1)
+    class_auc = {
+        f"auc_class_{class_index}": roc_auc_score(
+            y_true=(labels.numpy() == class_index).astype(int),
+            y_score=scores[:, class_index].numpy(),
+        )
+        for class_index in range(num_classes)
+    }
+    macro_auc = sum(class_auc.values()) / len(class_auc)
+    min_class_auc = min(class_auc.values())
+    class_1_auc = class_auc.get("auc_class_1", macro_auc)
+    eps = 1e-12
+    return {
+        "acc": accuracy_score(labels.numpy(), predicted_classes.numpy()),
+        "bacc": balanced_accuracy_score(labels.numpy(), predicted_classes.numpy()),
+        "macro_auc": macro_auc,
+        "micro_auc": macro_auc,
+        "weighted_auc": macro_auc,
+        "min_class_auc": min_class_auc,
+        "macro_auc_hmean_auc_class_1": (
+            2.0 * macro_auc * class_1_auc / max(macro_auc + class_1_auc, eps)
+        ),
+        "macro_f1": f1_score(labels.numpy(), predicted_classes.numpy(), average="macro"),
+        "micro_f1": f1_score(labels.numpy(), predicted_classes.numpy(), average="micro"),
+        "weighted_f1": f1_score(labels.numpy(), predicted_classes.numpy(), average="weighted"),
+        "macro_recall": recall_score(labels.numpy(), predicted_classes.numpy(), average="macro"),
+        "micro_recall": recall_score(labels.numpy(), predicted_classes.numpy(), average="micro"),
+        "weighted_recall": recall_score(labels.numpy(), predicted_classes.numpy(), average="weighted"),
+        "macro_pre": precision_score(labels.numpy(), predicted_classes.numpy(), average="macro"),
+        "micro_pre": precision_score(labels.numpy(), predicted_classes.numpy(), average="micro"),
+        "weighted_pre": precision_score(labels.numpy(), predicted_classes.numpy(), average="weighted"),
+        "quadratic_kappa": cohen_kappa_score(
+            labels.numpy(), predicted_classes.numpy(), weights="quadratic"
+        ),
+        "linear_kappa": cohen_kappa_score(
+            labels.numpy(), predicted_classes.numpy(), weights="linear"
+        ),
+        "confusion_mat": confusion_matrix(labels.numpy(), predicted_classes.numpy()),
+        **class_auc,
+    }
+
+
+def prediction_scores(output, score_mode):
+    if score_mode == "softmax":
+        return torch.softmax(output["logits"].squeeze(0), dim=0)
+    if score_mode == "ovr_sigmoid":
+        if "ovr_logits" not in output:
+            raise ValueError("score_mode=ovr_sigmoid requires output['ovr_logits']")
+        return torch.sigmoid(output["ovr_logits"].squeeze(0))
+    if score_mode == "raw_logits":
+        return output["logits"].squeeze(0)
+    raise ValueError(f"Unsupported score_mode: {score_mode}")
+
+
 def evaluate(args):
     config = read_yaml(args.config)
     config.Dataset.dataset_csv_path = str(args.split.resolve())
-    config.General.device = 0
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    config.General.device = 0 if device.type == "cuda" else "cpu"
     config.Model.max_instances = args.max_instances
     set_global_seed(int(config.General.seed))
     spatial = str(config.General.MODEL_NAME) == "MAMBA2D_MIL"
@@ -39,7 +107,6 @@ def evaluate(args):
     loader = DataLoader(
         dataset, batch_size=1, shuffle=False, num_workers=args.num_workers
     )
-    device = torch.device("cuda:0")
     model = get_model_from_yaml(config)
     checkpoint = torch.load(args.checkpoint, map_location=device, weights_only=True)
     is_dtfd = str(config.General.MODEL_NAME) == "DTFD_MIL"
@@ -104,12 +171,15 @@ def evaluate(args):
                 output = model(features, coords=coords)
             else:
                 output = model(bag)
-            probability = torch.softmax(
-                output["logits"].squeeze(0), dim=0
-            )
+            probability = prediction_scores(output, args.score_mode)
             probabilities.append(probability.cpu().numpy())
             labels.append(int(label.item()))
-    metrics = cal_scores(probabilities, labels, int(config.General.num_classes))
+    if args.score_mode == "softmax":
+        metrics = cal_scores(probabilities, labels, int(config.General.num_classes))
+    else:
+        metrics = cal_independent_scores(
+            probabilities, labels, int(config.General.num_classes)
+        )
     rows = []
     for slide_path, label, probability in zip(
         dataset.slide_path_list, labels, probabilities
@@ -135,6 +205,11 @@ def main():
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--wandb-project", default="MIR-MIL")
     parser.add_argument("--dataset-name", default="PANDA")
+    parser.add_argument(
+        "--score-mode",
+        choices=["softmax", "ovr_sigmoid", "raw_logits"],
+        default="softmax",
+    )
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
 

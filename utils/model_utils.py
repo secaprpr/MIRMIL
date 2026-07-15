@@ -292,6 +292,9 @@ def get_model_from_yaml(yaml_args):
             coordinate_dim=_model_option(
                 yaml_args, "coordinate_dim", 0
             ),
+            coordinate_encoder_scale=_model_option(
+                yaml_args, "coordinate_encoder_scale", 1.0
+            ),
             input_group_l2_normalize=_model_option(
                 yaml_args, "input_group_l2_normalize", False
             ),
@@ -472,6 +475,32 @@ def get_model_from_yaml(yaml_args):
             class_moment_token_dropout=_model_option(
                 yaml_args, "class_moment_token_dropout", 0.0
             ),
+            residual_class_moment_token_weight=_model_option(
+                yaml_args, "residual_class_moment_token_weight", 0.0
+            ),
+            residual_class_moment_token_count=_model_option(
+                yaml_args, "residual_class_moment_token_count", 4
+            ),
+            residual_class_moment_token_dim=_model_option(
+                yaml_args, "residual_class_moment_token_dim", 64
+            ),
+            residual_class_moment_token_readout_dim=_model_option(
+                yaml_args, "residual_class_moment_token_readout_dim", 128
+            ),
+            residual_class_moment_token_rank_dim=_model_option(
+                yaml_args, "residual_class_moment_token_rank_dim", 32
+            ),
+            residual_class_moment_token_temperature=_model_option(
+                yaml_args, "residual_class_moment_token_temperature", 1.0
+            ),
+            residual_class_moment_token_dropout=_model_option(
+                yaml_args, "residual_class_moment_token_dropout", 0.0
+            ),
+            residual_class_moment_token_initial_scale=_model_option(
+                yaml_args,
+                "residual_class_moment_token_initial_scale",
+                0.05,
+            ),
             class_token_weight=_model_option(
                 yaml_args, "class_token_weight", 0.0
             ),
@@ -492,6 +521,81 @@ def get_model_from_yaml(yaml_args):
             ),
             class_token_dropout=_model_option(
                 yaml_args, "class_token_dropout", 0.0
+            ),
+            sparse_class_weight=_model_option(
+                yaml_args, "sparse_class_weight", 0.0
+            ),
+            sparse_class_query_count=_model_option(
+                yaml_args, "sparse_class_query_count", 4
+            ),
+            sparse_class_query_dim=_model_option(
+                yaml_args, "sparse_class_query_dim", 64
+            ),
+            sparse_class_value_dim=_model_option(
+                yaml_args, "sparse_class_value_dim", 128
+            ),
+            sparse_class_rank_dim=_model_option(
+                yaml_args, "sparse_class_rank_dim", 32
+            ),
+            sparse_class_gate_hidden_dim=_model_option(
+                yaml_args, "sparse_class_gate_hidden_dim", 64
+            ),
+            sparse_class_temperature=_model_option(
+                yaml_args, "sparse_class_temperature", 1.0
+            ),
+            sparse_class_topk_fraction=_model_option(
+                yaml_args, "sparse_class_topk_fraction", 0.02
+            ),
+            sparse_class_dropout=_model_option(
+                yaml_args, "sparse_class_dropout", 0.0
+            ),
+            sparse_class_gate_initial_bias=_model_option(
+                yaml_args, "sparse_class_gate_initial_bias", 0.0
+            ),
+            gated_attention_weight=_model_option(
+                yaml_args, "gated_attention_weight", 0.0
+            ),
+            gated_attention_dim=_model_option(
+                yaml_args, "gated_attention_dim", 128
+            ),
+            gated_attention_value_dim=_model_option(
+                yaml_args, "gated_attention_value_dim", 128
+            ),
+            gated_attention_dropout=_model_option(
+                yaml_args, "gated_attention_dropout", 0.0
+            ),
+            gated_attention_temperature=_model_option(
+                yaml_args, "gated_attention_temperature", 1.0
+            ),
+            gated_attention_class_specific=_model_option(
+                yaml_args, "gated_attention_class_specific", True
+            ),
+            spatial_region_weight=_model_option(
+                yaml_args, "spatial_region_weight", 0.0
+            ),
+            spatial_region_grid_size=_model_option(
+                yaml_args, "spatial_region_grid_size", 4
+            ),
+            spatial_region_value_dim=_model_option(
+                yaml_args, "spatial_region_value_dim", 64
+            ),
+            spatial_region_dim=_model_option(
+                yaml_args, "spatial_region_dim", 96
+            ),
+            spatial_region_attention_dim=_model_option(
+                yaml_args, "spatial_region_attention_dim", 64
+            ),
+            spatial_region_dropout=_model_option(
+                yaml_args, "spatial_region_dropout", 0.0
+            ),
+            spatial_region_temperature=_model_option(
+                yaml_args, "spatial_region_temperature", 1.0
+            ),
+            spatial_region_include_centers=_model_option(
+                yaml_args, "spatial_region_include_centers", True
+            ),
+            spatial_region_include_mass=_model_option(
+                yaml_args, "spatial_region_include_mass", False
             ),
             latent_readout_weight=_model_option(
                 yaml_args, "latent_readout_weight", 0.0
@@ -543,6 +647,105 @@ def get_model_from_yaml(yaml_args):
             ),
             cosine_head_initial_scale=_model_option(
                 yaml_args, "cosine_head_initial_scale", 8.0
+            ),
+            ovr_head_weight=_model_option(
+                yaml_args, "ovr_head_weight", 0.0
+            ),
+            ovr_loss_weight=_model_option(
+                yaml_args, "ovr_loss_weight", 0.0
+            ),
+            ovr_loss_pos_weight=_model_option(
+                yaml_args, "ovr_loss_pos_weight", 1.0
+            ),
+            ovr_loss_pos_weights=_model_option(
+                yaml_args, "ovr_loss_pos_weights", None
+            ),
+            ovr_head_hidden_dim=_model_option(
+                yaml_args, "ovr_head_hidden_dim", 64
+            ),
+            ovr_head_dropout=_model_option(
+                yaml_args, "ovr_head_dropout", 0.0
+            ),
+            ovr_head_temperature=_model_option(
+                yaml_args, "ovr_head_temperature", 1.0
+            ),
+            adjacent_head_weight=_model_option(
+                yaml_args, "adjacent_head_weight", 0.0
+            ),
+            adjacent_loss_weight=_model_option(
+                yaml_args, "adjacent_loss_weight", 0.0
+            ),
+            adjacent_head_hidden_dim=_model_option(
+                yaml_args, "adjacent_head_hidden_dim", 64
+            ),
+            adjacent_head_dropout=_model_option(
+                yaml_args, "adjacent_head_dropout", 0.0
+            ),
+            adjacent_head_temperature=_model_option(
+                yaml_args, "adjacent_head_temperature", 1.0
+            ),
+            focus_class_index=_model_option(
+                yaml_args, "focus_class_index", 1
+            ),
+            focus_class_head_weight=_model_option(
+                yaml_args, "focus_class_head_weight", 0.0
+            ),
+            focus_class_loss_weight=_model_option(
+                yaml_args, "focus_class_loss_weight", 0.0
+            ),
+            focus_class_loss_pos_weight=_model_option(
+                yaml_args, "focus_class_loss_pos_weight", 1.0
+            ),
+            focus_class_head_hidden_dim=_model_option(
+                yaml_args, "focus_class_head_hidden_dim", 64
+            ),
+            focus_class_head_dropout=_model_option(
+                yaml_args, "focus_class_head_dropout", 0.0
+            ),
+            focus_class_head_temperature=_model_option(
+                yaml_args, "focus_class_head_temperature", 1.0
+            ),
+            focus_sparse_head_weight=_model_option(
+                yaml_args, "focus_sparse_head_weight", 0.0
+            ),
+            focus_sparse_loss_weight=_model_option(
+                yaml_args, "focus_sparse_loss_weight", 0.0
+            ),
+            focus_sparse_loss_pos_weight=_model_option(
+                yaml_args, "focus_sparse_loss_pos_weight", 1.0
+            ),
+            focus_sparse_query_count=_model_option(
+                yaml_args, "focus_sparse_query_count", 4
+            ),
+            focus_sparse_query_dim=_model_option(
+                yaml_args, "focus_sparse_query_dim", 64
+            ),
+            focus_sparse_value_dim=_model_option(
+                yaml_args, "focus_sparse_value_dim", 128
+            ),
+            focus_sparse_readout_dim=_model_option(
+                yaml_args, "focus_sparse_readout_dim", 64
+            ),
+            focus_sparse_temperature=_model_option(
+                yaml_args, "focus_sparse_temperature", 1.0
+            ),
+            focus_sparse_topk_fraction=_model_option(
+                yaml_args, "focus_sparse_topk_fraction", 0.02
+            ),
+            focus_sparse_dropout=_model_option(
+                yaml_args, "focus_sparse_dropout", 0.0
+            ),
+            use_logit_calibration=_model_option(
+                yaml_args, "use_logit_calibration", False
+            ),
+            logit_calibration_learn_temperature=_model_option(
+                yaml_args, "logit_calibration_learn_temperature", False
+            ),
+            logit_calibration_initial_temperature=_model_option(
+                yaml_args, "logit_calibration_initial_temperature", 1.0
+            ),
+            logit_calibration_bias_init=_model_option(
+                yaml_args, "logit_calibration_bias_init", None
             ),
             logit_margin_loss_weight=_model_option(
                 yaml_args, "logit_margin_loss_weight", 0.0

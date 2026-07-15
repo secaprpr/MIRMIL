@@ -8,6 +8,7 @@ import sys
 
 import pandas as pd
 import torch
+from sklearn.metrics import roc_auc_score
 from torch.utils.data import DataLoader
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -17,7 +18,7 @@ if REPO_ROOT not in sys.path:
 from utils.general_utils import set_global_seed
 from utils.loop_utils import cal_scores
 from utils.model_utils import get_model_from_yaml
-from utils.wsi_utils import WSI_Dataset
+from utils.wsi_utils import WSI_Coord_Dataset, WSI_Dataset
 from utils.yaml_utils import read_yaml
 from utils.wandb_utils import (
     SCHEMA_VERSION,
@@ -91,6 +92,11 @@ def experiment_variant(args):
     return str(args.General.MODEL_NAME)
 
 
+def dataset_class_for_args(args):
+    coordinate_dim = int(getattr(args.Model, "coordinate_dim", 0))
+    return WSI_Coord_Dataset if coordinate_dim == 2 else WSI_Dataset
+
+
 def evaluate_run(
     run_dir,
     budget,
@@ -110,7 +116,7 @@ def evaluate_run(
     args.General.device = device
     set_global_seed(args.General.seed)
 
-    dataset = WSI_Dataset(
+    dataset = dataset_class_for_args(args)(
         args.Dataset.dataset_csv_path,
         group,
         max_instances=budget,
@@ -135,6 +141,10 @@ def evaluate_run(
     complement_probabilities = []
     random_probabilities = []
     selected_ratios = []
+    auxiliary_scores = {
+        "focus_class_logits": [],
+        "focus_sparse_logits": [],
+    }
     with torch.no_grad():
         for bag, label in loader:
             bag = bag.float().to(torch_device)
@@ -146,6 +156,11 @@ def evaluate_run(
             selected_probabilities.append(
                 torch.softmax(output["logits"].squeeze(0), dim=0).cpu().numpy()
             )
+            for key in auxiliary_scores:
+                if key in output:
+                    auxiliary_scores[key].append(
+                        float(torch.sigmoid(output[key]).item())
+                    )
             if args.General.MODEL_NAME == "OT_MIL":
                 full_probabilities.append(
                     torch.softmax(output["full_logits"].squeeze(0), dim=0)
@@ -179,6 +194,15 @@ def evaluate_run(
         "bacc": metrics["bacc"],
         "macro_f1": metrics["macro_f1"],
     }
+    focus_class_index = int(getattr(args.Model, "focus_class_index", 1))
+    binary_targets = [
+        int(label == focus_class_index) for label in labels
+    ]
+    for key, scores in auxiliary_scores.items():
+        if len(scores) == len(labels):
+            result[f"{key.removesuffix('_logits')}_auc"] = float(
+                roc_auc_score(binary_targets, scores)
+            )
     if args.General.MODEL_NAME == "OT_MIL":
         full_metrics = cal_scores(
             full_probabilities, labels, args.General.num_classes
@@ -199,11 +223,11 @@ def evaluate_run(
         )
 
     prediction_rows = []
-    for slide_path, label, probabilities in zip(
+    for row_index, (slide_path, label, probabilities) in enumerate(zip(
         dataset.slide_path_list,
         labels,
         selected_probabilities,
-    ):
+    )):
         row = {
             "slide_path": slide_path,
             "label": label,
@@ -218,6 +242,11 @@ def evaluate_run(
                 for class_index, probability in enumerate(probabilities)
             }
         )
+        for key, scores in auxiliary_scores.items():
+            if len(scores) == len(labels):
+                row[f"aux_{key.removesuffix('_logits')}_prob"] = scores[
+                    row_index
+                ]
         prediction_rows.append(row)
     return json_safe(result), prediction_rows, config_path, checkpoint_path
 

@@ -2,8 +2,9 @@ import glob
 import os
 from copy import deepcopy
 
+import pandas as pd
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
 from utils.general_utils import (
@@ -79,6 +80,63 @@ class StochasticWeightAverage:
         self.updates += 1
 
 
+class IndexedDataset(Dataset):
+    def __init__(self, dataset):
+        self.dataset = dataset
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, index):
+        bag, label = self.dataset[index]
+        return bag, label, torch.tensor(index, dtype=torch.long)
+
+    def __getattr__(self, name):
+        return getattr(self.dataset, name)
+
+
+def load_distillation_targets(path, dataset, num_classes):
+    if not path:
+        return None
+    frame = pd.read_csv(path)
+    required_columns = ["slide_path", *[f"prob_{idx}" for idx in range(num_classes)]]
+    missing_columns = [column for column in required_columns if column not in frame]
+    if missing_columns:
+        raise ValueError(
+            "Distillation probability file is missing columns: "
+            f"{missing_columns}"
+        )
+    if frame["slide_path"].duplicated().any():
+        duplicated = frame.loc[
+            frame["slide_path"].duplicated(), "slide_path"
+        ].head(5)
+        raise ValueError(
+            "Distillation probability file contains duplicate slide_path "
+            f"entries, e.g. {duplicated.tolist()}"
+        )
+    by_slide = frame.set_index("slide_path")
+    rows = []
+    missing_slides = []
+    prob_columns = [f"prob_{idx}" for idx in range(num_classes)]
+    for slide_path in dataset.slide_path_list:
+        if slide_path not in by_slide.index:
+            missing_slides.append(slide_path)
+            continue
+        rows.append(by_slide.loc[slide_path, prob_columns].astype(float).to_numpy())
+    if missing_slides:
+        raise ValueError(
+            "Distillation probability file is missing train slides, e.g. "
+            f"{missing_slides[:5]}"
+        )
+    targets = torch.tensor(rows, dtype=torch.float32)
+    if torch.any(targets < 0):
+        raise ValueError("Distillation probabilities must be non-negative")
+    row_sums = targets.sum(dim=1, keepdim=True)
+    if torch.any(row_sums <= 0):
+        raise ValueError("Distillation probability rows must have positive mass")
+    return targets / row_sums
+
+
 def _build_class_weights(args, train_dataset, device):
     mode = str(getattr(args.Model, "class_weighting", "none")).lower()
     if mode in {"", "none", "false", "off"}:
@@ -141,12 +199,58 @@ def process_MIR_MIL(args):
     generator = torch.Generator()
     generator.manual_seed(args.General.seed)
     set_global_seed(args.General.seed)
+    distillation_weight = float(
+        getattr(args.Model, "distillation_weight", 0.0)
+    )
+    ranking_memory_weight = float(
+        getattr(args.Model, "ranking_memory_weight", 0.0)
+    )
+    ranking_memory_warmup_epochs = int(
+        getattr(args.Model, "ranking_memory_warmup_epochs", 0)
+    )
+    if ranking_memory_warmup_epochs < 0:
+        raise ValueError("ranking_memory_warmup_epochs must be non-negative")
+    distillation_targets = None
+    if distillation_weight > 0:
+        distillation_targets = load_distillation_targets(
+            getattr(args.Model, "distillation_prob_path", None),
+            train_dataset,
+            int(args.General.num_classes),
+        )
+    if distillation_weight > 0 or ranking_memory_weight > 0:
+        train_dataset_for_loader = IndexedDataset(train_dataset)
+    else:
+        train_dataset_for_loader = train_dataset
+    ranking_memory = None
+    ranking_memory_labels = None
+    ranking_memory_valid = None
+    if ranking_memory_weight > 0:
+        ranking_memory = torch.zeros(
+            len(train_dataset),
+            int(args.General.num_classes),
+            dtype=torch.float32,
+        )
+        ranking_memory_labels = torch.tensor(
+            train_dataset.labels_list,
+            dtype=torch.long,
+        )
+        ranking_memory_valid = torch.zeros(
+            len(train_dataset),
+            dtype=torch.bool,
+        )
     if args.Dataset.balanced_sampler.use:
         sampler = train_dataset.get_balanced_sampler(
-            replacement=args.Dataset.balanced_sampler.replacement
+            replacement=args.Dataset.balanced_sampler.replacement,
+            strategy=getattr(args.Dataset.balanced_sampler, "strategy", "weighted"),
+            samples_per_class=getattr(
+                args.Dataset.balanced_sampler,
+                "samples_per_class",
+                0,
+            ),
+            seed=args.General.seed,
         )
         train_loader = DataLoader(
-            train_dataset,
+            train_dataset_for_loader,
             batch_size=1,
             sampler=sampler,
             num_workers=args.General.num_workers,
@@ -154,7 +258,7 @@ def process_MIR_MIL(args):
         )
     else:
         train_loader = DataLoader(
-            train_dataset,
+            train_dataset_for_loader,
             batch_size=1,
             shuffle=True,
             num_workers=args.General.num_workers,
@@ -216,6 +320,43 @@ def process_MIR_MIL(args):
             criterion,
             optimizer,
             active_scheduler,
+            distillation_targets=distillation_targets,
+            distillation_weight=distillation_weight,
+            distillation_temperature=float(
+                getattr(args.Model, "distillation_temperature", 1.0)
+            ),
+            distillation_min_entropy=float(
+                getattr(args.Model, "distillation_min_entropy", 0.0)
+            ),
+            distillation_max_confidence=float(
+                getattr(args.Model, "distillation_max_confidence", 1.0)
+            ),
+            distillation_entropy_weight_power=float(
+                getattr(args.Model, "distillation_entropy_weight_power", 0.0)
+            ),
+            ranking_memory=ranking_memory,
+            ranking_memory_labels=ranking_memory_labels,
+            ranking_memory_valid=ranking_memory_valid,
+            ranking_memory_weight=ranking_memory_weight,
+            ranking_memory_margin=float(
+                getattr(args.Model, "ranking_memory_margin", 0.1)
+            ),
+            ranking_memory_momentum=float(
+                getattr(args.Model, "ranking_memory_momentum", 0.9)
+            ),
+            ranking_memory_max_pairs=int(
+                getattr(args.Model, "ranking_memory_max_pairs", 64)
+            ),
+            ranking_memory_class_indices=getattr(
+                args.Model, "ranking_memory_class_indices", None
+            ),
+            ranking_memory_hard_mining=bool(
+                getattr(args.Model, "ranking_memory_hard_mining", False)
+            ),
+            ranking_memory_apply_loss=epoch >= ranking_memory_warmup_epochs,
+            ranking_memory_score_type=str(
+                getattr(args.Model, "ranking_memory_score_type", "logit")
+            ),
         )
         if ema is not None:
             ema.update(model)

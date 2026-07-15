@@ -18,6 +18,8 @@ Dataset:
     balanced_sampler:
         use: True
         replacement: True
+        strategy: weighted
+        samples_per_class: 0
 
 Logs:
     log_root_dir: /path/to/your/log_dir
@@ -44,6 +46,7 @@ Tracking:
 Model:
     in_dim: 1024
     coordinate_dim: 0
+    coordinate_encoder_scale: 1.0
     input_group_l2_normalize: False
     input_group_size: 0
     hidden_dim: 256
@@ -121,6 +124,14 @@ Model:
     class_moment_token_rank_dim: 32
     class_moment_token_temperature: 1.0
     class_moment_token_dropout: 0.0
+    residual_class_moment_token_weight: 0.0
+    residual_class_moment_token_count: 4
+    residual_class_moment_token_dim: 64
+    residual_class_moment_token_readout_dim: 128
+    residual_class_moment_token_rank_dim: 32
+    residual_class_moment_token_temperature: 1.0
+    residual_class_moment_token_dropout: 0.0
+    residual_class_moment_token_initial_scale: 0.05
     class_token_weight: 0.0
     class_token_count: 4
     class_token_dim: 64
@@ -128,6 +139,31 @@ Model:
     class_token_rank_dim: 32
     class_token_temperature: 1.0
     class_token_dropout: 0.0
+    sparse_class_weight: 0.0
+    sparse_class_query_count: 4
+    sparse_class_query_dim: 64
+    sparse_class_value_dim: 128
+    sparse_class_rank_dim: 32
+    sparse_class_gate_hidden_dim: 64
+    sparse_class_temperature: 1.0
+    sparse_class_topk_fraction: 0.02
+    sparse_class_dropout: 0.0
+    sparse_class_gate_initial_bias: 0.0
+    gated_attention_weight: 0.0
+    gated_attention_dim: 128
+    gated_attention_value_dim: 128
+    gated_attention_dropout: 0.0
+    gated_attention_temperature: 1.0
+    gated_attention_class_specific: true
+    spatial_region_weight: 0.0
+    spatial_region_grid_size: 4
+    spatial_region_value_dim: 64
+    spatial_region_dim: 96
+    spatial_region_attention_dim: 64
+    spatial_region_dropout: 0.0
+    spatial_region_temperature: 1.0
+    spatial_region_include_centers: true
+    spatial_region_include_mass: false
     latent_readout_weight: 0.0
     latent_readout_count: 4
     latent_readout_dim: 128
@@ -145,6 +181,39 @@ Model:
     cosine_head_hidden_dim: 128
     cosine_head_dropout: 0.0
     cosine_head_initial_scale: 8.0
+    ovr_head_weight: 0.0
+    ovr_loss_weight: 0.0
+    ovr_loss_pos_weight: 1.0
+    ovr_loss_pos_weights: null
+    ovr_head_hidden_dim: 64
+    ovr_head_dropout: 0.0
+    ovr_head_temperature: 1.0
+    adjacent_head_weight: 0.0
+    adjacent_loss_weight: 0.0
+    adjacent_head_hidden_dim: 64
+    adjacent_head_dropout: 0.0
+    adjacent_head_temperature: 1.0
+    focus_class_index: 1
+    focus_class_head_weight: 0.0
+    focus_class_loss_weight: 0.0
+    focus_class_loss_pos_weight: 1.0
+    focus_class_head_hidden_dim: 64
+    focus_class_head_dropout: 0.0
+    focus_class_head_temperature: 1.0
+    focus_sparse_head_weight: 0.0
+    focus_sparse_loss_weight: 0.0
+    focus_sparse_loss_pos_weight: 1.0
+    focus_sparse_query_count: 4
+    focus_sparse_query_dim: 64
+    focus_sparse_value_dim: 128
+    focus_sparse_readout_dim: 64
+    focus_sparse_temperature: 1.0
+    focus_sparse_topk_fraction: 0.02
+    focus_sparse_dropout: 0.0
+    use_logit_calibration: False
+    logit_calibration_learn_temperature: False
+    logit_calibration_initial_temperature: 1.0
+    logit_calibration_bias_init: [0.0, 0.0]
     logit_margin_loss_weight: 0.0
     logit_margin: 1.0
     subset_consistency_weight: 0.0
@@ -158,6 +227,20 @@ Model:
     class_weighting: none
     class_weight_beta: 0.999
     focal_gamma: 0.0
+    distillation_prob_path: null
+    distillation_weight: 0.0
+    distillation_temperature: 1.0
+    distillation_min_entropy: 0.0
+    distillation_max_confidence: 1.0
+    distillation_entropy_weight_power: 0.0
+    ranking_memory_weight: 0.0
+    ranking_memory_margin: 0.1
+    ranking_memory_momentum: 0.9
+    ranking_memory_max_pairs: 64
+    ranking_memory_class_indices: null
+    ranking_memory_hard_mining: False
+    ranking_memory_warmup_epochs: 0
+    ranking_memory_score_type: logit
     ema_decay: 0.0
     swa_start_epoch: 0
     optimizer:

@@ -10,15 +10,24 @@ from experiments.prepare_split import (
     deterministic_stratified_split,
 )
 from experiments.evaluate_checkpoints import (
+    dataset_class_for_args,
     experiment_variant,
     file_sha256 as evaluation_file_sha256,
     find_run_files,
 )
 from experiments.run_benchmark import build_command, file_sha256
 from utils.yaml_utils import read_yaml, update_config_from_options
+from utils.wsi_utils import WSI_Coord_Dataset, WSI_Dataset
 
 
 class ExperimentUtilsTest(unittest.TestCase):
+    def test_evaluator_selects_coordinate_dataset_from_model_config(self):
+        plain = Namespace(Model=Namespace(coordinate_dim=0))
+        spatial = Namespace(Model=Namespace(coordinate_dim=2))
+
+        self.assertIs(dataset_class_for_args(plain), WSI_Dataset)
+        self.assertIs(dataset_class_for_args(spatial), WSI_Coord_Dataset)
+
     def test_evaluator_can_select_last_checkpoint(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)

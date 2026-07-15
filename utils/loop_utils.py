@@ -15,9 +15,29 @@ def cal_scores(probs, labels, num_classes):       # probs:[batch_size, num_class
         macro_auc = roc_auc_score(y_true=labels.numpy(), y_score=probs.numpy(), average='macro', multi_class='ovr')
         micro_auc = roc_auc_score(y_true=labels.numpy(), y_score=probs.numpy(), average='micro', multi_class='ovr')
         weighted_auc = roc_auc_score(y_true=labels.numpy(), y_score=probs.numpy(), average='weighted', multi_class='ovr')
+        class_auc = {
+            f"auc_class_{class_index}": roc_auc_score(
+                y_true=(labels.numpy() == class_index).astype(int),
+                y_score=probs[:, class_index].numpy(),
+            )
+            for class_index in range(num_classes)
+        }
     else:
         macro_auc = roc_auc_score(y_true=labels.numpy(), y_score=probs[:,1].numpy())
         weighted_auc = micro_auc = macro_auc
+        class_auc = {
+            "auc_class_0": macro_auc,
+            "auc_class_1": macro_auc,
+        }
+    min_class_auc = min(class_auc.values())
+    class_1_auc = class_auc.get("auc_class_1", macro_auc)
+    eps = 1e-12
+    macro_auc_hmean_auc_class_1 = (
+        2.0
+        * macro_auc
+        * class_1_auc
+        / max(macro_auc + class_1_auc, eps)
+    )
     weighted_f1 = f1_score(labels.numpy(), predicted_classes.numpy(), average='weighted')
     weighted_recall = recall_score(labels.numpy(), predicted_classes.numpy(), average='weighted')
     weighted_precision = precision_score(labels.numpy(), predicted_classes.numpy(), average='weighted')
@@ -33,11 +53,14 @@ def cal_scores(probs, labels, num_classes):       # probs:[batch_size, num_class
     confusion_mat = confusion_matrix(labels.numpy(), predicted_classes.numpy())
     metrics = {'acc': accuracy,  'bacc': baccuracy, 
                'macro_auc': macro_auc, 'micro_auc': micro_auc, 'weighted_auc':weighted_auc,
+               'min_class_auc': min_class_auc,
+               'macro_auc_hmean_auc_class_1': macro_auc_hmean_auc_class_1,
                 'macro_f1': macro_f1, 'micro_f1': micro_f1, 'weighted_f1': weighted_f1, 
                  'macro_recall': macro_recall, 'micro_recall': micro_recall,'weighted_recall': weighted_recall, 
                  'macro_pre': macro_precision, 'micro_pre': micro_precision,'weighted_pre': weighted_precision,
                  'quadratic_kappa': quadratic_kappa,'linear_kappa':linear_kappa,  
                  'confusion_mat': confusion_mat}
+    metrics.update(class_auc)
     return metrics
 
 def train_loop(device,model,loader,criterion,optimizer,scheduler):
@@ -107,27 +130,284 @@ def val_loop(device,num_classes,model,loader,criterion,retrun_WSI_feature = Fals
     return val_loss_log,val_metrics
 
 
-def mir_train_loop(device, model, loader, criterion, optimizer, scheduler):
+def _ranking_memory_scores(logits, score_type):
+    if score_type == "logit":
+        return logits
+    if score_type != "ovr_log_odds":
+        raise ValueError(
+            "ranking_memory_score_type must be 'logit' or 'ovr_log_odds'"
+        )
+    if logits.shape[-1] < 2:
+        raise ValueError("ovr_log_odds ranking requires at least two classes")
+    scores = []
+    for class_index in range(logits.shape[-1]):
+        other_logits = torch.cat(
+            (logits[..., :class_index], logits[..., class_index + 1:]),
+            dim=-1,
+        )
+        scores.append(
+            logits[..., class_index]
+            - torch.logsumexp(other_logits, dim=-1)
+        )
+    return torch.stack(scores, dim=-1)
+
+
+def mir_train_loop(
+    device,
+    model,
+    loader,
+    criterion,
+    optimizer,
+    scheduler,
+    distillation_targets=None,
+    distillation_weight=0.0,
+    distillation_temperature=1.0,
+    distillation_min_entropy=0.0,
+    distillation_max_confidence=1.0,
+    distillation_entropy_weight_power=0.0,
+    ranking_memory=None,
+    ranking_memory_labels=None,
+    ranking_memory_valid=None,
+    ranking_memory_weight=0.0,
+    ranking_memory_margin=0.1,
+    ranking_memory_momentum=0.9,
+    ranking_memory_max_pairs=64,
+    ranking_memory_class_indices=None,
+    ranking_memory_hard_mining=False,
+    ranking_memory_apply_loss=True,
+    ranking_memory_score_type="logit",
+):
+    if distillation_weight < 0:
+        raise ValueError("distillation_weight must be non-negative")
+    if distillation_temperature <= 0:
+        raise ValueError("distillation_temperature must be positive")
+    if distillation_min_entropy < 0:
+        raise ValueError("distillation_min_entropy must be non-negative")
+    if not 0 < distillation_max_confidence <= 1:
+        raise ValueError("distillation_max_confidence must be in (0, 1]")
+    if distillation_entropy_weight_power < 0:
+        raise ValueError(
+            "distillation_entropy_weight_power must be non-negative"
+        )
+    if ranking_memory_weight < 0:
+        raise ValueError("ranking_memory_weight must be non-negative")
+    if ranking_memory_margin < 0:
+        raise ValueError("ranking_memory_margin must be non-negative")
+    if not 0 <= ranking_memory_momentum < 1:
+        raise ValueError("ranking_memory_momentum must be in [0, 1)")
+    if ranking_memory_max_pairs <= 0:
+        raise ValueError("ranking_memory_max_pairs must be positive")
+    if ranking_memory_score_type not in {"logit", "ovr_log_odds"}:
+        raise ValueError(
+            "ranking_memory_score_type must be 'logit' or 'ovr_log_odds'"
+        )
+    if ranking_memory_class_indices is not None:
+        ranking_memory_class_indices = [
+            int(index) for index in ranking_memory_class_indices
+        ]
+        if not ranking_memory_class_indices:
+            raise ValueError("ranking_memory_class_indices must not be empty")
+        if len(set(ranking_memory_class_indices)) != len(
+            ranking_memory_class_indices
+        ):
+            raise ValueError("ranking_memory_class_indices must be unique")
+        if min(ranking_memory_class_indices) < 0:
+            raise ValueError("ranking_memory_class_indices must be non-negative")
     start = time.time()
     model.train()
     totals = {
         "loss": 0.0,
         "classification_loss": 0.0,
+        "distillation_loss": 0.0,
         "logit_margin_loss": 0.0,
         "ordinal_loss": 0.0,
+        "ovr_loss": 0.0,
+        "adjacent_loss": 0.0,
+        "focus_class_loss": 0.0,
+        "focus_sparse_loss": 0.0,
         "stability_loss": 0.0,
         "subset_consistency_loss": 0.0,
         "subset_supervised_loss": 0.0,
         "lipschitz_loss": 0.0,
         "prototype_loss": 0.0,
+        "ranking_memory_loss": 0.0,
     }
-    for bag, label in loader:
+    for batch in loader:
+        if len(batch) == 3:
+            bag, label, sample_index = batch
+        else:
+            bag, label = batch
+            sample_index = None
         optimizer.zero_grad()
         bag = bag.float().to(device)
         label = label.long().to(device)
-        _, losses = model.compute_loss(bag, label, criterion)
-        losses["loss"].backward()
+        output, losses = model.compute_loss(bag, label, criterion)
+        loss = losses["loss"]
+        if ranking_memory_weight > 0:
+            if (
+                ranking_memory is None
+                or ranking_memory_labels is None
+                or ranking_memory_valid is None
+                or sample_index is None
+            ):
+                raise ValueError(
+                    "ranking memory tensors and sample indices are required "
+                    "when ranking_memory_weight is positive"
+                )
+            logits = output["logits"]
+            memory = ranking_memory.to(device)
+            memory_labels = ranking_memory_labels.to(device)
+            memory_valid = ranking_memory_valid.to(device)
+            current_ranking_scores = _ranking_memory_scores(
+                logits, ranking_memory_score_type
+            )
+            memory_ranking_scores = _ranking_memory_scores(
+                memory, ranking_memory_score_type
+            )
+            ranking_terms = []
+            num_classes = logits.shape[1]
+            if ranking_memory_class_indices is None:
+                ranking_classes = range(num_classes)
+            else:
+                if max(ranking_memory_class_indices) >= num_classes:
+                    raise ValueError(
+                        "ranking_memory_class_indices contains an out-of-range class"
+                    )
+                ranking_classes = ranking_memory_class_indices
+            batch_indices = sample_index.view(-1).to(device)
+            if ranking_memory_apply_loss:
+                for row, sample_label in enumerate(label.view(-1)):
+                    current_scores = current_ranking_scores[row]
+                    for class_index in ranking_classes:
+                        current_is_positive = sample_label.item() == class_index
+                        if current_is_positive:
+                            pair_mask = memory_valid & (memory_labels != class_index)
+                            if torch.any(pair_mask):
+                                other_scores = memory_ranking_scores[
+                                    pair_mask, class_index
+                                ]
+                                if other_scores.numel() > ranking_memory_max_pairs:
+                                    if ranking_memory_hard_mining:
+                                        other_scores = torch.topk(
+                                            other_scores,
+                                            ranking_memory_max_pairs,
+                                            largest=True,
+                                        ).values
+                                    else:
+                                        other_scores = other_scores[
+                                            -ranking_memory_max_pairs:
+                                        ]
+                                ranking_terms.append(
+                                    F.softplus(
+                                        ranking_memory_margin
+                                        - (
+                                            current_scores[class_index]
+                                            - other_scores
+                                        )
+                                    ).mean()
+                                )
+                        else:
+                            pair_mask = memory_valid & (memory_labels == class_index)
+                            if torch.any(pair_mask):
+                                other_scores = memory_ranking_scores[
+                                    pair_mask, class_index
+                                ]
+                                if other_scores.numel() > ranking_memory_max_pairs:
+                                    if ranking_memory_hard_mining:
+                                        other_scores = torch.topk(
+                                            other_scores,
+                                            ranking_memory_max_pairs,
+                                            largest=False,
+                                        ).values
+                                    else:
+                                        other_scores = other_scores[
+                                            -ranking_memory_max_pairs:
+                                        ]
+                                ranking_terms.append(
+                                    F.softplus(
+                                        ranking_memory_margin
+                                        - (
+                                            other_scores
+                                            - current_scores[class_index]
+                                        )
+                                    ).mean()
+                                )
+            if ranking_memory_apply_loss and ranking_terms:
+                ranking_memory_loss = torch.stack(ranking_terms).mean()
+            else:
+                ranking_memory_loss = logits.sum() * 0.0
+            loss = loss + ranking_memory_weight * ranking_memory_loss
+            losses["ranking_memory_loss"] = ranking_memory_loss
+            losses["loss"] = loss
+        if distillation_weight > 0:
+            if distillation_targets is None or sample_index is None:
+                raise ValueError(
+                    "distillation_targets and sample indices are required "
+                    "when distillation_weight is positive"
+                )
+            teacher = distillation_targets[sample_index.view(-1)].to(device)
+            teacher = teacher.clamp_min(1e-8)
+            teacher = teacher / teacher.sum(dim=1, keepdim=True)
+            if distillation_temperature != 1.0:
+                teacher = torch.softmax(
+                    torch.log(teacher) / distillation_temperature,
+                    dim=1,
+                )
+            confidence = teacher.max(dim=1).values
+            entropy = -(
+                teacher * torch.log(teacher.clamp_min(1e-8))
+            ).sum(dim=1) / torch.log(
+                torch.tensor(
+                    teacher.shape[1],
+                    dtype=teacher.dtype,
+                    device=teacher.device,
+                )
+            )
+            distillation_mask = (
+                (entropy >= distillation_min_entropy)
+                & (confidence <= distillation_max_confidence)
+            )
+            student_log_probs = F.log_softmax(
+                output["logits"] / distillation_temperature,
+                dim=1,
+            )
+            if torch.any(distillation_mask):
+                per_sample_loss = F.kl_div(
+                    student_log_probs[distillation_mask],
+                    teacher[distillation_mask],
+                    reduction="none",
+                ).sum(dim=1) * (distillation_temperature ** 2)
+                if distillation_entropy_weight_power > 0:
+                    weights = entropy[distillation_mask].clamp_min(
+                        1e-8
+                    ).pow(distillation_entropy_weight_power)
+                    distillation_loss = (
+                        per_sample_loss * weights
+                    ).sum() / weights.sum().clamp_min(1e-8)
+                else:
+                    distillation_loss = per_sample_loss.mean()
+            else:
+                distillation_loss = output["logits"].sum() * 0.0
+            loss = loss + distillation_weight * distillation_loss
+            losses["distillation_loss"] = distillation_loss
+            losses["loss"] = loss
+        loss.backward()
         optimizer.step()
+        if ranking_memory_weight > 0:
+            with torch.no_grad():
+                batch_indices_cpu = sample_index.view(-1).cpu().long()
+                logits_cpu = output["logits"].detach().cpu()
+                previous_valid = ranking_memory_valid[batch_indices_cpu]
+                ranking_memory[batch_indices_cpu[~previous_valid]] = logits_cpu[
+                    ~previous_valid
+                ]
+                if torch.any(previous_valid):
+                    valid_indices = batch_indices_cpu[previous_valid]
+                    ranking_memory[valid_indices].mul_(ranking_memory_momentum).add_(
+                        logits_cpu[previous_valid],
+                        alpha=1.0 - ranking_memory_momentum,
+                    )
+                ranking_memory_valid[batch_indices_cpu] = True
         for key in totals:
             if key in losses:
                 totals[key] += float(losses[key].detach().item())

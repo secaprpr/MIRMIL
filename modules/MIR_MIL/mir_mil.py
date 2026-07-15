@@ -935,6 +935,106 @@ class LowRankClassMomentTokenReadout(nn.Module):
         return logits.unsqueeze(0)
 
 
+class ResidualClassMomentTokenReadout(nn.Module):
+    """Shared moment-token readout with a class-conditioned residual.
+
+    The shared path keeps the same generic evidence extraction bias as the
+    successful moment-token head. A small low-rank class residual can then
+    adjust decision boundaries without giving each class its own patch query.
+    """
+
+    def __init__(
+        self,
+        hidden_dim,
+        num_classes,
+        num_tokens,
+        token_dim,
+        readout_dim,
+        rank_dim,
+        temperature,
+        dropout,
+        residual_initial_scale,
+    ):
+        super().__init__()
+        if num_tokens <= 0:
+            raise ValueError("num_tokens must be positive")
+        if min(token_dim, readout_dim, rank_dim) <= 0:
+            raise ValueError(
+                "token_dim, readout_dim, and rank_dim must be positive"
+            )
+        if temperature <= 0:
+            raise ValueError(
+                "residual-class-moment temperature must be positive"
+            )
+        self.num_classes = int(num_classes)
+        self.num_tokens = int(num_tokens)
+        self.token_dim = int(token_dim)
+        self.readout_dim = int(readout_dim)
+        self.rank_dim = int(rank_dim)
+        self.temperature = float(temperature)
+        self.key = nn.Linear(hidden_dim, self.token_dim)
+        self.value = nn.Linear(hidden_dim, self.readout_dim)
+        self.tokens = nn.Parameter(
+            torch.empty(self.num_tokens, self.token_dim)
+        )
+        statistics_dim = 2 * self.readout_dim * self.num_tokens
+        self.shared_output = nn.Sequential(
+            nn.LayerNorm(statistics_dim),
+            nn.Dropout(dropout),
+            nn.Linear(statistics_dim, self.num_classes),
+        )
+        self.residual_projector = nn.Sequential(
+            nn.LayerNorm(2 * self.readout_dim),
+            nn.Dropout(dropout),
+            nn.Linear(2 * self.readout_dim, self.rank_dim),
+            nn.GELU(),
+        )
+        self.class_factors = nn.Parameter(
+            torch.empty(
+                self.num_classes,
+                self.num_tokens,
+                self.rank_dim,
+            )
+        )
+        self.residual_bias = nn.Parameter(torch.zeros(self.num_classes))
+        self.residual_scale = nn.Parameter(
+            torch.full(
+                (self.num_classes,), float(residual_initial_scale)
+            )
+        )
+        with torch.random.fork_rng(devices=[]):
+            nn.init.normal_(
+                self.tokens, std=1.0 / math.sqrt(self.token_dim)
+            )
+            nn.init.normal_(
+                self.class_factors,
+                std=1.0 / math.sqrt(self.num_tokens * self.rank_dim),
+            )
+
+    def forward(self, encoded):
+        keys = self.key(encoded)
+        values = self.value(encoded)
+        scale = math.sqrt(self.token_dim) * self.temperature
+        scores = torch.einsum("nd,td->nt", keys, self.tokens) / scale
+        attention = torch.softmax(scores, dim=0)
+        token_mean = torch.einsum("nt,nv->tv", attention, values)
+        token_second = torch.einsum(
+            "nt,nv->tv", attention, values.square()
+        )
+        token_variance = (token_second - token_mean.square()).clamp_min(
+            0.0
+        )
+        token_statistics = torch.cat((token_mean, token_variance), dim=1)
+        shared_logits = self.shared_output(
+            token_statistics.flatten().unsqueeze(0)
+        )
+        token_evidence = self.residual_projector(token_statistics)
+        residual_logits = torch.einsum(
+            "tr,ctr->c", token_evidence, self.class_factors
+        ) + self.residual_bias
+        return shared_logits + self.residual_scale * residual_logits
+
+
 class LowRankClassTokenReadout(nn.Module):
     """Shared evidence tokens with a low-rank class-specific readout.
 
@@ -1008,6 +1108,397 @@ class LowRankClassTokenReadout(nn.Module):
         token_evidence = self.token_projector(token_values)
         logits = torch.einsum(
             "tr,ctr->c", token_evidence, self.class_factors
+        ) + self.logit_bias
+        return logits.unsqueeze(0)
+
+
+class SparseClassEvidenceReadout(nn.Module):
+    """Class-specific multi-query readout for rare local evidence.
+
+    Soft summaries preserve distributed evidence and hard top-k summaries
+    retain small diagnostic regions. The global MIR state gates each class,
+    so local evidence is interpreted in whole-slide context.
+    """
+
+    def __init__(
+        self,
+        hidden_dim,
+        state_dim,
+        num_classes,
+        num_queries,
+        query_dim,
+        value_dim,
+        rank_dim,
+        gate_hidden_dim,
+        temperature,
+        topk_fraction,
+        dropout,
+        gate_initial_bias,
+    ):
+        super().__init__()
+        if num_queries <= 0:
+            raise ValueError("sparse-class num_queries must be positive")
+        if min(query_dim, value_dim, rank_dim, gate_hidden_dim) <= 0:
+            raise ValueError("sparse-class dimensions must be positive")
+        if temperature <= 0:
+            raise ValueError("sparse-class temperature must be positive")
+        if not 0 < topk_fraction <= 1:
+            raise ValueError(
+                "sparse-class topk_fraction must be in (0, 1]"
+            )
+        if not 0 <= dropout < 1:
+            raise ValueError("sparse-class dropout must be in [0, 1)")
+
+        self.num_classes = int(num_classes)
+        self.num_queries = int(num_queries)
+        self.query_dim = int(query_dim)
+        self.value_dim = int(value_dim)
+        self.temperature = float(temperature)
+        self.topk_fraction = float(topk_fraction)
+        self.key = nn.Linear(hidden_dim, self.query_dim)
+        self.value = nn.Linear(hidden_dim, self.value_dim)
+        self.queries = nn.Parameter(
+            torch.empty(
+                self.num_classes, self.num_queries, self.query_dim
+            )
+        )
+        self.evidence_projector = nn.Sequential(
+            nn.LayerNorm(2 * self.value_dim),
+            nn.Dropout(dropout),
+            nn.Linear(2 * self.value_dim, int(rank_dim)),
+            nn.GELU(),
+        )
+        self.class_factors = nn.Parameter(
+            torch.empty(self.num_classes, self.num_queries, int(rank_dim))
+        )
+        self.logit_bias = nn.Parameter(torch.zeros(self.num_classes))
+        self.context_gate = nn.Sequential(
+            nn.LayerNorm(state_dim),
+            nn.Linear(state_dim, int(gate_hidden_dim)),
+            nn.GELU(),
+            nn.Linear(int(gate_hidden_dim), self.num_classes),
+        )
+        self.gate_initial_bias = float(gate_initial_bias)
+        with torch.random.fork_rng(devices=[]):
+            nn.init.normal_(
+                self.queries, std=1.0 / math.sqrt(self.query_dim)
+            )
+            nn.init.normal_(
+                self.class_factors,
+                std=1.0 / math.sqrt(self.num_queries * int(rank_dim)),
+            )
+
+    def reset_gate(self):
+        final_layer = self.context_gate[-1]
+        nn.init.zeros_(final_layer.weight)
+        nn.init.constant_(final_layer.bias, self.gate_initial_bias)
+
+    def forward(self, encoded, state):
+        keys = self.key(encoded)
+        values = self.value(encoded)
+        scale = math.sqrt(self.query_dim) * self.temperature
+        scores = torch.einsum("nd,ctd->nct", keys, self.queries) / scale
+
+        attention = torch.softmax(scores, dim=0)
+        soft_evidence = torch.einsum(
+            "nct,nv->ctv", attention, values
+        )
+        k = max(1, math.ceil(encoded.shape[0] * self.topk_fraction))
+        k = min(k, encoded.shape[0])
+        top_indices = torch.topk(scores, k=k, dim=0).indices
+        sparse_evidence = values[top_indices].mean(dim=0)
+
+        statistics = torch.cat((soft_evidence, sparse_evidence), dim=-1)
+        evidence = self.evidence_projector(statistics)
+        raw_logits = torch.einsum(
+            "ctr,ctr->c", evidence, self.class_factors
+        ) + self.logit_bias
+        gate = torch.sigmoid(self.context_gate(state.unsqueeze(0))).squeeze(0)
+        return (gate * raw_logits).unsqueeze(0)
+
+
+class FocusedSparseEvidenceReadout(nn.Module):
+    """Patch-level mixture readout for one difficult class."""
+
+    def __init__(
+        self,
+        hidden_dim,
+        state_dim,
+        num_queries,
+        query_dim,
+        value_dim,
+        readout_dim,
+        temperature,
+        topk_fraction,
+        dropout,
+    ):
+        super().__init__()
+        if num_queries <= 0:
+            raise ValueError("focus-sparse num_queries must be positive")
+        if min(query_dim, value_dim, readout_dim) <= 0:
+            raise ValueError("focus-sparse dimensions must be positive")
+        if temperature <= 0:
+            raise ValueError("focus-sparse temperature must be positive")
+        if not 0 < topk_fraction <= 1:
+            raise ValueError("focus-sparse topk_fraction must be in (0, 1]")
+        if not 0 <= dropout < 1:
+            raise ValueError("focus-sparse dropout must be in [0, 1)")
+
+        self.num_queries = int(num_queries)
+        self.query_dim = int(query_dim)
+        self.value_dim = int(value_dim)
+        self.temperature = float(temperature)
+        self.topk_fraction = float(topk_fraction)
+        self.key = nn.Linear(hidden_dim, self.query_dim)
+        self.value = nn.Linear(hidden_dim, self.value_dim)
+        self.queries = nn.Parameter(
+            torch.empty(self.num_queries, self.query_dim)
+        )
+        self.state_projector = nn.Sequential(
+            nn.LayerNorm(state_dim),
+            nn.Linear(state_dim, self.value_dim),
+            nn.GELU(),
+        )
+        self.evidence_projector = nn.Sequential(
+            nn.LayerNorm(3 * self.value_dim),
+            nn.Dropout(dropout),
+            nn.Linear(3 * self.value_dim, int(readout_dim)),
+            nn.GELU(),
+            nn.Dropout(dropout),
+        )
+        self.query_scorer = nn.Linear(int(readout_dim), 1)
+        self.context_mixer = nn.Sequential(
+            nn.LayerNorm(state_dim),
+            nn.Linear(state_dim, int(readout_dim)),
+            nn.GELU(),
+            nn.Linear(int(readout_dim), self.num_queries),
+        )
+        self.logit_bias = nn.Parameter(torch.zeros(1))
+        with torch.random.fork_rng(devices=[]):
+            nn.init.normal_(self.queries, std=1.0 / math.sqrt(self.query_dim))
+
+    def reset_mixer(self):
+        final_layer = self.context_mixer[-1]
+        nn.init.zeros_(final_layer.weight)
+        nn.init.zeros_(final_layer.bias)
+
+    def forward(self, encoded, state):
+        keys = self.key(encoded)
+        values = self.value(encoded)
+        scale = math.sqrt(self.query_dim) * self.temperature
+        scores = torch.einsum("nd,qd->nq", keys, self.queries) / scale
+
+        attention = torch.softmax(scores, dim=0)
+        soft_evidence = torch.einsum("nq,nv->qv", attention, values)
+        k = max(1, math.ceil(encoded.shape[0] * self.topk_fraction))
+        k = min(k, encoded.shape[0])
+        top_indices = torch.topk(scores, k=k, dim=0).indices
+        sparse_evidence = values[top_indices].mean(dim=0)
+        global_evidence = values.mean(dim=0, keepdim=True)
+        state_context = self.state_projector(state.unsqueeze(0))
+        statistics = torch.cat(
+            (
+                soft_evidence,
+                sparse_evidence - global_evidence,
+                state_context.expand(self.num_queries, -1),
+            ),
+            dim=-1,
+        )
+        query_logits = self.query_scorer(
+            self.evidence_projector(statistics)
+        ).squeeze(-1)
+        mixture = torch.softmax(
+            self.context_mixer(state.unsqueeze(0)), dim=1
+        ).squeeze(0)
+        logit = torch.sum(mixture * query_logits) + self.logit_bias.squeeze(0)
+        return logit.reshape(1, 1)
+
+
+class GatedAttentionResidualReadout(nn.Module):
+    """ABMIL-style gated attention residual over encoded patches."""
+
+    def __init__(
+        self,
+        hidden_dim,
+        num_classes,
+        attention_dim,
+        value_dim,
+        dropout,
+        temperature,
+        class_specific,
+    ):
+        super().__init__()
+        if min(attention_dim, value_dim) <= 0:
+            raise ValueError("gated attention dimensions must be positive")
+        if not 0 <= dropout < 1:
+            raise ValueError("gated attention dropout must be in [0, 1)")
+        if temperature <= 0:
+            raise ValueError("gated attention temperature must be positive")
+        self.num_classes = int(num_classes)
+        self.attention_dim = int(attention_dim)
+        self.value_dim = int(value_dim)
+        self.temperature = float(temperature)
+        self.class_specific = bool(class_specific)
+        self.attention_v = nn.Sequential(
+            nn.Linear(hidden_dim, self.attention_dim),
+            nn.Tanh(),
+        )
+        self.attention_u = nn.Sequential(
+            nn.Linear(hidden_dim, self.attention_dim),
+            nn.Sigmoid(),
+        )
+        self.attention_dropout = nn.Dropout(dropout)
+        attention_out = self.num_classes if self.class_specific else 1
+        self.attention_score = nn.Linear(self.attention_dim, attention_out)
+        self.value = nn.Sequential(
+            nn.Linear(hidden_dim, self.value_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+        )
+        if self.class_specific:
+            self.classifiers = nn.Parameter(
+                torch.empty(self.num_classes, self.value_dim)
+            )
+            self.logit_bias = nn.Parameter(torch.zeros(self.num_classes))
+            with torch.random.fork_rng(devices=[]):
+                nn.init.normal_(
+                    self.classifiers, std=1.0 / math.sqrt(self.value_dim)
+                )
+        else:
+            self.classifier = nn.Linear(self.value_dim, self.num_classes)
+
+    def forward(self, encoded):
+        gated = self.attention_v(encoded) * self.attention_u(encoded)
+        gated = self.attention_dropout(gated)
+        scores = self.attention_score(gated) / self.temperature
+        values = self.value(encoded)
+        if self.class_specific:
+            attention = torch.softmax(scores, dim=0)
+            pooled = torch.einsum("nc,nv->cv", attention, values)
+            logits = torch.einsum(
+                "cv,cv->c", pooled, self.classifiers
+            ) + self.logit_bias
+            return logits.unsqueeze(0)
+        attention = torch.softmax(scores.squeeze(-1), dim=0)
+        pooled = torch.sum(attention[:, None] * values, dim=0)
+        return self.classifier(pooled.unsqueeze(0))
+
+
+class SpatialRegionMomentReadout(nn.Module):
+    """Hierarchical region readout over features and true patch coordinates."""
+
+    def __init__(
+        self,
+        hidden_dim,
+        num_classes,
+        grid_size,
+        value_dim,
+        region_dim,
+        attention_dim,
+        dropout,
+        temperature,
+        include_centers=True,
+        include_mass=False,
+    ):
+        super().__init__()
+        if grid_size <= 0:
+            raise ValueError("spatial region grid_size must be positive")
+        if min(value_dim, region_dim, attention_dim) <= 0:
+            raise ValueError("spatial region dimensions must be positive")
+        if not 0 <= dropout < 1:
+            raise ValueError("spatial region dropout must be in [0, 1)")
+        if temperature <= 0:
+            raise ValueError("spatial region temperature must be positive")
+        self.num_classes = int(num_classes)
+        self.grid_size = int(grid_size)
+        self.value_dim = int(value_dim)
+        self.temperature = float(temperature)
+        self.include_centers = bool(include_centers)
+        self.include_mass = bool(include_mass)
+        self.value = nn.Linear(hidden_dim, self.value_dim)
+        statistic_dim = 2 * self.value_dim
+        statistic_dim += 2 if self.include_centers else 0
+        statistic_dim += 1 if self.include_mass else 0
+        self.region_projector = nn.Sequential(
+            nn.LayerNorm(statistic_dim),
+            nn.Linear(statistic_dim, int(region_dim)),
+            nn.GELU(),
+            nn.Dropout(dropout),
+        )
+        self.attention_v = nn.Sequential(
+            nn.Linear(int(region_dim), int(attention_dim)),
+            nn.Tanh(),
+        )
+        self.attention_u = nn.Sequential(
+            nn.Linear(int(region_dim), int(attention_dim)),
+            nn.Sigmoid(),
+        )
+        self.attention_score = nn.Linear(
+            int(attention_dim), self.num_classes
+        )
+        self.classifiers = nn.Parameter(
+            torch.empty(self.num_classes, int(region_dim))
+        )
+        self.logit_bias = nn.Parameter(torch.zeros(self.num_classes))
+        with torch.random.fork_rng(devices=[]):
+            nn.init.normal_(
+                self.classifiers, std=1.0 / math.sqrt(int(region_dim))
+            )
+
+    def region_statistics(self, encoded, coordinates):
+        if coordinates.ndim != 2 or coordinates.shape != (
+            encoded.shape[0],
+            2,
+        ):
+            raise ValueError("coordinates must have shape [N, 2]")
+        coordinates = coordinates.to(dtype=encoded.dtype)
+        if coordinates.amin() >= 0 and coordinates.amax() <= 1:
+            normalized = coordinates
+        else:
+            minimum = coordinates.amin(dim=0)
+            span = (coordinates.amax(dim=0) - minimum).clamp_min(1e-6)
+            normalized = (coordinates - minimum) / span
+        normalized = normalized.clamp(0.0, 1.0)
+        bins = torch.floor(normalized * self.grid_size).long()
+        bins = bins.clamp(max=self.grid_size - 1)
+        region_ids = bins[:, 1] * self.grid_size + bins[:, 0]
+        occupied, inverse = torch.unique(
+            region_ids, sorted=True, return_inverse=True
+        )
+        del occupied
+
+        values = self.value(encoded)
+        region_count = int(inverse.max().item()) + 1
+        counts = values.new_zeros((region_count, 1))
+        counts.index_add_(
+            0, inverse, values.new_ones((values.shape[0], 1))
+        )
+        sums = values.new_zeros((region_count, self.value_dim))
+        sums.index_add_(0, inverse, values)
+        square_sums = values.new_zeros((region_count, self.value_dim))
+        square_sums.index_add_(0, inverse, values.square())
+        coordinate_sums = values.new_zeros((region_count, 2))
+        coordinate_sums.index_add_(0, inverse, normalized)
+
+        mean = sums / counts
+        variance = (square_sums / counts - mean.square()).clamp_min(0.0)
+        statistics = [mean, variance]
+        if self.include_centers:
+            statistics.append(coordinate_sums / counts)
+        if self.include_mass:
+            denominator = math.log1p(values.shape[0])
+            statistics.append(torch.log1p(counts) / denominator)
+        return torch.cat(statistics, dim=1)
+
+    def forward(self, encoded, coordinates):
+        statistics = self.region_statistics(encoded, coordinates)
+        regions = self.region_projector(statistics)
+        gated = self.attention_v(regions) * self.attention_u(regions)
+        scores = self.attention_score(gated) / self.temperature
+        attention = torch.softmax(scores, dim=0)
+        pooled = torch.einsum("rc,rd->cd", attention, regions)
+        logits = torch.einsum(
+            "cd,cd->c", pooled, self.classifiers
         ) + self.logit_bias
         return logits.unsqueeze(0)
 
@@ -1222,6 +1713,38 @@ class CosineStateResidualHead(nn.Module):
         return scale * logits
 
 
+class StateBoundaryHead(nn.Module):
+    """Small state head for explicit one-vs-rest or threshold supervision."""
+
+    def __init__(
+        self,
+        state_dim,
+        output_dim,
+        hidden_dim,
+        dropout,
+        act,
+        temperature,
+    ):
+        super().__init__()
+        if state_dim <= 0 or output_dim <= 0 or hidden_dim <= 0:
+            raise ValueError(
+                "state_dim, output_dim, and hidden_dim must be positive"
+            )
+        if temperature <= 0:
+            raise ValueError("boundary head temperature must be positive")
+        self.temperature = float(temperature)
+        self.net = nn.Sequential(
+            nn.LayerNorm(state_dim),
+            nn.Linear(state_dim, hidden_dim),
+            _activation(act),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, output_dim),
+        )
+
+    def forward(self, state):
+        return self.net(state) / self.temperature
+
+
 class MIR_MIL(nn.Module):
     """Neural measure potential with closed-form measure influence response."""
 
@@ -1244,6 +1767,7 @@ class MIR_MIL(nn.Module):
         dropout=0.1,
         act="gelu",
         coordinate_dim=0,
+        coordinate_encoder_scale=1.0,
         input_group_l2_normalize=False,
         input_group_size=0,
         stability_weight=0.0,
@@ -1304,6 +1828,14 @@ class MIR_MIL(nn.Module):
         class_moment_token_rank_dim=32,
         class_moment_token_temperature=1.0,
         class_moment_token_dropout=0.0,
+        residual_class_moment_token_weight=0.0,
+        residual_class_moment_token_count=4,
+        residual_class_moment_token_dim=64,
+        residual_class_moment_token_readout_dim=128,
+        residual_class_moment_token_rank_dim=32,
+        residual_class_moment_token_temperature=1.0,
+        residual_class_moment_token_dropout=0.0,
+        residual_class_moment_token_initial_scale=0.05,
         class_token_weight=0.0,
         class_token_count=4,
         class_token_dim=64,
@@ -1311,6 +1843,31 @@ class MIR_MIL(nn.Module):
         class_token_rank_dim=32,
         class_token_temperature=1.0,
         class_token_dropout=0.0,
+        sparse_class_weight=0.0,
+        sparse_class_query_count=4,
+        sparse_class_query_dim=64,
+        sparse_class_value_dim=128,
+        sparse_class_rank_dim=32,
+        sparse_class_gate_hidden_dim=64,
+        sparse_class_temperature=1.0,
+        sparse_class_topk_fraction=0.02,
+        sparse_class_dropout=0.0,
+        sparse_class_gate_initial_bias=0.0,
+        gated_attention_weight=0.0,
+        gated_attention_dim=128,
+        gated_attention_value_dim=128,
+        gated_attention_dropout=0.0,
+        gated_attention_temperature=1.0,
+        gated_attention_class_specific=True,
+        spatial_region_weight=0.0,
+        spatial_region_grid_size=4,
+        spatial_region_value_dim=64,
+        spatial_region_dim=96,
+        spatial_region_attention_dim=64,
+        spatial_region_dropout=0.0,
+        spatial_region_temperature=1.0,
+        spatial_region_include_centers=True,
+        spatial_region_include_mass=False,
         latent_readout_weight=0.0,
         latent_readout_count=4,
         latent_readout_dim=128,
@@ -1328,6 +1885,35 @@ class MIR_MIL(nn.Module):
         cosine_head_hidden_dim=128,
         cosine_head_dropout=0.0,
         cosine_head_initial_scale=8.0,
+        ovr_head_weight=0.0,
+        ovr_loss_weight=0.0,
+        ovr_loss_pos_weight=1.0,
+        ovr_loss_pos_weights=None,
+        ovr_head_hidden_dim=64,
+        ovr_head_dropout=0.0,
+        ovr_head_temperature=1.0,
+        adjacent_head_weight=0.0,
+        adjacent_loss_weight=0.0,
+        adjacent_head_hidden_dim=64,
+        adjacent_head_dropout=0.0,
+        adjacent_head_temperature=1.0,
+        focus_class_index=1,
+        focus_class_head_weight=0.0,
+        focus_class_loss_weight=0.0,
+        focus_class_loss_pos_weight=1.0,
+        focus_class_head_hidden_dim=64,
+        focus_class_head_dropout=0.0,
+        focus_class_head_temperature=1.0,
+        focus_sparse_head_weight=0.0,
+        focus_sparse_loss_weight=0.0,
+        focus_sparse_loss_pos_weight=1.0,
+        focus_sparse_query_count=4,
+        focus_sparse_query_dim=64,
+        focus_sparse_value_dim=128,
+        focus_sparse_readout_dim=64,
+        focus_sparse_temperature=1.0,
+        focus_sparse_topk_fraction=0.02,
+        focus_sparse_dropout=0.0,
         logit_margin_loss_weight=0.0,
         logit_margin=1.0,
         subset_consistency_weight=0.0,
@@ -1335,6 +1921,10 @@ class MIR_MIL(nn.Module):
         subset_consistency_fraction=0.75,
         subset_consistency_views=1,
         subset_consistency_temperature=1.0,
+        use_logit_calibration=False,
+        logit_calibration_learn_temperature=False,
+        logit_calibration_initial_temperature=1.0,
+        logit_calibration_bias_init=None,
     ):
         super().__init__()
         if in_dim <= 0 or num_classes < 2:
@@ -1347,6 +1937,9 @@ class MIR_MIL(nn.Module):
             )
         self.in_dim = int(in_dim)
         self.coordinate_dim = int(coordinate_dim)
+        self.coordinate_encoder_scale = float(coordinate_encoder_scale)
+        if self.coordinate_encoder_scale < 0:
+            raise ValueError("coordinate_encoder_scale must be non-negative")
         self.input_dim = self.in_dim + self.coordinate_dim
         self.input_group_l2_normalize = bool(input_group_l2_normalize)
         self.input_group_size = int(input_group_size)
@@ -1399,6 +1992,56 @@ class MIR_MIL(nn.Module):
         self.ordinal_weight = float(ordinal_weight)
         if self.ordinal_weight < 0:
             raise ValueError("ordinal_weight must be non-negative")
+        self.use_logit_calibration = bool(use_logit_calibration)
+        self.logit_calibration_learn_temperature = bool(
+            logit_calibration_learn_temperature
+        )
+        self.logit_calibration_initial_temperature = float(
+            logit_calibration_initial_temperature
+        )
+        if self.logit_calibration_initial_temperature <= 0:
+            raise ValueError(
+                "logit_calibration_initial_temperature must be positive"
+            )
+        if logit_calibration_bias_init is None:
+            logit_calibration_bias_init = [0.0] * self.num_classes
+        if (
+            len(logit_calibration_bias_init) != self.num_classes
+            and self.use_logit_calibration
+        ):
+            raise ValueError(
+                "logit_calibration_bias_init must have one value per class"
+            )
+        if len(logit_calibration_bias_init) != self.num_classes:
+            logit_calibration_bias_init = [0.0] * self.num_classes
+        calibration_bias = torch.tensor(
+            logit_calibration_bias_init, dtype=torch.float32
+        )
+        if self.use_logit_calibration:
+            self.logit_calibration_bias = nn.Parameter(calibration_bias)
+            if self.logit_calibration_learn_temperature:
+                self.logit_calibration_log_temperature = nn.Parameter(
+                    torch.tensor(
+                        math.log(self.logit_calibration_initial_temperature),
+                        dtype=torch.float32,
+                    )
+                )
+            else:
+                self.register_buffer(
+                    "logit_calibration_log_temperature",
+                    torch.tensor(
+                        math.log(self.logit_calibration_initial_temperature),
+                        dtype=torch.float32,
+                    ),
+                )
+        else:
+            self.register_buffer(
+                "logit_calibration_bias", calibration_bias
+            )
+            self.register_buffer(
+                "logit_calibration_log_temperature",
+                torch.tensor(0.0, dtype=torch.float32),
+            )
         self.potential_type = str(potential_type)
         self.prototype_regularization_weight = float(
             prototype_regularization_weight
@@ -1523,6 +2166,54 @@ class MIR_MIL(nn.Module):
             raise ValueError(
                 "class_moment_token_dropout must be in [0, 1)"
             )
+        self.residual_class_moment_token_weight = float(
+            residual_class_moment_token_weight
+        )
+        self.residual_class_moment_token_count = int(
+            residual_class_moment_token_count
+        )
+        self.residual_class_moment_token_dim = int(
+            residual_class_moment_token_dim
+        )
+        self.residual_class_moment_token_readout_dim = int(
+            residual_class_moment_token_readout_dim
+        )
+        self.residual_class_moment_token_rank_dim = int(
+            residual_class_moment_token_rank_dim
+        )
+        self.residual_class_moment_token_temperature = float(
+            residual_class_moment_token_temperature
+        )
+        self.residual_class_moment_token_dropout = float(
+            residual_class_moment_token_dropout
+        )
+        self.residual_class_moment_token_initial_scale = float(
+            residual_class_moment_token_initial_scale
+        )
+        if self.residual_class_moment_token_weight < 0:
+            raise ValueError(
+                "residual_class_moment_token_weight must be non-negative"
+            )
+        if self.residual_class_moment_token_count <= 0:
+            raise ValueError(
+                "residual_class_moment_token_count must be positive"
+            )
+        if min(
+            self.residual_class_moment_token_dim,
+            self.residual_class_moment_token_readout_dim,
+            self.residual_class_moment_token_rank_dim,
+        ) <= 0:
+            raise ValueError(
+                "residual_class_moment_token dimensions must be positive"
+            )
+        if self.residual_class_moment_token_temperature <= 0:
+            raise ValueError(
+                "residual_class_moment_token_temperature must be positive"
+            )
+        if not 0 <= self.residual_class_moment_token_dropout < 1:
+            raise ValueError(
+                "residual_class_moment_token_dropout must be in [0, 1)"
+            )
         self.class_token_weight = float(class_token_weight)
         self.class_token_count = int(class_token_count)
         self.class_token_dim = int(class_token_dim)
@@ -1547,6 +2238,106 @@ class MIR_MIL(nn.Module):
             raise ValueError("class_token_temperature must be positive")
         if not 0 <= self.class_token_dropout < 1:
             raise ValueError("class_token_dropout must be in [0, 1)")
+        self.sparse_class_weight = float(sparse_class_weight)
+        self.sparse_class_query_count = int(sparse_class_query_count)
+        self.sparse_class_query_dim = int(sparse_class_query_dim)
+        self.sparse_class_value_dim = int(sparse_class_value_dim)
+        self.sparse_class_rank_dim = int(sparse_class_rank_dim)
+        self.sparse_class_gate_hidden_dim = int(
+            sparse_class_gate_hidden_dim
+        )
+        self.sparse_class_temperature = float(sparse_class_temperature)
+        self.sparse_class_topk_fraction = float(
+            sparse_class_topk_fraction
+        )
+        self.sparse_class_dropout = float(sparse_class_dropout)
+        self.sparse_class_gate_initial_bias = float(
+            sparse_class_gate_initial_bias
+        )
+        if self.sparse_class_weight < 0:
+            raise ValueError("sparse_class_weight must be non-negative")
+        if self.sparse_class_query_count <= 0:
+            raise ValueError("sparse_class_query_count must be positive")
+        if min(
+            self.sparse_class_query_dim,
+            self.sparse_class_value_dim,
+            self.sparse_class_rank_dim,
+            self.sparse_class_gate_hidden_dim,
+        ) <= 0:
+            raise ValueError("sparse_class dimensions must be positive")
+        if self.sparse_class_temperature <= 0:
+            raise ValueError("sparse_class_temperature must be positive")
+        if not 0 < self.sparse_class_topk_fraction <= 1:
+            raise ValueError(
+                "sparse_class_topk_fraction must be in (0, 1]"
+            )
+        if not 0 <= self.sparse_class_dropout < 1:
+            raise ValueError("sparse_class_dropout must be in [0, 1)")
+        self.gated_attention_weight = float(gated_attention_weight)
+        self.gated_attention_dim = int(gated_attention_dim)
+        self.gated_attention_value_dim = int(gated_attention_value_dim)
+        self.gated_attention_dropout = float(gated_attention_dropout)
+        self.gated_attention_temperature = float(
+            gated_attention_temperature
+        )
+        self.gated_attention_class_specific = bool(
+            gated_attention_class_specific
+        )
+        if self.gated_attention_weight < 0:
+            raise ValueError(
+                "gated_attention_weight must be non-negative"
+            )
+        if (
+            self.gated_attention_dim <= 0
+            or self.gated_attention_value_dim <= 0
+        ):
+            raise ValueError(
+                "gated_attention_dim and gated_attention_value_dim "
+                "must be positive"
+            )
+        if not 0 <= self.gated_attention_dropout < 1:
+            raise ValueError("gated_attention_dropout must be in [0, 1)")
+        if self.gated_attention_temperature <= 0:
+            raise ValueError(
+                "gated_attention_temperature must be positive"
+            )
+        self.spatial_region_weight = float(spatial_region_weight)
+        self.spatial_region_grid_size = int(spatial_region_grid_size)
+        self.spatial_region_value_dim = int(spatial_region_value_dim)
+        self.spatial_region_dim = int(spatial_region_dim)
+        self.spatial_region_attention_dim = int(
+            spatial_region_attention_dim
+        )
+        self.spatial_region_dropout = float(spatial_region_dropout)
+        self.spatial_region_temperature = float(
+            spatial_region_temperature
+        )
+        self.spatial_region_include_centers = bool(
+            spatial_region_include_centers
+        )
+        self.spatial_region_include_mass = bool(
+            spatial_region_include_mass
+        )
+        if self.spatial_region_weight < 0:
+            raise ValueError("spatial_region_weight must be non-negative")
+        if self.spatial_region_weight > 0 and self.coordinate_dim != 2:
+            raise ValueError(
+                "spatial_region_weight requires coordinate_dim=2"
+            )
+        if self.spatial_region_grid_size <= 0:
+            raise ValueError("spatial_region_grid_size must be positive")
+        if min(
+            self.spatial_region_value_dim,
+            self.spatial_region_dim,
+            self.spatial_region_attention_dim,
+        ) <= 0:
+            raise ValueError("spatial region dimensions must be positive")
+        if not 0 <= self.spatial_region_dropout < 1:
+            raise ValueError("spatial_region_dropout must be in [0, 1)")
+        if self.spatial_region_temperature <= 0:
+            raise ValueError(
+                "spatial_region_temperature must be positive"
+            )
         self.latent_readout_weight = float(latent_readout_weight)
         self.latent_readout_count = int(latent_readout_count)
         self.latent_readout_dim = int(latent_readout_dim)
@@ -1609,6 +2400,106 @@ class MIR_MIL(nn.Module):
             raise ValueError("cosine_head_dropout must be in [0, 1)")
         if self.cosine_head_initial_scale <= 0:
             raise ValueError("cosine_head_initial_scale must be positive")
+        self.ovr_head_weight = float(ovr_head_weight)
+        self.ovr_loss_weight = float(ovr_loss_weight)
+        self.ovr_loss_pos_weight = float(ovr_loss_pos_weight)
+        if ovr_loss_pos_weights is None:
+            self.ovr_loss_pos_weights = None
+        else:
+            self.ovr_loss_pos_weights = [
+                float(weight) for weight in ovr_loss_pos_weights
+            ]
+        self.ovr_head_hidden_dim = int(ovr_head_hidden_dim)
+        self.ovr_head_dropout = float(ovr_head_dropout)
+        self.ovr_head_temperature = float(ovr_head_temperature)
+        if self.ovr_head_weight < 0 or self.ovr_loss_weight < 0:
+            raise ValueError("ovr weights must be non-negative")
+        if self.ovr_loss_pos_weight <= 0:
+            raise ValueError("ovr_loss_pos_weight must be positive")
+        if self.ovr_loss_pos_weights is not None:
+            if len(self.ovr_loss_pos_weights) != self.num_classes:
+                raise ValueError(
+                    "ovr_loss_pos_weights must match num_classes"
+                )
+            if any(weight <= 0 for weight in self.ovr_loss_pos_weights):
+                raise ValueError("ovr_loss_pos_weights must be positive")
+        if self.ovr_head_hidden_dim <= 0:
+            raise ValueError("ovr_head_hidden_dim must be positive")
+        if not 0 <= self.ovr_head_dropout < 1:
+            raise ValueError("ovr_head_dropout must be in [0, 1)")
+        if self.ovr_head_temperature <= 0:
+            raise ValueError("ovr_head_temperature must be positive")
+        self.adjacent_head_weight = float(adjacent_head_weight)
+        self.adjacent_loss_weight = float(adjacent_loss_weight)
+        self.adjacent_head_hidden_dim = int(adjacent_head_hidden_dim)
+        self.adjacent_head_dropout = float(adjacent_head_dropout)
+        self.adjacent_head_temperature = float(adjacent_head_temperature)
+        if self.adjacent_head_weight < 0 or self.adjacent_loss_weight < 0:
+            raise ValueError("adjacent weights must be non-negative")
+        if self.adjacent_head_hidden_dim <= 0:
+            raise ValueError("adjacent_head_hidden_dim must be positive")
+        if not 0 <= self.adjacent_head_dropout < 1:
+            raise ValueError("adjacent_head_dropout must be in [0, 1)")
+        if self.adjacent_head_temperature <= 0:
+            raise ValueError("adjacent_head_temperature must be positive")
+        self.focus_class_index = int(focus_class_index)
+        self.focus_class_head_weight = float(focus_class_head_weight)
+        self.focus_class_loss_weight = float(focus_class_loss_weight)
+        self.focus_class_loss_pos_weight = float(focus_class_loss_pos_weight)
+        self.focus_class_head_hidden_dim = int(focus_class_head_hidden_dim)
+        self.focus_class_head_dropout = float(focus_class_head_dropout)
+        self.focus_class_head_temperature = float(
+            focus_class_head_temperature
+        )
+        if not 0 <= self.focus_class_index < self.num_classes:
+            raise ValueError("focus_class_index must identify a class")
+        if self.focus_class_head_weight < 0 or self.focus_class_loss_weight < 0:
+            raise ValueError("focus class weights must be non-negative")
+        if self.focus_class_loss_pos_weight <= 0:
+            raise ValueError("focus_class_loss_pos_weight must be positive")
+        if self.focus_class_head_hidden_dim <= 0:
+            raise ValueError("focus_class_head_hidden_dim must be positive")
+        if not 0 <= self.focus_class_head_dropout < 1:
+            raise ValueError("focus_class_head_dropout must be in [0, 1)")
+        if self.focus_class_head_temperature <= 0:
+            raise ValueError("focus_class_head_temperature must be positive")
+        self.focus_sparse_head_weight = float(focus_sparse_head_weight)
+        self.focus_sparse_loss_weight = float(focus_sparse_loss_weight)
+        self.focus_sparse_loss_pos_weight = float(
+            focus_sparse_loss_pos_weight
+        )
+        self.focus_sparse_query_count = int(focus_sparse_query_count)
+        self.focus_sparse_query_dim = int(focus_sparse_query_dim)
+        self.focus_sparse_value_dim = int(focus_sparse_value_dim)
+        self.focus_sparse_readout_dim = int(focus_sparse_readout_dim)
+        self.focus_sparse_temperature = float(focus_sparse_temperature)
+        self.focus_sparse_topk_fraction = float(
+            focus_sparse_topk_fraction
+        )
+        self.focus_sparse_dropout = float(focus_sparse_dropout)
+        if (
+            self.focus_sparse_head_weight < 0
+            or self.focus_sparse_loss_weight < 0
+        ):
+            raise ValueError("focus-sparse weights must be non-negative")
+        if self.focus_sparse_loss_pos_weight <= 0:
+            raise ValueError("focus_sparse_loss_pos_weight must be positive")
+        if self.focus_sparse_query_count <= 0:
+            raise ValueError("focus_sparse_query_count must be positive")
+        if min(
+            self.focus_sparse_query_dim,
+            self.focus_sparse_value_dim,
+            self.focus_sparse_readout_dim,
+        ) <= 0:
+            raise ValueError("focus-sparse dimensions must be positive")
+        if self.focus_sparse_temperature <= 0:
+            raise ValueError("focus_sparse_temperature must be positive")
+        if not 0 < self.focus_sparse_topk_fraction <= 1:
+            raise ValueError(
+                "focus_sparse_topk_fraction must be in (0, 1]"
+            )
+        if not 0 <= self.focus_sparse_dropout < 1:
+            raise ValueError("focus_sparse_dropout must be in [0, 1)")
         self.logit_margin_loss_weight = float(logit_margin_loss_weight)
         self.logit_margin = float(logit_margin)
         if self.logit_margin_loss_weight < 0:
@@ -1912,10 +2803,18 @@ class MIR_MIL(nn.Module):
         self.moment_token_head = None
         self.tail_token_head = None
         self.class_moment_token_head = None
+        self.residual_class_moment_token_head = None
         self.class_token_head = None
+        self.sparse_class_head = None
+        self.gated_attention_head = None
+        self.spatial_region_head = None
         self.latent_readout_head = None
         self.ordinal_head = None
         self.cosine_head = None
+        self.ovr_head = None
+        self.adjacent_head = None
+        self.focus_class_head = None
+        self.focus_sparse_head = None
         if self.multi_token_weight > 0:
             self.multi_token_head = MultiTokenAttentionReadout(
                 hidden_dim=hidden_dim,
@@ -1946,6 +2845,44 @@ class MIR_MIL(nn.Module):
                 rank_dim=self.class_token_rank_dim,
                 temperature=self.class_token_temperature,
                 dropout=self.class_token_dropout,
+            )
+        if self.sparse_class_weight > 0:
+            self.sparse_class_head = SparseClassEvidenceReadout(
+                hidden_dim=hidden_dim,
+                state_dim=state_dim,
+                num_classes=self.num_classes,
+                num_queries=self.sparse_class_query_count,
+                query_dim=self.sparse_class_query_dim,
+                value_dim=self.sparse_class_value_dim,
+                rank_dim=self.sparse_class_rank_dim,
+                gate_hidden_dim=self.sparse_class_gate_hidden_dim,
+                temperature=self.sparse_class_temperature,
+                topk_fraction=self.sparse_class_topk_fraction,
+                dropout=self.sparse_class_dropout,
+                gate_initial_bias=self.sparse_class_gate_initial_bias,
+            )
+        if self.gated_attention_weight > 0:
+            self.gated_attention_head = GatedAttentionResidualReadout(
+                hidden_dim=hidden_dim,
+                num_classes=self.num_classes,
+                attention_dim=self.gated_attention_dim,
+                value_dim=self.gated_attention_value_dim,
+                dropout=self.gated_attention_dropout,
+                temperature=self.gated_attention_temperature,
+                class_specific=self.gated_attention_class_specific,
+            )
+        if self.spatial_region_weight > 0:
+            self.spatial_region_head = SpatialRegionMomentReadout(
+                hidden_dim=hidden_dim,
+                num_classes=self.num_classes,
+                grid_size=self.spatial_region_grid_size,
+                value_dim=self.spatial_region_value_dim,
+                region_dim=self.spatial_region_dim,
+                attention_dim=self.spatial_region_attention_dim,
+                dropout=self.spatial_region_dropout,
+                temperature=self.spatial_region_temperature,
+                include_centers=self.spatial_region_include_centers,
+                include_mass=self.spatial_region_include_mass,
             )
         if self.moment_token_weight > 0:
             self.moment_token_head = MomentMultiTokenAttentionReadout(
@@ -1979,6 +2916,26 @@ class MIR_MIL(nn.Module):
                 temperature=self.class_moment_token_temperature,
                 dropout=self.class_moment_token_dropout,
             )
+        if self.residual_class_moment_token_weight > 0:
+            self.residual_class_moment_token_head = (
+                ResidualClassMomentTokenReadout(
+                    hidden_dim=hidden_dim,
+                    num_classes=self.num_classes,
+                    num_tokens=self.residual_class_moment_token_count,
+                    token_dim=self.residual_class_moment_token_dim,
+                    readout_dim=(
+                        self.residual_class_moment_token_readout_dim
+                    ),
+                    rank_dim=self.residual_class_moment_token_rank_dim,
+                    temperature=(
+                        self.residual_class_moment_token_temperature
+                    ),
+                    dropout=self.residual_class_moment_token_dropout,
+                    residual_initial_scale=(
+                        self.residual_class_moment_token_initial_scale
+                    ),
+                )
+            )
         if self.latent_readout_weight > 0:
             self.latent_readout_head = LatentEvidenceTransformerReadout(
                 hidden_dim=hidden_dim,
@@ -2010,6 +2967,48 @@ class MIR_MIL(nn.Module):
                 act=act,
                 initial_scale=self.cosine_head_initial_scale,
             )
+        if self.ovr_head_weight > 0 or self.ovr_loss_weight > 0:
+            self.ovr_head = StateBoundaryHead(
+                state_dim=state_dim,
+                output_dim=self.num_classes,
+                hidden_dim=self.ovr_head_hidden_dim,
+                dropout=self.ovr_head_dropout,
+                act=act,
+                temperature=self.ovr_head_temperature,
+            )
+        if self.adjacent_head_weight > 0 or self.adjacent_loss_weight > 0:
+            self.adjacent_head = StateBoundaryHead(
+                state_dim=state_dim,
+                output_dim=self.num_classes - 1,
+                hidden_dim=self.adjacent_head_hidden_dim,
+                dropout=self.adjacent_head_dropout,
+                act=act,
+                temperature=self.adjacent_head_temperature,
+            )
+        if self.focus_class_head_weight > 0 or self.focus_class_loss_weight > 0:
+            self.focus_class_head = StateBoundaryHead(
+                state_dim=state_dim,
+                output_dim=1,
+                hidden_dim=self.focus_class_head_hidden_dim,
+                dropout=self.focus_class_head_dropout,
+                act=act,
+                temperature=self.focus_class_head_temperature,
+            )
+        if (
+            self.focus_sparse_head_weight > 0
+            or self.focus_sparse_loss_weight > 0
+        ):
+            self.focus_sparse_head = FocusedSparseEvidenceReadout(
+                hidden_dim=hidden_dim,
+                state_dim=state_dim,
+                num_queries=self.focus_sparse_query_count,
+                query_dim=self.focus_sparse_query_dim,
+                value_dim=self.focus_sparse_value_dim,
+                readout_dim=self.focus_sparse_readout_dim,
+                temperature=self.focus_sparse_temperature,
+                topk_fraction=self.focus_sparse_topk_fraction,
+                dropout=self.focus_sparse_dropout,
+            )
         self.apply(self._initialize)
         if self.multi_token_gate is not None:
             final_gate_layer = self.multi_token_gate[-1]
@@ -2017,6 +3016,10 @@ class MIR_MIL(nn.Module):
             nn.init.constant_(
                 final_gate_layer.bias, self.multi_token_gate_initial_bias
             )
+        if self.sparse_class_head is not None:
+            self.sparse_class_head.reset_gate()
+        if self.focus_sparse_head is not None:
+            self.focus_sparse_head.reset_mixer()
         if isinstance(
             self.potential,
             (
@@ -2092,8 +3095,16 @@ class MIR_MIL(nn.Module):
             anchor_scores,
         )
 
+    def _encoder_points(self, points):
+        if self.coordinate_dim == 0 or self.coordinate_encoder_scale == 1.0:
+            return points
+        points = points.clone()
+        points[:, self.in_dim :] *= self.coordinate_encoder_scale
+        return points
+
     def state_from_weighted_points(self, points, weights=None):
         points = self._normalize_bag(points)
+        points = self._encoder_points(points)
         (
             encoded,
             basis,
@@ -2178,8 +3189,33 @@ class MIR_MIL(nn.Module):
             anchor_scores,
         )
 
-    def residual_readout_logits(self, encoded, state=None):
+    @staticmethod
+    def adjacent_logits_to_class_logits(adjacent_logits):
+        survival = torch.sigmoid(adjacent_logits)
+        eps = torch.finfo(adjacent_logits.dtype).eps
+        probabilities = []
+        probabilities.append((1.0 - survival[:, :1]).clamp_min(eps))
+        if adjacent_logits.shape[1] > 1:
+            probabilities.append(
+                (survival[:, :-1] - survival[:, 1:]).clamp_min(eps)
+            )
+        probabilities.append(survival[:, -1:].clamp_min(eps))
+        probabilities = torch.cat(probabilities, dim=1)
+        probabilities = probabilities / probabilities.sum(
+            dim=1, keepdim=True
+        ).clamp_min(eps)
+        logits = torch.log(probabilities)
+        return logits - logits.mean(dim=1, keepdim=True)
+
+    def residual_readout_logits(
+        self,
+        encoded,
+        state=None,
+        coordinates=None,
+        return_auxiliary=False,
+    ):
         logits = encoded.new_zeros((1, self.num_classes))
+        auxiliary = {}
         if self.evidence_head is not None:
             logits = logits + self.evidence_weight * self.evidence_head(
                 encoded
@@ -2200,6 +3236,29 @@ class MIR_MIL(nn.Module):
             logits = logits + self.class_token_weight * self.class_token_head(
                 encoded
             )
+        if self.sparse_class_head is not None:
+            if state is None:
+                raise ValueError(
+                    "state is required when sparse_class_head is enabled"
+                )
+            logits = logits + (
+                self.sparse_class_weight
+                * self.sparse_class_head(encoded, state)
+            )
+        if self.gated_attention_head is not None:
+            logits = logits + (
+                self.gated_attention_weight
+                * self.gated_attention_head(encoded)
+            )
+        if self.spatial_region_head is not None:
+            if coordinates is None:
+                raise ValueError(
+                    "coordinates are required when spatial regions are enabled"
+                )
+            logits = logits + (
+                self.spatial_region_weight
+                * self.spatial_region_head(encoded, coordinates)
+            )
         if self.moment_token_head is not None:
             logits = logits + (
                 self.moment_token_weight * self.moment_token_head(encoded)
@@ -2212,6 +3271,11 @@ class MIR_MIL(nn.Module):
             logits = logits + (
                 self.class_moment_token_weight
                 * self.class_moment_token_head(encoded)
+            )
+        if self.residual_class_moment_token_head is not None:
+            logits = logits + (
+                self.residual_class_moment_token_weight
+                * self.residual_class_moment_token_head(encoded)
             )
         if self.latent_readout_head is not None:
             logits = logits + (
@@ -2234,9 +3298,77 @@ class MIR_MIL(nn.Module):
             logits = logits + self.cosine_head_weight * self.cosine_head(
                 state.unsqueeze(0)
             )
+        if self.ovr_head is not None:
+            if state is None:
+                raise ValueError("state is required when ovr_head is enabled")
+            ovr_logits = self.ovr_head(state.unsqueeze(0))
+            auxiliary["ovr_logits"] = ovr_logits
+            logits = logits + self.ovr_head_weight * ovr_logits
+        if self.adjacent_head is not None:
+            if state is None:
+                raise ValueError(
+                    "state is required when adjacent_head is enabled"
+                )
+            adjacent_logits = self.adjacent_head(state.unsqueeze(0))
+            auxiliary["adjacent_logits"] = adjacent_logits
+            logits = logits + self.adjacent_head_weight * (
+                self.adjacent_logits_to_class_logits(adjacent_logits)
+            )
+        if self.focus_class_head is not None:
+            if state is None:
+                raise ValueError(
+                    "state is required when focus_class_head is enabled"
+                )
+            focus_logits = self.focus_class_head(state.unsqueeze(0))
+            auxiliary["focus_class_logits"] = focus_logits
+            focus_residual = logits.new_full(
+                (1, self.num_classes),
+                -1.0 / max(self.num_classes - 1, 1),
+            )
+            focus_residual[:, self.focus_class_index] = 1.0
+            logits = logits + (
+                self.focus_class_head_weight
+                * focus_logits
+                * focus_residual
+            )
+        if self.focus_sparse_head is not None:
+            if state is None:
+                raise ValueError(
+                    "state is required when focus_sparse_head is enabled"
+                )
+            focus_sparse_logits = self.focus_sparse_head(encoded, state)
+            auxiliary["focus_sparse_logits"] = focus_sparse_logits
+            focus_sparse_residual = logits.new_full(
+                (1, self.num_classes),
+                -1.0 / max(self.num_classes - 1, 1),
+            )
+            focus_sparse_residual[:, self.focus_class_index] = 1.0
+            logits = logits + (
+                self.focus_sparse_head_weight
+                * focus_sparse_logits
+                * focus_sparse_residual
+            )
+        if return_auxiliary:
+            return logits, auxiliary
         return logits
 
+    def calibrate_logits(self, logits):
+        if not self.use_logit_calibration:
+            return logits
+        temperature = self.logit_calibration_log_temperature.exp()
+        temperature = temperature.clamp(min=0.05, max=20.0)
+        return logits / temperature + self.logit_calibration_bias.to(
+            dtype=logits.dtype,
+            device=logits.device,
+        )
+
     def forward(self, bag, return_state=False):
+        normalized_bag = self._normalize_bag(bag)
+        coordinates = (
+            normalized_bag[:, self.in_dim : self.in_dim + 2]
+            if self.coordinate_dim == 2
+            else None
+        )
         (
             state,
             encoded,
@@ -2247,10 +3379,21 @@ class MIR_MIL(nn.Module):
             local_scores,
             anchor_basis,
             anchor_scores,
-        ) = self.state_from_weighted_points(bag)
+        ) = self.state_from_weighted_points(normalized_bag)
         logits = self.potential(state.unsqueeze(0))
-        logits = logits + self.residual_readout_logits(encoded, state)
+        residual_logits, auxiliary = self.residual_readout_logits(
+            encoded,
+            state,
+            coordinates=coordinates,
+            return_auxiliary=True,
+        )
+        logits = logits + residual_logits
+        raw_logits = logits
+        logits = self.calibrate_logits(raw_logits)
         output = {"logits": logits}
+        output.update(auxiliary)
+        if self.use_logit_calibration:
+            output["raw_logits"] = raw_logits
         if return_state:
             output.update(
                 {
@@ -2675,6 +3818,11 @@ class MIR_MIL(nn.Module):
         perturbed_logits = perturbed_logits + self.residual_readout_logits(
             perturbed_encoded,
             perturbed_state,
+            coordinates=(
+                support[:, self.in_dim : self.in_dim + 2]
+                if self.coordinate_dim == 2
+                else None
+            ),
         )
         perturbed_score = self.explained_score(
             perturbed_logits, target_class
@@ -2771,6 +3919,80 @@ class MIR_MIL(nn.Module):
         violations = self.logit_margin + negative_logits - true_logits
         return F.relu(violations).square().mean()
 
+    def ovr_boundary_loss(self, ovr_logits, label):
+        if self.ovr_loss_weight <= 0 or ovr_logits is None:
+            return ovr_logits.new_zeros(()) if ovr_logits is not None else None
+        label = label.long().view(-1)
+        targets = F.one_hot(label, num_classes=self.num_classes).to(
+            dtype=ovr_logits.dtype
+        )
+        if self.ovr_loss_pos_weights is None:
+            pos_weight = torch.full(
+                (self.num_classes,),
+                self.ovr_loss_pos_weight,
+                dtype=ovr_logits.dtype,
+                device=ovr_logits.device,
+            )
+        else:
+            pos_weight = torch.tensor(
+                self.ovr_loss_pos_weights,
+                dtype=ovr_logits.dtype,
+                device=ovr_logits.device,
+            )
+        return F.binary_cross_entropy_with_logits(
+            ovr_logits, targets, pos_weight=pos_weight
+        )
+
+    def adjacent_boundary_loss(self, adjacent_logits, label):
+        if self.adjacent_loss_weight <= 0 or adjacent_logits is None:
+            if adjacent_logits is not None:
+                return adjacent_logits.new_zeros(())
+            return None
+        label = label.long().view(-1)
+        thresholds = torch.arange(
+            self.num_classes - 1, device=adjacent_logits.device
+        ).unsqueeze(0)
+        targets = (label.unsqueeze(1) > thresholds).to(
+            dtype=adjacent_logits.dtype
+        )
+        return F.binary_cross_entropy_with_logits(
+            adjacent_logits, targets
+        )
+
+    def focus_class_boundary_loss(self, focus_logits, label):
+        if self.focus_class_loss_weight <= 0 or focus_logits is None:
+            if focus_logits is not None:
+                return focus_logits.new_zeros(())
+            return None
+        targets = (label.long().view(-1) == self.focus_class_index).to(
+            dtype=focus_logits.dtype
+        ).unsqueeze(1)
+        pos_weight = torch.tensor(
+            self.focus_class_loss_pos_weight,
+            dtype=focus_logits.dtype,
+            device=focus_logits.device,
+        )
+        return F.binary_cross_entropy_with_logits(
+            focus_logits, targets, pos_weight=pos_weight
+        )
+
+    def focus_sparse_boundary_loss(self, focus_logits, label):
+        if self.focus_sparse_loss_weight <= 0 or focus_logits is None:
+            if focus_logits is not None:
+                return focus_logits.new_zeros(())
+            return None
+        targets = (label.long().view(-1) == self.focus_class_index).to(
+            dtype=focus_logits.dtype
+        ).unsqueeze(1)
+        pos_weight = torch.tensor(
+            self.focus_sparse_loss_pos_weight,
+            dtype=focus_logits.dtype,
+            device=focus_logits.device,
+        )
+        return F.binary_cross_entropy_with_logits(
+            focus_logits, targets, pos_weight=pos_weight
+        )
+
     def compute_loss(self, bag, label, criterion):
         output = self.forward(bag)
         classification_loss = criterion(output["logits"], label)
@@ -2778,6 +4000,24 @@ class MIR_MIL(nn.Module):
             output["logits"], label
         )
         ordinal_loss = self.ordinal_cdf_loss(output["logits"], label)
+        ovr_loss = bag.new_zeros(())
+        if "ovr_logits" in output:
+            ovr_loss = self.ovr_boundary_loss(output["ovr_logits"], label)
+        adjacent_loss = bag.new_zeros(())
+        if "adjacent_logits" in output:
+            adjacent_loss = self.adjacent_boundary_loss(
+                output["adjacent_logits"], label
+            )
+        focus_class_loss = bag.new_zeros(())
+        if "focus_class_logits" in output:
+            focus_class_loss = self.focus_class_boundary_loss(
+                output["focus_class_logits"], label
+            )
+        focus_sparse_loss = bag.new_zeros(())
+        if "focus_sparse_logits" in output:
+            focus_sparse_loss = self.focus_sparse_boundary_loss(
+                output["focus_sparse_logits"], label
+            )
         stability_loss = bag.new_zeros(())
         if self.stability_weight > 0:
             augmented_logits = self.forward(self.augment_bag(bag))["logits"]
@@ -2820,6 +4060,10 @@ class MIR_MIL(nn.Module):
             classification_loss
             + self.logit_margin_loss_weight * logit_margin_loss
             + self.ordinal_weight * ordinal_loss
+            + self.ovr_loss_weight * ovr_loss
+            + self.adjacent_loss_weight * adjacent_loss
+            + self.focus_class_loss_weight * focus_class_loss
+            + self.focus_sparse_loss_weight * focus_sparse_loss
             + self.stability_weight * stability_loss
             + self.subset_consistency_weight * subset_consistency_loss
             + self.subset_consistency_supervised_weight
@@ -2832,6 +4076,10 @@ class MIR_MIL(nn.Module):
             "classification_loss": classification_loss,
             "logit_margin_loss": logit_margin_loss,
             "ordinal_loss": ordinal_loss,
+            "ovr_loss": ovr_loss,
+            "adjacent_loss": adjacent_loss,
+            "focus_class_loss": focus_class_loss,
+            "focus_sparse_loss": focus_sparse_loss,
             "stability_loss": stability_loss,
             "subset_consistency_loss": subset_consistency_loss,
             "subset_supervised_loss": subset_supervised_loss,

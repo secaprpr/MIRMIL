@@ -4,7 +4,52 @@ import os
 import numpy as np
 import h5py
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, Sampler
+
+
+class BalancedClassCycleSampler(Sampler):
+    """Class-balanced sampler with deterministic per-epoch cycling.
+
+    WeightedRandomSampler with replacement can overfit a few minority slides in
+    small histology datasets. This sampler uses every majority slide once per
+    epoch and repeats minority classes by cycling through shuffled class lists.
+    """
+
+    def __init__(self, labels, samples_per_class=0, seed=0):
+        labels = [int(label) for label in labels]
+        if not labels:
+            raise ValueError("BalancedClassCycleSampler requires labels")
+        self.class_indices = {}
+        for index, label in enumerate(labels):
+            self.class_indices.setdefault(label, []).append(index)
+        self.labels = labels
+        self.samples_per_class = int(samples_per_class or 0)
+        if self.samples_per_class <= 0:
+            self.samples_per_class = max(
+                len(indices) for indices in self.class_indices.values()
+            )
+        self.seed = int(seed)
+        self.epoch = 0
+        self.num_samples = self.samples_per_class * len(self.class_indices)
+
+    def __iter__(self):
+        generator = torch.Generator()
+        generator.manual_seed(self.seed + self.epoch)
+        selected = []
+        for label in sorted(self.class_indices):
+            indices = self.class_indices[label]
+            order = torch.randperm(len(indices), generator=generator).tolist()
+            repeated = [
+                indices[order[position % len(order)]]
+                for position in range(self.samples_per_class)
+            ]
+            selected.extend(repeated)
+        shuffle_order = torch.randperm(len(selected), generator=generator).tolist()
+        self.epoch += 1
+        return iter([selected[index] for index in shuffle_order])
+
+    def __len__(self):
+        return self.num_samples
 
 
 def build_wsi_datasets(args, dataset_class=None):
@@ -160,10 +205,28 @@ class WSI_Dataset(Dataset):
     def is_with_labels(self):
         return (len(self.labels_list) != 0)
     
-    def get_balanced_sampler(self, replacement=True):
+    def get_balanced_sampler(
+        self,
+        replacement=True,
+        strategy="weighted",
+        samples_per_class=0,
+        seed=0,
+    ):
         from collections import Counter
         from torch.utils.data import WeightedRandomSampler
 
+        strategy = str(strategy or "weighted").lower()
+        if strategy in {"cycle", "class_cycle", "balanced_cycle"}:
+            return BalancedClassCycleSampler(
+                self.labels_list,
+                samples_per_class=samples_per_class,
+                seed=seed,
+            )
+        if strategy != "weighted":
+            raise ValueError(
+                "Unknown balanced sampler strategy: "
+                f"{strategy}. Supported: weighted, cycle"
+            )
         label_counts = Counter(self.labels_list)
         weights = [1.0 / label_counts[label] for label in self.labels_list]
         num_samples = len(self.labels_list)
@@ -186,11 +249,36 @@ class WSI_Coord_Dataset(WSI_Dataset):
     their pseudo-grid fallback for compatibility.
     """
 
+    @staticmethod
+    def _companion_h5_path(slide_path):
+        pt_dir = os.path.dirname(slide_path)
+        if os.path.basename(pt_dir) != "pt_files":
+            return None
+        feature_root = os.path.dirname(pt_dir)
+        candidate = os.path.join(
+            feature_root,
+            "h5_files",
+            os.path.splitext(os.path.basename(slide_path))[0] + ".h5",
+        )
+        return candidate if os.path.isfile(candidate) else None
+
+    @classmethod
+    def _load_companion_coords(cls, slide_path):
+        companion = cls._companion_h5_path(slide_path)
+        if companion is None:
+            return None
+        with h5py.File(companion, "r") as h5_file:
+            if "coords" not in h5_file:
+                return None
+            return torch.from_numpy(h5_file["coords"][:])
+
     def __getitem__(self, idx):
         slide_path = self.slide_path_list[idx]
         label = int(self.labels_list[idx])
         label = torch.tensor(label)
         coords = None
+        coordinate_min = None
+        coordinate_span = None
 
         if slide_path.endswith('.h5'):
             with h5py.File(slide_path, 'r') as h5_file:
@@ -209,11 +297,13 @@ class WSI_Coord_Dataset(WSI_Dataset):
                     coord_dataset = h5_file['coords']
                     if coord_dataset.ndim == 3:
                         coord_dataset = coord_dataset[0]
-                    coords = torch.from_numpy(
-                        coord_dataset[:]
-                        if indices is None
-                        else coord_dataset[indices]
-                    )
+                    coords = torch.from_numpy(coord_dataset[:])
+                    coordinate_min = coords[:, :2].amin(dim=0)
+                    coordinate_span = (
+                        coords[:, :2].amax(dim=0) - coordinate_min
+                    ).clamp_min(1.0)
+                    if indices is not None:
+                        coords = coords[torch.from_numpy(indices)]
         else:
             loaded = torch.load(slide_path)
             if isinstance(loaded, dict):
@@ -227,9 +317,16 @@ class WSI_Coord_Dataset(WSI_Dataset):
                     coords = loaded['coords']
             else:
                 feat = loaded
+            if coords is None:
+                coords = self._load_companion_coords(slide_path)
 
         if len(feat.shape) == 3:
             feat = feat.squeeze(0)
+        if coords is not None and coordinate_min is None:
+            coordinate_min = coords[:, :2].amin(dim=0)
+            coordinate_span = (
+                coords[:, :2].amax(dim=0) - coordinate_min
+            ).clamp_min(1.0)
         if not slide_path.endswith('.h5'):
             indices = self._sample_indices(feat.shape[0])
             if indices is not None:
@@ -243,8 +340,9 @@ class WSI_Coord_Dataset(WSI_Dataset):
             coords = coords.to(feat.device).float()
             if coords.shape[0] == feat.shape[0] and coords.shape[-1] >= 2:
                 coords = coords[:, :2]
-                scale = coords.abs().amax(dim=0).clamp_min(1.0)
-                coords = coords / scale
+                coordinate_min = coordinate_min.to(coords.device).float()
+                coordinate_span = coordinate_span.to(coords.device).float()
+                coords = (coords - coordinate_min) / coordinate_span
                 feat = torch.cat([feat, coords], dim=-1)
             else:
                 raise ValueError(
