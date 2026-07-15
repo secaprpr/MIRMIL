@@ -540,3 +540,27 @@
 - Task: KIRC prognosis concurrency decision
 - Current running KIRC jobs: R50 OS + AB_MIL, R50 PFS + AB_MIL, UNI OS + AB_MIL, UNI PFS + AB_MIL, R50 OS + MEAN_MIL.
 - Decision: do not launch additional KIRC MEAN/MAX jobs in this checkpoint because two NSCLC benchmark controllers and five KIRC prognosis controllers are already active. Add the next KIRC MEAN/MAX jobs when one or more current controllers finish.
+
+## 2026-07-16 03:14 CST
+
+- Task: KIRC prognosis status update
+- Completed: KIRC R50 PFS + AB_MIL, status `exit_code=0`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_r50_pfs_ab_seed2024_setsid_20260716_030040.log`
+  - Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_r50_pfs_ab_seed2024_setsid_20260716_030040.status`
+  - Split: `/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_R50_PFS_split.csv`
+  - Result from controller log: loaded `Best_EPOCH_4.pth`; final test c-index `0.6252446183953033`, CI `[0.5050155588209871, 0.7358311502738747]`, event_count `22`, sample_count `72`.
+- Completed: KIRC UNI PFS + AB_MIL, status `exit_code=0`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_uni_pfs_ab_seed2024_setsid_20260716_030040.log`
+  - Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_uni_pfs_ab_seed2024_setsid_20260716_030040.status`
+  - Split: `/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_UNI_PFS_split.csv`
+  - Result from controller log: loaded `Best_EPOCH_1.pth`; final test c-index `0.738747553816047`, CI `[0.6423269971719779, 0.8335540830446816]`, event_count `22`, sample_count `72`.
+- Still running: KIRC R50 OS + AB_MIL, KIRC UNI OS + AB_MIL, KIRC R50 OS + MEAN_MIL.
+
+- Task: KIRC R50 PFS prognosis, MEAN_MIL backbone, seed 2024, `setsid`
+- PID/session leader: `3759405`
+- GPU: `2` via `CUDA_VISIBLE_DEVICES=2`
+- Command: `train_mil.py --yaml_path configs/SURVIVAL_MIL.yaml --options General.seed=2024 General.num_epochs=30 General.best_model_metric=c_index Dataset.DATASET_NAME=TCGA_KIRC_R50_PFS Dataset.dataset_csv_path=/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_R50_PFS_split.csv Model.backbone=MEAN_MIL Model.backbone_config=configs/MEAN_MIL.yaml Model.in_dim=1024 Model.max_instances=4096 Model.survival.patient_level=true`
+- Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_r50_pfs_mean_seed2024_setsid_20260716_031420.log`
+- Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_r50_pfs_mean_seed2024_setsid_20260716_031420.status`
+- Split: `/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_R50_PFS_split.csv`
+- Verification: training initialized, survival cutpoints loaded.
