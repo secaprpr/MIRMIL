@@ -773,3 +773,37 @@
   - R50 PFS + MAX_MIL reached at least epoch `8`, latest observed validation c-index `0.4409448818897638`; best-so-far remains `0.5334645669291339`.
   - UNI OS + MAX_MIL reached at least epoch `7`, latest observed validation c-index `0.7211538461538461`; best-so-far remains `0.7263986013986014`.
 - GPU status check: GPUs `0/1/2/3/5/6` are being used by current monitored jobs; GPUs `4` and `7` remain occupied by other workloads. No additional jobs were launched.
+
+## 2026-07-16 03:43 CST
+
+- Task: KIRC prognosis status update
+- Completed: KIRC R50 PFS + MAX_MIL, status `exit_code=0`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_r50_pfs_max_seed2024_setsid_20260716_033205.log`
+  - Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_r50_pfs_max_seed2024_setsid_20260716_033205.status`
+  - Split: `/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_R50_PFS_split.csv`
+  - Result from controller log: loaded `Best_EPOCH_2.pth`; final test c-index `0.5391389432485323`, CI `[0.39253924672926926, 0.6648910254851739]`, event_count `22`, sample_count `72`.
+- Completed: KIRC UNI PFS + MAX_MIL, status `exit_code=0`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_uni_pfs_max_seed2024_setsid_20260716_033056.log`
+  - Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_uni_pfs_max_seed2024_setsid_20260716_033056.status`
+  - Split: `/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_UNI_PFS_split.csv`
+  - Result from controller log: loaded `Best_EPOCH_4.pth`; final test c-index `0.7289628180039139`, CI `[0.6282518810013096, 0.8322681124744667]`, event_count `22`, sample_count `72`.
+- Completed: KIRC UNI OS + MAX_MIL, status `exit_code=0`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_uni_os_max_seed2024_setsid_20260716_033206.log`
+  - Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_uni_os_max_seed2024_setsid_20260716_033206.status`
+  - Split: `/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_UNI_OS_split.csv`
+  - Result from controller log: loaded `Best_EPOCH_2.pth`; final test c-index `0.7187196896217265`, CI `[0.6073118426818581, 0.8244928602572488]`, event_count `25`, sample_count `74`.
+- Still running:
+  - KIRC R50 OS + MAX_MIL, GPU `5`, PID/session `3839797`; latest observed epoch `14`.
+  - NSCLC R50 benchmark, current active child `CLAM_MB_MIL`, seed `2024`.
+  - NSCLC UNI benchmark, current active child `TRANS_MIL`, seed `2024`.
+- BLCA R50 OS prognosis baseline results were confirmed from existing controller logs, all status `exit_code=0`:
+  - RRT_MIL: final test c-index `0.5426065162907269`, CI `[0.42865408922272136, 0.6446856291342209]`, events `35`, samples `77`.
+  - MIR_MIL: final test c-index `0.5626566416040101`, CI `[0.44868439944711663, 0.6766564507733781]`, events `35`, samples `77`.
+  - MIR_MIL_MT_V1: final test c-index `0.5789473684210527`, CI `[0.4560474863589133, 0.6875786749482402]`, events `35`, samples `77`.
+  - AB_MIL: final test c-index `0.5281954887218046`, CI `[0.41153337643396415, 0.6381425404446016]`, events `35`, samples `77`.
+  - MEAN_MIL: final test c-index `0.5789473684210527`, CI `[0.4522940843286445, 0.6887805183835615]`, events `35`, samples `77`.
+  - MAX_MIL: final test c-index `0.45551378446115287`, CI `[0.35063739280386547, 0.5560360507782959]`, events `35`, samples `77`.
+- BLCA data check:
+  - Existing prognosis split found for R50 OS: `/data15/data15_5/fanhao/datasets/TCGA-BLCA/metadata/TCGA_BLCA_PROGNOSIS_R50_OS_split.csv`.
+  - UNI `.pt` features exist under `/data15/data15_5/fanhao/datasets/TCGA-BLCA/CPathPatchFeature/blca/uni/pt_files`.
+  - No existing BLCA UNI prognosis split was found in metadata at this checkpoint; next step is to create a UNI OS split by preserving the same R50 split assignment and mapping feature paths to existing UNI `.pt` files.
