@@ -842,3 +842,29 @@
     - Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/blca_uni_os_mirmt_seed2024_setsid_20260716_034709.status`
     - Command core: `train_mil.py --yaml_path configs/SURVIVAL_MIL.yaml --options Dataset.DATASET_NAME=TCGA_BLCA_UNI_OS Dataset.dataset_csv_path=/data15/data15_5/fanhao/datasets/TCGA-BLCA/metadata/TCGA_BLCA_PROGNOSIS_UNI_OS_split.csv Model.backbone=MIR_MIL Model.backbone_config=configs/releases/MIR_MIL_MT_V1.yaml Model.in_dim=1024 Model.max_instances=4096 Model.survival.patient_level=true`
 - Verification: all three corrected/valid BLCA UNI OS jobs initialized, loaded survival cutpoints `[7.05, 13.34, 22.32]`, and entered `Train_Val_Test`.
+
+## 2026-07-16 03:48 CST
+
+- Task: KIRC prognosis and NSCLC benchmark status update
+- Completed: KIRC R50 OS + MAX_MIL, status `exit_code=0`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_r50_os_max_seed2024_setsid_20260716_032906.log`
+  - Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_r50_os_max_seed2024_setsid_20260716_032906.status`
+  - Split: `/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_R50_OS_split.csv`
+  - Result from controller log: loaded `Best_EPOCH_11.pth`; final test c-index `0.584384093113482`, CI `[0.4347511937672782, 0.7295231799753217]`, event_count `25`, sample_count `74`.
+- Completed: NSCLC R50 `CLAM_MB_MIL`, seed `2024`.
+  - Best log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/TCGA_NSCLC_LUAD_LUSC_R50/CLAM_MB_MIL/time_2026-07-16-03-34_TCGA_NSCLC_LUAD_LUSC_R50_CLAM_MB_MIL_seed_2024/Best_Log_seed2024_TCGA_NSCLC_LUAD_LUSC_R50_CLAM_MB_MIL.csv`
+  - Best epoch `19`; validation macro_auc `0.9274346912220999`; test acc `0.9009433962264151`, test bacc `0.9006410256410255`, test macro_auc `0.9448005698005697`.
+  - R50 benchmark controller remains running and has moved to `DS_MIL`, seed `2024`.
+- BLCA UNI OS jobs:
+  - RRT_MIL, MIR_MIL, and corrected MIR_MIL_MT_V1 jobs remain running.
+  - First observed BLCA UNI OS epoch-1 validation c-index values:
+    - RRT_MIL `0.5435056746532156`
+    - MIR_MIL `0.4697351828499369`
+    - MIR_MIL_MT_V1 `0.5441361916771753`
+- Launched BLCA UNI OS + AB_MIL, seed `2024`.
+  - PID/session leader: `3931478`
+  - GPU: `5` via `CUDA_VISIBLE_DEVICES=5`
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/blca_uni_os_ab_seed2024_setsid_20260716_034833.log`
+  - Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/blca_uni_os_ab_seed2024_setsid_20260716_034833.status`
+  - Command core: `train_mil.py --yaml_path configs/SURVIVAL_MIL.yaml --options Dataset.DATASET_NAME=TCGA_BLCA_UNI_OS Dataset.dataset_csv_path=/data15/data15_5/fanhao/datasets/TCGA-BLCA/metadata/TCGA_BLCA_PROGNOSIS_UNI_OS_split.csv Model.backbone=AB_MIL Model.backbone_config=configs/AB_MIL.yaml Model.in_dim=1024 Model.max_instances=4096 Model.survival.patient_level=true`
+  - Verification: initialized, loaded survival cutpoints `[7.05, 13.34, 22.32]`, and entered survival process.
