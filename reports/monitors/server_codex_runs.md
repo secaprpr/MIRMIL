@@ -1857,6 +1857,27 @@
   - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_r50_mamba2d_gpu0_20260716_061346.log`.
   - Status: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_r50_mamba2d_gpu0_20260716_061346.status`.
   - Launch verification: entered `train_mil.py --yaml_path configs/MAMBA2D_MIL.yaml`; status file absent at checkpoint, so still running.
+
+## 2026-07-16 06:15 CST
+
+- Task: active long-run checkpoint.
+- NSCLC R50 corrected remaining controller remains active.
+  - Active run: `MIR_MIL_MT_V1`, seed `2026`.
+  - Latest observed progress: epoch `12 / 30`.
+  - Best observed validation macro AUC in this run so far: `0.9225302772495245` at epoch `12`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_r50_remaining_gpu6_tmux_20260716_051530.log`.
+  - Status file still absent.
+- NSCLC MAMBA2D R50 and UNI seed `2024` reruns remain active.
+  - R50 log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_r50_mamba2d_gpu0_20260716_061346.log`.
+  - UNI log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_uni_mamba2d_gpu1_20260716_061346.log`.
+  - Both runs initialized `DataLoader`, `Model`, and `Train_Val_Test`; neither has emitted epoch 1 metrics yet.
+  - GPU usage at checkpoint: GPU0 and GPU1 each use about `8707 MiB`; both show active utilization, so the runs are not failed or idle.
+  - Status files still absent.
+- COADREAD GDC WSI download remains active.
+  - Size-matched complete files: `19 / 624`; partial files: `4`; missing files: `601`.
+  - Byte progress estimate: `15.53 GiB / 336.99 GiB`.
+  - Latest complete file includes `TCGA-A6-2683-01Z-00-DX1.0dfc5d0a-68f4-45e1-a879-0428313c6dbc.svs`.
+  - Status file still absent.
 - UNI MAMBA2D seed `2024` started.
   - PID/session leader: `106428`.
   - Python controller PID: `106436`.
