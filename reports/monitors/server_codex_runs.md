@@ -1909,6 +1909,29 @@
   - Byte progress estimate: `15.72 GiB / 336.99 GiB`.
   - Latest complete file includes `TCGA-A6-2684-01Z-00-DX1.be127778-e160-4ae3-9e5a-13a16eae2e7a.svs`.
   - Status file still absent.
+
+## 2026-07-16 06:20 CST
+
+- Task: active long-run checkpoint.
+- NSCLC R50 corrected remaining controller remains active.
+  - Active run: `MIR_MIL_MT_V1`, seed `2026`.
+  - Latest observed progress: epoch `22 / 30`.
+  - Best observed validation macro AUC in this run so far: `0.933039735762186` at epoch `18`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_r50_remaining_gpu6_tmux_20260716_051530.log`.
+  - Status file still absent.
+- NSCLC MAMBA2D R50 and UNI seed `2024` reruns remain active.
+  - Both runs have completed epoch `1` and are still computing epoch `2`.
+  - R50 epoch 1 val/test macro AUC: `0.84846361725553` / `0.8938746438746439`.
+  - UNI epoch 1 val/test macro AUC: `0.9785807226503853` / `0.9848646723646722`.
+  - Status files still absent.
+- COADREAD GDC WSI download remains active.
+  - Size-matched complete files: `21 / 624`; partial files: `4`; missing files: `599`.
+  - Byte progress estimate: `16.04 GiB / 336.99 GiB`.
+  - Latest complete files include:
+    - `TCGA-A6-2682-01Z-00-DX1.be71dca0-b9b7-40be-a6c6-9d053c7886a6.svs`
+    - `TCGA-A6-2683-01Z-00-DX1.0dfc5d0a-68f4-45e1-a879-0428313c6dbc.svs`
+    - `TCGA-A6-2684-01Z-00-DX1.be127778-e160-4ae3-9e5a-13a16eae2e7a.svs`
+  - Status file still absent.
 - UNI MAMBA2D seed `2024` started.
   - PID/session leader: `106428`.
   - Python controller PID: `106436`.
