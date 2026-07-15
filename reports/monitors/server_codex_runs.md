@@ -200,3 +200,17 @@
 - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_r50_os_mirmt_seed2024_setsid_20260716_022450.log`
 - Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_r50_os_mirmt_seed2024_setsid_20260716_022450.status`
 - Split: `/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_R50_OS_split.csv`
+
+## 2026-07-16 02:28 CST
+
+- Task: NSCLC protected auto-start watcher
+- PID/session leader: `3664269`
+- GPU: none while waiting; later waits for GPU0/GPU1 memory below 500 MiB before launching R50/UNI benchmarks.
+- Command: `setsid bash -lc 'cd /data15/data15_5/fanhao/projects/MIRMIL; exec reports/monitors/nsclc_auto_start.sh'`
+- Script: `reports/monitors/nsclc_auto_start.sh`
+- Log: `reports/monitors/nsclc_auto_start.log`
+- Nohup log: `reports/monitors/nsclc_auto_start.nohup.log`
+- PID file: `reports/monitors/nsclc_auto_start.pid`
+- Guard marker: `reports/monitors/nsclc_benchmark_started.marker`
+- Behavior: waits until a HuggingFace download `done` marker exists, resumes download if the process exits without `done`, validates all R50/UNI split feature paths, runs dry-runs, then launches NSCLC R50 and UNI benchmarks with the handoff model list and seeds `2024/2025/2026`.
+- Current status at start: `patches=1046 files, r50=893 files, uni=917 files`; download still running, so benchmark not started yet.
