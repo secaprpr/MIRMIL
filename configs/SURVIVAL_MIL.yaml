@@ -1,0 +1,64 @@
+General:
+    MODEL_NAME: SURVIVAL_MIL
+    seed: 2024
+    num_classes: 4
+    num_epochs: 20
+    device: 0
+    num_workers: 4
+    best_model_metric: c_index
+    earlystop:
+        use: False
+        patience: 8
+        metric: c_index
+        min_delta: 0.0
+
+Dataset:
+    DATASET_NAME: your_survival_dataset_name
+    dataset_csv_path: /path/to/your/survival_train_val_test.csv
+    dataset_root_dir: {}
+    now_fold: {}
+    balanced_sampler:
+        use: False
+        replacement: True
+
+Logs:
+    log_root_dir: /path/to/your/log_dir/
+
+Model:
+    backbone: RRT_MIL
+    backbone_config: configs/RRT_MIL.yaml
+    in_dim: 1024
+    max_instances: 4096
+    sampling: random
+    survival:
+        num_bins: 4
+        alpha: 0.0
+        time_column: time_months
+        event_column: event
+        label_column: survival_label
+        representation: auto
+        head_hidden_dim: 0
+        head_dropout: 0.0
+        backbone_num_outputs: 4
+    optimizer:
+        which: adam
+        adam_config:
+            lr: 0.0002
+            weight_decay: 0.00001
+        adamw_config:
+            lr: 0.0002
+            weight_decay: 0.00001
+    scheduler:
+        warmup: 2
+        which: step
+        step_config:
+            step_size: 3
+            gamma: 0.9
+        multi_step_config:
+            milestones: [20, 30, 40]
+            gamma: 0.9
+        exponential_config:
+            gamma: 0.9
+        cosine_config:
+            T_max: 10
+            eta_min: 0.0001

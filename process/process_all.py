@@ -14,6 +14,9 @@ def process(args,yaml_path,options):
     elif args.General.MODEL_NAME == 'MIR_MIL':
         from .MIR_MIL.process_mir_mil import process_MIR_MIL
         process_MIR_MIL(args)
+    elif args.General.MODEL_NAME == 'SURVIVAL_MIL':
+        from .SURVIVAL_MIL.process_survival_mil import process_SURVIVAL_MIL
+        process_SURVIVAL_MIL(args)
     elif args.General.MODEL_NAME == 'MEAN_MIL':
         from .MEAN_MIL.process_mean_mil import process_MEAN_MIL
         process_MEAN_MIL(args)
