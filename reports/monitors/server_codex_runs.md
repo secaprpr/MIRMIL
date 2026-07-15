@@ -1365,3 +1365,16 @@
     - PID/session leader: `4080568`; child controller PID: `4080570`.
     - Active model: `MIR_MIL_MT_V1`, seed `2024`.
     - Log/process state confirms `MIR_MIL_MT_V1` is actively training; no `Best_Log` yet for `MIR_MIL_MT_V1`.
+
+## 2026-07-16 04:35 CST
+
+- Task: prognosis task audit before launching anything new.
+- KIRC/BLCA prognosis jobs do not need duplicate launches at this checkpoint.
+  - Found `36` prognosis `Best_Log*.csv` files under `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS`.
+  - Controller status files show the corrected BLCA/KIRC prognosis jobs have finished with `exit_code=0`.
+  - Previously failed BLCA UNI OS attempts were documented and replaced by isolated dataset-name reruns to avoid log/checkpoint collisions.
+  - Current process table shows no active `MIRMIL_PROGNOSIS`/`SURVIVAL_MIL` jobs.
+- Existing completed prognosis coverage:
+  - BLCA: R50 OS and UNI OS with RRT/MIR/MIR-MT plus AB/MEAN/MAX baselines where applicable.
+  - KIRC: R50/UNI OS and PFS with RRT/MIR/MIR-MT plus AB/MEAN/MAX baselines.
+- Decision: do not start more BLCA/KIRC prognosis jobs now; continue monitoring active NSCLC and COADREAD tasks.
