@@ -1492,3 +1492,24 @@
     - Log shows training reached epoch `5`; no seed `2025` MT `Best_Log` yet.
     - Note: MT launch still prints `Model Info:MIR_MIL`; interpret by controller/config context (`configs/releases/MIR_MIL_MT_V1.yaml`).
 - Decision: no recovery action needed at this checkpoint; continue polling.
+
+## 2026-07-16 04:45 CST
+
+- Task: active long-run status check after server handoff.
+- COADREAD GDC WSI download remains active and continues byte-level progress.
+  - PID/session leader: `4011479`; child Python PID: `4011484`.
+  - Size-matched complete files: `3 / 624`; partial files: `4`; missing files: `617`.
+  - Byte progress estimate: `4.98 GiB / 336.99 GiB`.
+  - Complete files now include:
+    - `TCGA-3L-AA1B-01Z-00-DX1.8923A151-A690-40B7-9E5A-FCBEDFC2394F.svs`
+    - `TCGA-3L-AA1B-01Z-00-DX2.17CE3683-F4B1-4978-A281-8F620C4D77B4.svs`
+    - `TCGA-4N-A93T-01Z-00-DX1.82E240B1-22C3-46E3-891F-0DCE35C43F8B.svs`
+- NSCLC benchmark status:
+  - R50 benchmark controller remains running on GPU6.
+    - Active model: `AC_MIL`, seed `2024`.
+    - Log shows training reached epoch `6`; no R50 `AC_MIL` `Best_Log` yet.
+  - Corrected UNI remaining controller remains running on GPU1.
+    - Newly observed UNI MT-config seed `2025` result: best epoch `2`, val macro AUC `0.9857872084876388`, test acc `0.9386792452830188`, test bacc `0.9387464387464388`, test macro AUC `0.9886039886039887`.
+    - Controller advanced to `MIR_MIL`, seed `2026`; log shows training reached epoch `5`.
+    - Note: MT launch still prints `Model Info:MIR_MIL`; interpret MT rows by controller/config context (`configs/releases/MIR_MIL_MT_V1.yaml`).
+- Decision: no recovery action needed at this checkpoint; continue polling active long tasks.
