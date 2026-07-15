@@ -1752,3 +1752,23 @@
   - Near-complete partials:
     - `TCGA-5M-AAT4-01Z-00-DX1...`: `2365587456 / 2385119307`
     - `TCGA-5M-AAT6-01Z-00-DX1...`: `1702887424 / 1766078883`
+
+## 2026-07-16 05:53 CST
+
+- Task: active long-run checkpoint.
+- NSCLC R50 corrected remaining controller remains active.
+  - tmux session: `nsclc_r50_remaining_20260716_051530`.
+  - run_benchmark PID: `4247`.
+  - Active run: `MIR_MIL_MT_V1`, seed `2025`.
+  - Latest observed progress: epoch `10 / 30`; no seed `2025` MT Best_Log yet.
+  - Current completed corrected R50 remaining Best_Log count: `3` of expected `6`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_r50_remaining_gpu6_tmux_20260716_051530.log`.
+  - Status file not present yet, so the corrected R50 remaining controller is still running.
+- COADREAD GDC WSI download remains active.
+  - PID/session leader: `4011479`; child Python PID: `4011484`.
+  - Size-matched complete files: `7 / 624`; partial files: `4`; missing files: `613`.
+  - Byte progress estimate: `12.79 GiB / 336.99 GiB`.
+  - Newly complete files since previous checkpoint:
+    - `TCGA-5M-AAT4-01Z-00-DX1.725C46CA-9354-43AC-AA81-3E5A66354D6B.svs`
+    - `TCGA-5M-AAT6-01Z-00-DX1.8834C952-14E3-4491-8156-52FC917BB014.svs`
+  - Status file still absent, so the download has not completed yet.
