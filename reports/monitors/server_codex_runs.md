@@ -333,3 +333,20 @@
 - Verification: training initialized successfully on CUDA-visible GPU1; survival cutpoints loaded.
 
 - NSCLC status: download PID `3566032`, monitor PID `3651599`, and auto-start PID `3669077` remain alive. No `] done` marker yet; latest file counts observed remain `patches=1046`, `r50=893`, `uni=1040`.
+
+## 2026-07-16 02:47 CST
+
+- Task: Prognosis job status update
+- Completed: KIRC UNI PFS + MIR_MIL, status `exit_code=0`; early stopped at epoch 10, loaded checkpoint `Best_EPOCH_2.pth`, final test c-index `0.700587084148728` with CI `[0.5910273574269768, 0.8017440859024401]`, event_count `22`, sample_count `72`.
+- Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_uni_pfs_mir_seed2024_setsid_20260716_023620.log`
+- Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_uni_pfs_mir_seed2024_setsid_20260716_023620.status`
+- Split: `/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_UNI_PFS_split.csv`
+
+- Task: KIRC UNI PFS prognosis, MIR_MIL_MT_V1 backbone config, seed 2024, `setsid`
+- PID/session leader: `3703950`
+- GPU: `0` via `CUDA_VISIBLE_DEVICES=0`
+- Command: `setsid bash -lc '... train_mil.py --yaml_path configs/SURVIVAL_MIL.yaml ... Dataset.DATASET_NAME=TCGA_KIRC_UNI_PFS ... Model.backbone=MIR_MIL Model.backbone_config=configs/releases/MIR_MIL_MT_V1.yaml ...'`
+- Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_uni_pfs_mirmt_seed2024_setsid_20260716_024711.log`
+- Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_uni_pfs_mirmt_seed2024_setsid_20260716_024711.status`
+- Split: `/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_UNI_PFS_split.csv`
+- Verification: training initialized successfully on CUDA-visible GPU0; survival cutpoints loaded.
