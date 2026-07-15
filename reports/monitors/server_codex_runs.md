@@ -650,3 +650,22 @@
 - Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_r50_os_max_seed2024_setsid_20260716_032906.status`
 - Split: `/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_R50_OS_split.csv`
 - Verification: training initialized, survival cutpoints loaded.
+
+## 2026-07-16 03:31 CST
+
+- Task: KIRC prognosis status update
+- Completed: KIRC UNI PFS + MEAN_MIL, status `exit_code=0`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_uni_pfs_mean_seed2024_setsid_20260716_032100.log`
+  - Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_uni_pfs_mean_seed2024_setsid_20260716_032100.status`
+  - Split: `/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_UNI_PFS_split.csv`
+  - Result from controller log: loaded `Best_EPOCH_1.pth`; final test c-index `0.7553816046966731`, CI `[0.652123281768432, 0.843697948262632]`, event_count `22`, sample_count `72`.
+- Still running: NSCLC R50 benchmark, NSCLC UNI benchmark, KIRC R50 PFS + MEAN_MIL, KIRC UNI OS + MEAN_MIL, KIRC R50 OS + MAX_MIL.
+
+- Task: KIRC UNI PFS prognosis, MAX_MIL backbone, seed 2024, `setsid`
+- PID/session leader: `3849977`
+- GPU: `1` via `CUDA_VISIBLE_DEVICES=1`
+- Command: `train_mil.py --yaml_path configs/SURVIVAL_MIL.yaml --options General.seed=2024 General.num_epochs=30 General.best_model_metric=c_index Dataset.DATASET_NAME=TCGA_KIRC_UNI_PFS Dataset.dataset_csv_path=/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_UNI_PFS_split.csv Model.backbone=MAX_MIL Model.backbone_config=configs/MAX_MIL.yaml Model.in_dim=1024 Model.max_instances=4096 Model.survival.patient_level=true`
+- Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_uni_pfs_max_seed2024_setsid_20260716_033056.log`
+- Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_uni_pfs_max_seed2024_setsid_20260716_033056.status`
+- Split: `/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_UNI_PFS_split.csv`
+- Verification: training initialized, survival cutpoints loaded.
