@@ -1378,3 +1378,24 @@
   - BLCA: R50 OS and UNI OS with RRT/MIR/MIR-MT plus AB/MEAN/MAX baselines where applicable.
   - KIRC: R50/UNI OS and PFS with RRT/MIR/MIR-MT plus AB/MEAN/MAX baselines.
 - Decision: do not start more BLCA/KIRC prognosis jobs now; continue monitoring active NSCLC and COADREAD tasks.
+
+## 2026-07-16 04:36 CST
+
+- Task: active long-run status check.
+- COADREAD GDC WSI download remains active.
+  - PID/session leader: `4011479`; child Python PID: `4011484`.
+  - Current raw size: about `4.0G`.
+  - Size-matched complete files: `2 / 624`; partial files: `4`; missing files: `618`.
+  - Byte progress estimate: `3.94 GiB / 336.99 GiB`.
+  - Latest complete files remain:
+    - `TCGA-3L-AA1B-01Z-00-DX2.17CE3683-F4B1-4978-A281-8F620C4D77B4.svs`
+    - `TCGA-4N-A93T-01Z-00-DX1.82E240B1-22C3-46E3-891F-0DCE35C43F8B.svs`
+- NSCLC benchmark status:
+  - R50 benchmark controller remains running on GPU6.
+    - Active model: `WIKG_MIL`, seed `2024`.
+    - Log shows training reached at least epoch `22`; no `Best_Log` yet for R50 `WIKG_MIL`.
+  - Corrected UNI remaining controller remains running on GPU1.
+    - PID/session leader: `4080568`; child controller PID: `4080570`.
+    - Newly observed MT-config result for seed `2024`: best epoch `5`, val macro AUC `0.9885897307576819`, test acc `0.9528301886792453`, test bacc `0.9524572649572649`, test macro AUC `0.988425925925926`.
+    - Note: the result directory/model label still appears as `MIR_MIL` even for the MT config launch; interpret this row by controller/config context (`configs/releases/MIR_MIL_MT_V1.yaml`), not the printed `Model Info`.
+    - Controller advanced to `MIR_MIL`, seed `2025`; log confirms it reached at least epoch `2`.
