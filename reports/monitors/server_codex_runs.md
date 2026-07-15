@@ -583,3 +583,34 @@
 - Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_uni_os_mean_seed2024_setsid_20260716_031920.status`
 - Split: `/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_UNI_OS_split.csv`
 - Verification: training initialized, survival cutpoints loaded.
+
+## 2026-07-16 03:21 CST
+
+- Task: NSCLC benchmark progress check
+- R50 benchmark remains running on `AB_MIL`, seed `2024`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_r50_gpu6_manual_20260716_030702.log`
+  - Recent progress: reached epoch `23`; epoch 23 validation macro_auc `0.9236312681413272`; test snapshot macro_auc `0.9365206552706552`.
+- UNI benchmark remains running and has moved from `AB_MIL` to `CLAM_SB_MIL`, seed `2024`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_uni_gpu0_manual_20260716_030702.log`
+  - Recent progress: `AB_MIL` reached epoch `27`; `CLAM_SB_MIL` seed `2024` has started.
+
+- Task: KIRC prognosis status update
+- Completed: KIRC UNI OS + AB_MIL, status `exit_code=0`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_uni_os_ab_seed2024_setsid_20260716_030040.log`
+  - Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_uni_os_ab_seed2024_setsid_20260716_030040.status`
+  - Split: `/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_UNI_OS_split.csv`
+  - Result from controller log: loaded `Best_EPOCH_6.pth`; final test c-index `0.7759456838021338`, CI `[0.6789173224808199, 0.867289886039886]`, event_count `25`, sample_count `74`.
+- Still running: KIRC R50 OS + MEAN_MIL, KIRC R50 PFS + MEAN_MIL, KIRC UNI OS + MEAN_MIL, NSCLC R50 benchmark, NSCLC UNI benchmark.
+
+- Task: KIRC UNI PFS prognosis, MEAN_MIL backbone, seed 2024, `setsid`
+- PID/session leader: `3795273`
+- GPU: `1` via `CUDA_VISIBLE_DEVICES=1`
+- Command: `train_mil.py --yaml_path configs/SURVIVAL_MIL.yaml --options General.seed=2024 General.num_epochs=30 General.best_model_metric=c_index Dataset.DATASET_NAME=TCGA_KIRC_UNI_PFS Dataset.dataset_csv_path=/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_UNI_PFS_split.csv Model.backbone=MEAN_MIL Model.backbone_config=configs/MEAN_MIL.yaml Model.in_dim=1024 Model.max_instances=4096 Model.survival.patient_level=true`
+- Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_uni_pfs_mean_seed2024_setsid_20260716_032100.log`
+- Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_uni_pfs_mean_seed2024_setsid_20260716_032100.status`
+- Split: `/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_UNI_PFS_split.csv`
+- Verification: training initialized, survival cutpoints loaded.
+
+- Task: COADREAD feature/WSI availability recheck
+- Current status remains metadata-only: `/data15/data15_5/fanhao/datasets/TCGA-COADREAD/metadata` is about `25M`; no `.pt`, `.h5`, or WSI files were found under the COADREAD dataset directory.
+- Consequence: COADREAD prognosis remains blocked by missing feature/WSI paths.
