@@ -868,3 +868,17 @@
   - Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/blca_uni_os_ab_seed2024_setsid_20260716_034833.status`
   - Command core: `train_mil.py --yaml_path configs/SURVIVAL_MIL.yaml --options Dataset.DATASET_NAME=TCGA_BLCA_UNI_OS Dataset.dataset_csv_path=/data15/data15_5/fanhao/datasets/TCGA-BLCA/metadata/TCGA_BLCA_PROGNOSIS_UNI_OS_split.csv Model.backbone=AB_MIL Model.backbone_config=configs/AB_MIL.yaml Model.in_dim=1024 Model.max_instances=4096 Model.survival.patient_level=true`
   - Verification: initialized, loaded survival cutpoints `[7.05, 13.34, 22.32]`, and entered survival process.
+
+## 2026-07-16 03:50 CST
+
+- Task: NSCLC benchmark and BLCA UNI OS checkpoint
+- Completed: NSCLC UNI `TRANS_MIL`, seed `2024`.
+  - Best log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/TCGA_NSCLC_LUAD_LUSC_UNI/TRANS_MIL/time_2026-07-16-03-32_TCGA_NSCLC_LUAD_LUSC_UNI_TRANS_MIL_seed_2024/Best_Log_seed2024_TCGA_NSCLC_LUAD_LUSC_UNI_TRANS_MIL.csv`
+  - Best epoch `19`; validation macro_auc `0.9845861275147633`; test acc `0.9622641509433962`, test bacc `0.9617165242165242`, test macro_auc `0.9867343304843306`.
+  - UNI benchmark controller remains running and has moved to `RRT_MIL`, seed `2024`.
+- NSCLC R50 benchmark remains running; current active child is `DS_MIL`, seed `2024`.
+- BLCA UNI OS status:
+  - Valid RRT_MIL, MIR_MIL, MIR_MIL_MT_V1, and AB_MIL jobs remain running.
+  - The failed initial MIR_MIL_MT_V1 launch `blca_uni_os_mirmt_seed2024_setsid_20260716_034634` remains recorded as `exit_code=1`; corrected run `blca_uni_os_mirmt_seed2024_setsid_20260716_034709` is still active.
+  - No BLCA UNI OS final status files were present yet for the valid runs.
+- Scheduling decision: did not launch BLCA UNI OS MEAN_MIL/MAX_MIL at this checkpoint because existing BLCA UNI OS jobs plus NSCLC R50/UNI benchmark jobs are still active; wait for a BLCA or NSCLC GPU/CPU slot to finish before adding more prognosis runs.
