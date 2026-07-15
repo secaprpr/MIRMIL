@@ -485,3 +485,33 @@
 - Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_r50_os_mean_seed2024_setsid_20260716_030040.status`
 - Split: `/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_R50_OS_split.csv`
 - Verification: training initialized, survival cutpoints loaded.
+
+## 2026-07-16 03:07 CST
+
+- Task: NSCLC download completion and benchmark launch
+- Download status: completed. Resume log `/data15/data15_5/fanhao/datasets/TCGA-NSCLC/CPathPatchFeature/logs/download_nsclc_resume_20260716_025617.log` contains `[2026-07-16T03:02:01.454019] done`.
+- Final observed data counts: `patches=1046 files, 772M`; `r50=1039 files, 49G`; `uni=1052 files, 49G`.
+- Split validation: both `/data15/data15_5/fanhao/datasets/TCGA-NSCLC/metadata/TCGA_NSCLC_LUAD_LUSC_R50_split.csv` and `/data15/data15_5/fanhao/datasets/TCGA-NSCLC/metadata/TCGA_NSCLC_LUAD_LUSC_UNI_split.csv` passed path validation.
+- Auto-start watcher note: watcher PID `3669077` detected the download completion and validated splits, then exited before creating dry-run logs or launching benchmarks. Manual dry-run and launch were used to avoid leaving NSCLC idle.
+- Dry-run logs:
+  - R50: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_r50_dry_run_manual_20260716_030636.log`, exit code `0`.
+  - UNI: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_uni_dry_run_manual_20260716_030636.log`, exit code `0`.
+- Duplicate-start marker written locally: `/data15/data15_5/fanhao/projects/MIRMIL/reports/monitors/nsclc_benchmark_started.marker`.
+
+- Task: NSCLC LUAD vs LUSC benchmark, R50 features
+- PID/session leader: `3737790`
+- GPU: `6` via `CUDA_VISIBLE_DEVICES=6`
+- Command: `experiments/run_benchmark.py --split /data15/data15_5/fanhao/datasets/TCGA-NSCLC/metadata/TCGA_NSCLC_LUAD_LUSC_R50_split.csv --dataset-name TCGA_NSCLC_LUAD_LUSC_R50 --num-classes 2 --models AB_MIL CLAM_SB_MIL CLAM_MB_MIL DS_MIL TRANS_MIL RRT_MIL WIKG_MIL AC_MIL MO_MIL MAMBA2D_MIL MIR_MIL MIR_MIL_MT_V1 --seeds 2024 2025 2026 --epochs 30 --feature r50 --protocol nsclc_luad_lusc --split-id r50_v1 --max-instances 4096`
+- Log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_r50_gpu6_manual_20260716_030702.log`
+- Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_r50_gpu6_manual_20260716_030702.status`
+- Split: `/data15/data15_5/fanhao/datasets/TCGA-NSCLC/metadata/TCGA_NSCLC_LUAD_LUSC_R50_split.csv`
+- Verification: benchmark entered `AB_MIL` seed `2024` training; no immediate failure.
+
+- Task: NSCLC LUAD vs LUSC benchmark, UNI features
+- PID/session leader: `3737792`
+- GPU: `0` via `CUDA_VISIBLE_DEVICES=0`
+- Command: `experiments/run_benchmark.py --split /data15/data15_5/fanhao/datasets/TCGA-NSCLC/metadata/TCGA_NSCLC_LUAD_LUSC_UNI_split.csv --dataset-name TCGA_NSCLC_LUAD_LUSC_UNI --num-classes 2 --models AB_MIL CLAM_SB_MIL CLAM_MB_MIL DS_MIL TRANS_MIL RRT_MIL WIKG_MIL AC_MIL MO_MIL MAMBA2D_MIL MIR_MIL MIR_MIL_MT_V1 --seeds 2024 2025 2026 --epochs 30 --feature uni --protocol nsclc_luad_lusc --split-id uni_v1 --max-instances 4096`
+- Log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_uni_gpu0_manual_20260716_030702.log`
+- Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_uni_gpu0_manual_20260716_030702.status`
+- Split: `/data15/data15_5/fanhao/datasets/TCGA-NSCLC/metadata/TCGA_NSCLC_LUAD_LUSC_UNI_split.csv`
+- Verification: benchmark entered `AB_MIL` seed `2024` training; no immediate failure.
