@@ -1333,3 +1333,19 @@
     - PID/session leader: `4080568`; child controller PID: `4080570`.
     - Active model: `MIR_MIL`, seed `2024`.
     - Log confirms training reached at least epoch `13`; no new `Best_Log` result yet for the resumed MIR models.
+
+## 2026-07-16 04:30 CST
+
+- Task: active long-run status check.
+- COADREAD GDC WSI download remains active.
+  - PID/session leader: `4011479`; child Python PID: `4011484`.
+  - Current raw size: about `3.3G`.
+  - Size-matched complete files: `1 / 624`; partial files: `4`; missing files: `619`.
+  - Byte progress estimate: `3.22 GiB / 336.99 GiB`.
+  - Completed file remains `TCGA-3L-AA1B-01Z-00-DX2.17CE3683-F4B1-4978-A281-8F620C4D77B4.svs`.
+- NSCLC benchmark status:
+  - R50 benchmark controller remains running on GPU6; active child remains `WIKG_MIL`, seed `2024`.
+  - Corrected UNI remaining controller remains running on GPU1.
+    - PID/session leader: `4080568`; child controller PID: `4080570`.
+    - Newly observed UNI `MIR_MIL` result: best epoch `6`, val macro AUC `0.9845861275147633`, test acc `0.9198113207547169`, test bacc `0.9211182336182336`, test macro AUC `0.9894943019943021`.
+    - The UNI recovery task advanced to `MIR_MIL_MT_V1`, seed `2024`; log confirms it reached at least epoch `1`.
