@@ -2085,3 +2085,18 @@
     - `TCGA-A6-2685-01Z-00-DX1.c69e23f4-34c9-41ff-a037-44bf7bbf33cd.svs`
     - `TCGA-A6-3807-01Z-00-DX1.c3de2064-4f8d-4786-9ff9-2e0f44293717.svs`
   - Status file still absent, so do not start COADREAD patching or feature extraction yet.
+
+## 2026-07-16 06:34 CST
+
+- Task: NSCLC missing-seed result checkpoint.
+- R50 `AB_MIL` seed `2025` completed and produced a new Best_Log.
+  - Run directory: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/TCGA_NSCLC_LUAD_LUSC_R50/AB_MIL/time_2026-07-16-06-26_TCGA_NSCLC_LUAD_LUSC_R50_AB_MIL_seed_2025`.
+  - Best epoch: `10`.
+  - Val macro AUC: `0.9320388349514563`.
+  - Test acc: `0.8915094339622641`.
+  - Test bacc: `0.8917378917378918`.
+  - Test macro AUC: `0.941951566951567`.
+- Active NSCLC follow-on status.
+  - R50 non-MAMBA baseline controller advanced to `CLAM_SB_MIL` seed `2025` on GPU `2`.
+  - UNI non-MAMBA baseline controller is still on `CLAM_SB_MIL` seed `2025` on GPU `3`.
+  - R50/UNI MAMBA2D seed `2024` and seed `2025/2026` controllers remain active on GPUs `0/1/5/6`.
