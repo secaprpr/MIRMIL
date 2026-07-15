@@ -1632,3 +1632,19 @@
   - Command:
     `CUDA_VISIBLE_DEVICES=6 /data15/data15_5/fanhao/miniforge3/envs/mirmil/bin/python -u experiments/run_benchmark.py --split /data15/data15_5/fanhao/datasets/TCGA-NSCLC/metadata/TCGA_NSCLC_LUAD_LUSC_R50_split.csv --dataset-name TCGA_NSCLC_LUAD_LUSC_R50 --num-classes 2 --log-root /data15/data15_5/fanhao/experiments/MIRMIL_NSCLC --models MIR_MIL MIR_MIL_MT_V1 --seeds 2024 2025 2026 --epochs 30 --device 0 --num-workers 4 --in-dim 1024 --max-instances 4096 --feature r50 --protocol nsclc_luad_lusc --split-id r50_v1`
   - Verified state: `MIR_MIL` seed `2024` started; log prints `MIL-yaml path: configs/MIR_MIL.yaml`, `Dataset Info:TCGA_NSCLC_LUAD_LUSC_R50`, `Device Info:CUDA:0`, and epoch progress began.
+
+## 2026-07-16 05:17 CST
+
+- Task: post-launch verification checkpoint.
+- NSCLC R50 remaining run is active.
+  - tmux session: `nsclc_r50_remaining_20260716_051530`.
+  - run_benchmark PID: `4247`.
+  - Active `train_mil.py`: `MIR_MIL`, seed `2024`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_r50_remaining_gpu6_tmux_20260716_051530.log`.
+  - Observed progress: reached epoch `3 / 30`; epoch 3 val macro AUC `0.7721949754779301`.
+  - GPU6 memory at checkpoint: about `325 MiB`, utilization about `20%`.
+- COADREAD GDC WSI download remains active.
+  - PID/session leader: `4011479`; child Python PID: `4011484`.
+  - Size-matched complete files: `4 / 624`; partial files: `4`; missing files: `616`.
+  - Byte progress estimate: `8.57 GiB / 336.99 GiB`.
+  - Status file still absent, so the download has not completed yet.
