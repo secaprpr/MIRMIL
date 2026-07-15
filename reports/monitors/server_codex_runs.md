@@ -1772,3 +1772,40 @@
     - `TCGA-5M-AAT4-01Z-00-DX1.725C46CA-9354-43AC-AA81-3E5A66354D6B.svs`
     - `TCGA-5M-AAT6-01Z-00-DX1.8834C952-14E3-4491-8156-52FC917BB014.svs`
   - Status file still absent, so the download has not completed yet.
+
+## 2026-07-16 06:03 CST
+
+- Task: NSCLC R50 MT seed `2025` result and active long-run checkpoint.
+- NSCLC R50 `MIR_MIL_MT_V1` seed `2025` completed successfully under the corrected tmux controller.
+  - Run directory: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/TCGA_NSCLC_LUAD_LUSC_R50/MIR_MIL/time_2026-07-16-05-48_TCGA_NSCLC_LUAD_LUSC_R50_MIR_MIL_seed_2025`.
+  - Important naming note: the run directory/model line prints `MIR_MIL`, but this run is `MIR_MIL_MT_V1` by controller order and config context (`configs/releases/MIR_MIL_MT_V1.yaml`, `General.experiment_variant=MIR_MIL_MT_V1`).
+  - Best epoch: `25`.
+  - Val macro AUC: `0.9353418076268643`.
+  - Test acc: `0.9056603773584906`.
+  - Test bacc: `0.905448717948718`.
+  - Test macro AUC: `0.9624287749287749`.
+- Corrected R50 controller advanced to `MIR_MIL` seed `2026`.
+  - tmux session: `nsclc_r50_remaining_20260716_051530`.
+  - run_benchmark PID: `4247`.
+  - Active `train_mil.py` parent PID at checkpoint: `79044`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_r50_remaining_gpu6_tmux_20260716_051530.log`.
+  - Status file not present yet, so the corrected R50 remaining controller is still running.
+  - Current completed corrected R50 remaining Best_Log count: `4` of expected `6`.
+- COADREAD GDC WSI download remains active.
+  - PID/session leader: `4011479`; child Python PID: `4011484`.
+  - Size-matched complete files: `14 / 624`; partial files: `4`; missing files: `606`.
+  - Byte progress estimate: `14.09 GiB / 336.99 GiB`.
+  - Newly complete files since previous checkpoint include:
+    - `TCGA-5M-AAT5-01Z-00-DX1.548E7CEB-48FB-4037-A616-39AB025E7A73.svs`
+    - `TCGA-A6-2671-01Z-00-DX1.13d1a0d9-78cd-4cfc-b670-34a79ebe52ee.svs`
+    - `TCGA-A6-2672-01Z-00-DX1.e2a845c8-6d77-4120-9f43-abec84a66c1c.svs`
+    - `TCGA-A6-2674-01Z-00-DX1.d301f1f5-6f4a-49e6-9c93-f4e8b7f616b8.svs`
+    - `TCGA-A6-2675-01Z-00-DX1.d37847d6-c17f-44b9-b90a-84cd1946c8ab.svs`
+    - `TCGA-A6-2676-01Z-00-DX1.c465f6e0-b47c-48e9-bdb1-67077bb16c67.svs`
+    - `TCGA-A6-2677-01Z-00-DX1.dc0903dc-fef2-47ca-8f04-1ef25a4d8338.svs`
+  - Current partial files include:
+    - `TCGA-5M-AATE-01Z-00-DX1.483FFD2F-61A1-477E-8F94-157383803FC7.svs`: `931135488 / 2762599587` bytes.
+    - `TCGA-A6-2678-01Z-00-DX1.bded5c5c-555a-492a-91c7-151492d0ee5e.svs`: `50331648 / 179013807` bytes.
+    - `TCGA-A6-2679-01Z-00-DX1.8df66ef4-d9e5-41db-836d-f0afe46d6b5a.svs`: `50331648 / 128003621` bytes.
+    - `TCGA-A6-2680-01Z-00-DX1.7b77c0fb-f51d-4d16-ae77-f7615b1d0b87.svs`: `0 / 172748717` bytes.
+  - Status file still absent, so the download has not completed yet.
