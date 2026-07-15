@@ -1080,3 +1080,16 @@
   - R50 benchmark controller remains running; active child is still `TRANS_MIL`, seed `2024`.
   - UNI benchmark controller remains running; active child is still `AC_MIL`, seed `2024`.
   - No new `Best_Log` result beyond the prior checkpoint was present.
+
+## 2026-07-16 04:12 CST
+
+- Task: active long-run status check.
+- COADREAD GDC WSI download remains active.
+  - PID/session leader: `4011479`; child Python PID: `4011484`.
+  - Current raw size: about `1.1G`.
+  - Size-matched complete files: `0 / 624`; partial files: `4`; missing files: `620`.
+  - Byte progress estimate: `1.08 GiB / 336.99 GiB`.
+- NSCLC benchmark status:
+  - R50 benchmark controller remains running; active child is still `TRANS_MIL`, seed `2024`.
+  - UNI benchmark controller remains running; active child is still `AC_MIL`, seed `2024`.
+  - No new `Best_Log` result beyond `NSCLC UNI WIKG_MIL` was present.
