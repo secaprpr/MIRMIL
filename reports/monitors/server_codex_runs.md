@@ -2032,3 +2032,28 @@
   - Status: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_uni_mamba2d_seed2025_2026_gpu6_20260716_062640.status`.
   - Split: `/data15/data15_5/fanhao/datasets/TCGA-NSCLC/metadata/TCGA_NSCLC_LUAD_LUSC_UNI_split.csv`.
   - Launch verification: entered `MAMBA2D_MIL` seed `2025` training.
+
+## 2026-07-16 06:29 CST
+
+- Task: active NSCLC/COADREAD checkpoint after missing-seed launch.
+- NSCLC active process status.
+  - R50 MAMBA2D seed `2024`: still active on GPU `0`; latest observed epoch `4 / 30`; status file absent.
+  - UNI MAMBA2D seed `2024`: still active on GPU `1`; latest observed epoch `4 / 30`; status file absent.
+  - R50 non-MAMBA baselines seed `2025/2026`: still active on GPU `2`; latest active run is `AB_MIL` seed `2025`; latest observed epoch `5 / 30`; status file absent.
+  - UNI non-MAMBA baselines seed `2025/2026`: still active on GPU `3`; latest active run is `AB_MIL` seed `2025`; latest observed epoch `5 / 30`; status file absent.
+  - R50 MAMBA2D seed `2025/2026`: still active on GPU `5`; initialized training; no epoch metric emitted yet; status file absent.
+  - UNI MAMBA2D seed `2025/2026`: still active on GPU `6`; initialized training; no epoch metric emitted yet; status file absent.
+  - No `Traceback`, `RuntimeError`, or `CUDA out of memory` was found in the six active NSCLC controller logs at this checkpoint.
+- NSCLC result count.
+  - Current Best_Log count remains `15` for R50 and `15` for UNI because the newly launched missing-seed runs have not completed a model yet.
+  - Completed MIR/MIR_MT R50/UNI runs remain available; non-MAMBA baseline seed `2025/2026` and MAMBA2D seeds are still pending.
+- COADREAD GDC WSI download remains active.
+  - PID/session leader: `4011479`; child Python PID: `4011484`.
+  - Size-matched complete files: `21 / 624`; partial files: `4`; missing files: `599`.
+  - Byte progress estimate: `16.99 GiB / 336.99 GiB`.
+  - Current partial files include:
+    - `TCGA-5M-AATE-01Z-00-DX1.483FFD2F-61A1-477E-8F94-157383803FC7.svs`: `1736441856 / 2762599587` bytes.
+    - `TCGA-A6-2685-01Z-00-DX1.c69e23f4-34c9-41ff-a037-44bf7bbf33cd.svs`: `411041792 / 436523169` bytes.
+    - `TCGA-A6-2686-01Z-00-DX1.0540a027-2a0c-46c7-9af0-7b8672631de7.svs`: `360710144 / 497633503` bytes.
+    - `TCGA-A6-3807-01Z-00-DX1.c3de2064-4f8d-4786-9ff9-2e0f44293717.svs`: `310378496 / 368808405` bytes.
+  - Status file still absent, so do not start COADREAD patching or feature extraction yet.
