@@ -305,3 +305,12 @@
   - KIRC R50 PFS + RRT_MIL, PID/session `3678267`, reached epoch 6; recent val c-index `0.6269685039370079`.
   - KIRC UNI PFS + MIR_MIL, PID/session `3684131`, reached epoch 3; recent val c-index `0.735236220472441`.
 - GPU decision: GPUs `0/1/2/3/5` are occupied by current prognosis jobs; GPUs `4/6/7` appear occupied by other long-running workloads. No new training task started in this check.
+
+## 2026-07-16 02:41 CST
+
+- Task: COADREAD feature location recheck
+- Commands:
+  - `find /data15/data15_5/fanhao/datasets -maxdepth 7 -type f \( -iname '*coad*.pt' -o -iname '*read*.pt' -o -iname '*coad*.h5' -o -iname '*read*.h5' -o -iname '*coad*.svs' -o -iname '*read*.svs' \)`
+  - `find /data15/data15_5/fanhao/datasets/TCGA-COADREAD -maxdepth 8 -type f \( -name '*.pt' -o -name '*.h5' -o -iname '*.svs' -o -iname '*.tif' -o -iname '*.mrxs' -o -iname '*.ndpi' \)`
+- Result: no COADREAD/COAD/READ feature or WSI files found under the dataset root search. `/data15/data15_5/fanhao/datasets/TCGA-COADREAD` still contains only metadata, total size about `25M`.
+- Consequence: COADREAD prognosis training still cannot start from existing data. Need actual R50/UNI feature location or WSI download + patch + feature extraction before generating patient-level feature split CSVs.
