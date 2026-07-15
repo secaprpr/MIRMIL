@@ -731,3 +731,15 @@
 - Dataset-root search result: still no COADREAD `.pt`, `.h5`, `.svs`, `.tif`, `.mrxs`, or `.ndpi` files found under `/data15/data15_5/fanhao/datasets/TCGA-COADREAD`.
 - Current COADREAD dataset size remains metadata-only, about `25M`.
 - Consequence: COADREAD prognosis remains blocked by missing feature/WSI paths.
+
+## 2026-07-16 03:35 CST
+
+- Task: NSCLC benchmark progress and partial results
+- R50 benchmark remains running and has moved from `CLAM_SB_MIL` to `CLAM_MB_MIL`, seed `2024`.
+  - Controller log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_r50_gpu6_manual_20260716_030702.log`
+  - Completed R50 `CLAM_SB_MIL`, seed `2024`.
+    - Best log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/TCGA_NSCLC_LUAD_LUSC_R50/CLAM_SB_MIL/time_2026-07-16-03-22_TCGA_NSCLC_LUAD_LUSC_R50_CLAM_SB_MIL_seed_2024/Best_Log_seed2024_TCGA_NSCLC_LUAD_LUSC_R50_CLAM_SB_MIL.csv`
+    - Best epoch `28`; validation macro_auc `0.9315383845460914`; test acc `0.8820754716981132`, test bacc `0.8812321937321937`, test macro_auc `0.9452457264957265`.
+- UNI benchmark remains running; current active child is `TRANS_MIL`, seed `2024`.
+- KIRC MAX_MIL jobs remain running; no MAX final status files were present at this checkpoint.
+- COADREAD status unchanged: metadata-only, about `25M`, no `.pt`, `.h5`, or WSI files found under `/data15/data15_5/fanhao/datasets/TCGA-COADREAD`.
