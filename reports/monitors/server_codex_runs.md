@@ -1240,3 +1240,16 @@
     - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_uni_remaining_gpu1_20260716_042313.log`.
     - Status: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_uni_remaining_gpu1_20260716_042313.status`.
     - Command: `experiments/run_benchmark.py --split /data15/data15_5/fanhao/datasets/TCGA-NSCLC/metadata/TCGA_NSCLC_LUAD_LUSC_UNI_split.csv --dataset-name TCGA_NSCLC_LUAD_LUSC_UNI --num-classes 2 --log-root /data15/data15_5/fanhao/experiments/MIRMIL_NSCLC --models MIR_MIL MIR_MIL_MT_V1 --seeds 2024 2025 2026 --epochs 30 --device 0 --num-workers 4 --in-dim 1024 --max-instances 4096 --feature uni --protocol nsclc_luad_lusc --split-id uni_v1`.
+
+## 2026-07-16 04:24 CST
+
+- Task: corrected UNI remaining benchmark launch.
+- The first UNI recovery launch recorded at 04:23 did not enter training: PID `4078329` exited immediately, the log file stayed empty, and no status file was written.
+- Relaunched UNI remaining benchmark with a direct `setsid bash -c` wrapper.
+  - PID: `4080568`.
+  - GPU: `CUDA_VISIBLE_DEVICES=1`.
+  - Models: `MIR_MIL`, `MIR_MIL_MT_V1`.
+  - Seeds: `2024`, `2025`, `2026`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_uni_remaining_gpu1_20260716_042417.log`.
+  - Status: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_uni_remaining_gpu1_20260716_042417.status`.
+  - Verified the log started correctly and printed the expected benchmark manifest for `TCGA_NSCLC_LUAD_LUSC_UNI`.
