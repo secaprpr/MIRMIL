@@ -385,3 +385,15 @@
 - Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_r50_os_ab_seed2024_setsid_20260716_025225.status`
 - Split: `/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_R50_OS_split.csv`
 - Verification: training initialized successfully on CUDA-visible GPU3; survival cutpoints loaded.
+
+## 2026-07-16 02:54 CST
+
+- Task: Handoff continuation status check
+- NSCLC: download PID `3566032`, monitor PID `3651599`, and auto-start PID `3669077` still alive. No `] done` marker found. Current counts: `patches=1046 files, 772M`; `r50=894 files, 41G`; `uni=1040 files, 48G`.
+- Running prognosis jobs:
+  - KIRC R50 PFS + RRT_MIL, PID/session `3678267`, reached epoch 22; recent val c-index `0.6988188976377953`.
+  - KIRC UNI OS + MIR_MIL_MT_V1, PID/session `3702155`, reached epoch 8; recent val c-index `0.6818181818181818`.
+  - KIRC UNI PFS + MIR_MIL_MT_V1, PID/session `3703950`, reached epoch 7; recent val c-index `0.7017716535433071`.
+  - KIRC R50 PFS + MIR_MIL_MT_V1, PID/session `3705356`, reached epoch 6; recent val c-index `0.6909448818897638`.
+  - KIRC R50 OS + AB_MIL, PID/session `3713137`, reached epoch 1; recent val c-index `0.4090909090909091`.
+- GPU decision: all available non-external GPUs are currently occupied by the above prognosis jobs; no new task started in this check.
