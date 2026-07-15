@@ -397,3 +397,15 @@
   - KIRC R50 PFS + MIR_MIL_MT_V1, PID/session `3705356`, reached epoch 6; recent val c-index `0.6909448818897638`.
   - KIRC R50 OS + AB_MIL, PID/session `3713137`, reached epoch 1; recent val c-index `0.4090909090909091`.
 - GPU decision: all available non-external GPUs are currently occupied by the above prognosis jobs; no new task started in this check.
+
+## 2026-07-16 02:56 CST
+
+- Task: NSCLC download recovery
+- Observation: original HuggingFace snapshot download PID `3566032` was no longer alive. The original log `/data15/data15_5/fanhao/datasets/TCGA-NSCLC/CPathPatchFeature/logs/download_nsclc_r50_uni_patches_20260716_002213.log` ended with `RuntimeError: Cannot send a request, as the client has been closed.`
+- Current data status before resume: `patches=1046 files, 772M`; `r50=895 files, 41G`; `uni=1040 files, 48G`; no `] done` marker found.
+- Action: started resume download without deleting existing data.
+- New resume PID/session leader: `3720292`
+- Command: `setsid bash -lc 'DEST=/data15/data15_5/fanhao/datasets/TCGA-NSCLC/CPathPatchFeature python -u -c "... snapshot_download(repo_id=\"Dearcat/CPathPatchFeature\", repo_type=\"dataset\", allow_patterns=[\"nsclc/r50/**\",\"nsclc/uni/**\",\"nsclc/patches/**\"], local_dir=dest, max_workers=6) ..."'`
+- Log: `/data15/data15_5/fanhao/datasets/TCGA-NSCLC/CPathPatchFeature/logs/download_nsclc_resume_20260716_025617.log`
+- PID file: `/data15/data15_5/fanhao/datasets/TCGA-NSCLC/CPathPatchFeature/logs/download_nsclc_resume_20260716_025617.pid`
+- Verification: PID `3720292` alive after launch; log contains resume start line.
