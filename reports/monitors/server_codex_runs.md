@@ -743,3 +743,20 @@
 - UNI benchmark remains running; current active child is `TRANS_MIL`, seed `2024`.
 - KIRC MAX_MIL jobs remain running; no MAX final status files were present at this checkpoint.
 - COADREAD status unchanged: metadata-only, about `25M`, no `.pt`, `.h5`, or WSI files found under `/data15/data15_5/fanhao/datasets/TCGA-COADREAD`.
+
+## 2026-07-16 03:37 CST
+
+- Task: active run checkpoint
+- NSCLC benchmark controllers remain running:
+  - R50 controller PID/session `3737790`, current active child `CLAM_MB_MIL`, seed `2024`, GPU `6`.
+  - UNI controller PID/session `3737792`, current active child `TRANS_MIL`, seed `2024`, GPU `0`.
+- No additional NSCLC `Best_Log` files were present beyond the previously recorded R50 `AB_MIL`/`CLAM_SB_MIL` and UNI `AB_MIL`/`CLAM_SB_MIL`/`CLAM_MB_MIL`/`DS_MIL` seed `2024` results.
+- KIRC MAX_MIL jobs remain running and no final status files were present:
+  - R50 OS + MAX_MIL, GPU `5`, PID/session `3839797`; latest observed validation c-index sequence includes best-so-far `0.6494755244755245`.
+  - UNI PFS + MAX_MIL, GPU `1`, PID/session `3849977`; latest observed validation c-index sequence includes best-so-far `0.7431102362204725`.
+  - R50 PFS + MAX_MIL, GPU `2`, PID/session `3856454`; latest observed validation c-index sequence includes best-so-far `0.5334645669291339`.
+  - UNI OS + MAX_MIL, GPU `3`, PID/session `3856531`; latest observed validation c-index sequence includes best-so-far `0.7263986013986014`.
+- COADREAD recheck:
+  - Command scope: searched `/data15/data15_5/fanhao/datasets/TCGA-COADREAD` to max depth 6 for `.pt`, `.h5`, `.svs`, `.tif`, `.mrxs`, `.ndpi`.
+  - Result: no feature or WSI files found; dataset root remains about `25M`.
+  - Consequence: COADREAD prognosis is still blocked by missing feature/WSI paths; no training or extraction was started.
