@@ -1219,3 +1219,24 @@
   - R50 benchmark controller remains running on GPU6; active child remains `WIKG_MIL`, seed `2024`.
   - UNI benchmark controller remains running on GPU0; active child remains `MO_MIL`, seed `2024`.
   - No additional `Best_Log` result was present beyond the 04:21 checkpoint.
+
+## 2026-07-16 04:23 CST
+
+- Task: active long-run status check and UNI benchmark recovery.
+- COADREAD GDC WSI download remains active.
+  - PID/session leader: `4011479`; child Python PID: `4011484`.
+  - Current raw size: about `2.4G`.
+  - Size-matched complete files: `0 / 624`; partial files: `4`; missing files: `620`.
+  - Byte progress estimate: `2.38 GiB / 336.99 GiB`.
+  - The same four partial downloads continue to grow; no completion/status file exists yet.
+- NSCLC benchmark status:
+  - R50 benchmark controller remains running on GPU6; active child remains `WIKG_MIL`, seed `2024`.
+  - Original UNI benchmark controller exited with `exit_code=1` at `MAMBA2D_MIL`.
+  - Newly observed UNI `MO_MIL` result before the controller exit: best epoch `4`, val macro AUC `0.9846862175958362`, test acc `0.9433962264150944`, test bacc `0.9437321937321937`, test macro AUC `0.9910078347578348`.
+  - Failure reason for UNI `MAMBA2D_MIL`: `coordinate_dim=2 requires coordinates` for UNI `.pt` files; the downloaded NSCLC UNI features do not provide companion coordinates required by this 2D spatial baseline.
+  - Recovery action: launched a separate UNI remaining benchmark for `MIR_MIL` and `MIR_MIL_MT_V1` only, since these are still required by the handoff and do not require coordinates.
+    - PID: `4078329`.
+    - GPU: `CUDA_VISIBLE_DEVICES=1`.
+    - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_uni_remaining_gpu1_20260716_042313.log`.
+    - Status: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_uni_remaining_gpu1_20260716_042313.status`.
+    - Command: `experiments/run_benchmark.py --split /data15/data15_5/fanhao/datasets/TCGA-NSCLC/metadata/TCGA_NSCLC_LUAD_LUSC_UNI_split.csv --dataset-name TCGA_NSCLC_LUAD_LUSC_UNI --num-classes 2 --log-root /data15/data15_5/fanhao/experiments/MIRMIL_NSCLC --models MIR_MIL MIR_MIL_MT_V1 --seeds 2024 2025 2026 --epochs 30 --device 0 --num-workers 4 --in-dim 1024 --max-instances 4096 --feature uni --protocol nsclc_luad_lusc --split-id uni_v1`.
