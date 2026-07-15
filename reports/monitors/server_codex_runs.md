@@ -995,3 +995,45 @@
   - BLCA UNI OS + MAX_MIL isolated run, GPU `3`, PID/session `3990563`; latest observed validation c-index includes `0.5208070617906684`; no status file yet.
   - NSCLC R50 benchmark controller, active child `TRANS_MIL`, seed `2024`.
   - NSCLC UNI benchmark controller, active child `WIKG_MIL`, seed `2024`.
+
+## 2026-07-16 04:07 CST
+
+- Task: COADREAD prognosis metadata preparation and active benchmark update.
+- Added and verified COADREAD prognosis preparation script:
+  - Script: `experiments/prepare_tcga_coadread_pipeline.py`
+  - Syntax check: `python -m py_compile experiments/prepare_tcga_coadread_pipeline.py` passed under the `mirmil` environment.
+  - Purpose: join the existing patient-level prognosis assignments in `/data15/data15_5/fanhao/datasets/TCGA-COADREAD/metadata/TCGA-COADREAD-PROGNOSIS` to the GDC diagnostic-slide manifest, emit WSI source CSVs, and materialize expected R50/UNI survival split CSVs in the same wide format used by BLCA prognosis.
+  - Supports `--require-wsi` after GDC download completion and `--require-features` after R50/UNI feature extraction.
+- Ran COADREAD preparation in template mode, without requiring completed WSI/features yet.
+  - Command core: `experiments/prepare_tcga_coadread_pipeline.py --manifest /data15/data15_5/fanhao/datasets/TCGA-COADREAD/manifests/tcga_coadread_primary_tumor_diagnostic_slides.tsv --raw-dir /data15/data15_5/fanhao/datasets/TCGA-COADREAD/raw_gdc --wsi-root /data15/data15_5/fanhao/datasets/TCGA-COADREAD/WSI --feature-root /data15/data15_5/fanhao/datasets/TCGA-COADREAD/features --prognosis-dir /data15/data15_5/fanhao/datasets/TCGA-COADREAD/metadata/TCGA-COADREAD-PROGNOSIS --output-dir /data15/data15_5/fanhao/datasets/TCGA-COADREAD/metadata`
+  - Output manifest: `/data15/data15_5/fanhao/datasets/TCGA-COADREAD/metadata/tcga_coadread_pipeline_manifest.json`
+  - Source manifest: `/data15/data15_5/fanhao/datasets/TCGA-COADREAD/metadata/tcga_coadread_source_manifest.csv`
+  - WSI source CSV for patching: `/data15/data15_5/fanhao/datasets/TCGA-COADREAD/metadata/tcga_coadread_wsi_paths.csv`
+  - Slide labels: `/data15/data15_5/fanhao/datasets/TCGA-COADREAD/metadata/tcga_coadread_slide_labels.csv`
+  - Generated split examples:
+    - `/data15/data15_5/fanhao/datasets/TCGA-COADREAD/metadata/TCGA_COADREAD_PROGNOSIS_R50_OS_split.csv`
+    - `/data15/data15_5/fanhao/datasets/TCGA-COADREAD/metadata/TCGA_COADREAD_PROGNOSIS_UNI_OS_split.csv`
+  - Manifest-level counts: `624` slides, `616` patients in the diagnostic-slide manifest.
+  - Template-mode WSI status: `0` size-matched complete slides, `624` missing/partial, because download is still in progress.
+  - Prognosis join counts:
+    - OS: R50/UNI each `583` slide rows, `576` patients, `14` assignment patients unmatched to diagnostic slides.
+    - PFS: R50/UNI each `583` slide rows, `576` patients, `14` unmatched.
+    - DSS: R50/UNI each `564` slide rows, `557` patients, `12` unmatched.
+    - DFS: R50/UNI each `224` slide rows, `219` patients, `4` unmatched.
+- COADREAD GDC WSI download remains active.
+  - PID/session leader: `4011479`; child Python PID: `4011484`.
+  - Current raw size: about `553M`.
+  - Size-matched complete files: `0 / 624`; partial files: `4`; missing files: `620`.
+  - Byte progress estimate: `0.54 GiB / 336.99 GiB`.
+- Completed: BLCA UNI OS + MAX_MIL isolated run, status `exit_code=0`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/blca_uni_os_max_isolated_seed2024_setsid_20260716_035806.log`
+  - Result from controller log: loaded `Best_EPOCH_15.pth`; final test c-index `0.6578947368421053`, CI `[0.556477054978573, 0.7573505876216806]`, event_count `35`, sample_count `77`.
+  - This is the best BLCA UNI OS result observed so far among RRT, MIR, MIR-MT, AB, MEAN, and MAX.
+- Completed: NSCLC UNI `WIKG_MIL`, seed `2024`.
+  - Best log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/TCGA_NSCLC_LUAD_LUSC_UNI/WIKG_MIL/time_2026-07-16-03-54_TCGA_NSCLC_LUAD_LUSC_UNI_WIKG_MIL_seed_2024/Best_Log_seed2024_TCGA_NSCLC_LUAD_LUSC_UNI_WIKG_MIL.csv`
+  - Best epoch `8`; validation macro_auc `0.9867881092983686`; test acc `0.9056603773584906`, test bacc `0.9042022792022792`, test macro_auc `0.9876246438746439`.
+  - UNI benchmark controller remains running and has moved to `AC_MIL`, seed `2024`.
+- Still running:
+  - NSCLC R50 benchmark controller, active child `TRANS_MIL`, seed `2024`.
+  - NSCLC UNI benchmark controller, active child `AC_MIL`, seed `2024`.
+  - COADREAD WSI download.
