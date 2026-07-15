@@ -614,3 +614,19 @@
 - Task: COADREAD feature/WSI availability recheck
 - Current status remains metadata-only: `/data15/data15_5/fanhao/datasets/TCGA-COADREAD/metadata` is about `25M`; no `.pt`, `.h5`, or WSI files were found under the COADREAD dataset directory.
 - Consequence: COADREAD prognosis remains blocked by missing feature/WSI paths.
+
+## 2026-07-16 03:23 CST
+
+- Task: NSCLC benchmark partial results
+- R50 benchmark status: controller still running; `AB_MIL` seed `2024` completed and controller moved to `CLAM_SB_MIL`.
+  - Controller log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_r50_gpu6_manual_20260716_030702.log`
+  - Best log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/TCGA_NSCLC_LUAD_LUSC_R50/AB_MIL/time_2026-07-16-03-07_TCGA_NSCLC_LUAD_LUSC_R50_AB_MIL_seed_2024/Best_Log_seed2024_TCGA_NSCLC_LUAD_LUSC_R50_AB_MIL.csv`
+  - Best epoch `29`; validation macro_auc `0.934740...`; test acc `0.8773584905660378`, test bacc `0.8757122507122507`, test macro_auc `0.9390135327635327`.
+- UNI benchmark status: controller still running; `AB_MIL` seed `2024` completed and controller moved to `CLAM_SB_MIL`.
+  - Controller log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_uni_gpu0_manual_20260716_030702.log`
+  - Best log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/TCGA_NSCLC_LUAD_LUSC_UNI/AB_MIL/time_2026-07-16-03-07_TCGA_NSCLC_LUAD_LUSC_UNI_AB_MIL_seed_2024/Best_Log_seed2024_TCGA_NSCLC_LUAD_LUSC_UNI_AB_MIL.csv`
+  - Best epoch `19`; validation macro_auc `0.981433...`; test acc `0.9528301886792453`, test bacc `0.9528133903133903`, test macro_auc `0.9865562678062678`.
+
+- Task: KIRC prognosis status checkpoint
+- Still running: KIRC R50 OS + MEAN_MIL, KIRC R50 PFS + MEAN_MIL, KIRC UNI OS + MEAN_MIL, KIRC UNI PFS + MEAN_MIL.
+- No new KIRC job launched in this checkpoint because the next MEAN tasks are already active and MAX jobs should wait for another controller to finish to avoid overloading concurrent CPU/I/O.
