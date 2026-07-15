@@ -807,3 +807,38 @@
   - Existing prognosis split found for R50 OS: `/data15/data15_5/fanhao/datasets/TCGA-BLCA/metadata/TCGA_BLCA_PROGNOSIS_R50_OS_split.csv`.
   - UNI `.pt` features exist under `/data15/data15_5/fanhao/datasets/TCGA-BLCA/CPathPatchFeature/blca/uni/pt_files`.
   - No existing BLCA UNI prognosis split was found in metadata at this checkpoint; next step is to create a UNI OS split by preserving the same R50 split assignment and mapping feature paths to existing UNI `.pt` files.
+
+## 2026-07-16 03:47 CST
+
+- Task: BLCA UNI OS prognosis preparation and launch
+- Found two missing BLCA UNI `.pt` files when mapping the R50 OS split to UNI:
+  - `TCGA-GV-A3JW-01Z-00-DX1.152AD6E5-D30A-4D94-A793-3DDF3828625C.pt`
+  - `TCGA-GC-A3WC-01Z-00-DX1.D8F5CD43-7338-414C-ADE8-AC0BBC6A871C.pt`
+- Action: downloaded only those two missing UNI features from `Dearcat/CPathPatchFeature` into `/data15/data15_5/fanhao/datasets/TCGA-BLCA/CPathPatchFeature`.
+  - Download log: `/data15/data15_5/fanhao/datasets/TCGA-BLCA/CPathPatchFeature/logs/download_blca_missing_uni_20260716_034520.log`
+  - Verification: both files exist after download; sizes `53778021` and `8402533` bytes.
+- Created BLCA UNI OS split by preserving the R50 OS train/val/test slide and patient assignment and replacing only feature paths with UNI `.pt` paths.
+  - Split: `/data15/data15_5/fanhao/datasets/TCGA-BLCA/metadata/TCGA_BLCA_PROGNOSIS_UNI_OS_split.csv`
+  - Manifest: `/data15/data15_5/fanhao/datasets/TCGA-BLCA/metadata/TCGA_BLCA_PROGNOSIS_UNI_manifest.json`
+  - Rows: `259`; feature entries: `454`; missing features: `0`; split SHA256 `14512d848ef33d815b8b3647b5be16da66b229226923cae65bea25fad63ee05d`.
+- Launched BLCA UNI OS prognosis, seed `2024`, using the same survival settings as BLCA R50 OS.
+  - RRT_MIL:
+    - PID/session leader: `3922282`
+    - GPU: `1` via `CUDA_VISIBLE_DEVICES=1`
+    - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/blca_uni_os_rrt_seed2024_setsid_20260716_034634.log`
+    - Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/blca_uni_os_rrt_seed2024_setsid_20260716_034634.status`
+    - Command core: `train_mil.py --yaml_path configs/SURVIVAL_MIL.yaml --options Dataset.DATASET_NAME=TCGA_BLCA_UNI_OS Dataset.dataset_csv_path=/data15/data15_5/fanhao/datasets/TCGA-BLCA/metadata/TCGA_BLCA_PROGNOSIS_UNI_OS_split.csv Model.backbone=RRT_MIL Model.backbone_config=configs/RRT_MIL.yaml Model.in_dim=1024 Model.max_instances=4096 Model.survival.patient_level=true`
+  - MIR_MIL:
+    - PID/session leader: `3922284`
+    - GPU: `2` via `CUDA_VISIBLE_DEVICES=2`
+    - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/blca_uni_os_mir_seed2024_setsid_20260716_034634.log`
+    - Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/blca_uni_os_mir_seed2024_setsid_20260716_034634.status`
+    - Command core: `train_mil.py --yaml_path configs/SURVIVAL_MIL.yaml --options Dataset.DATASET_NAME=TCGA_BLCA_UNI_OS Dataset.dataset_csv_path=/data15/data15_5/fanhao/datasets/TCGA-BLCA/metadata/TCGA_BLCA_PROGNOSIS_UNI_OS_split.csv Model.backbone=MIR_MIL Model.backbone_config=configs/MIR_MIL.yaml Model.in_dim=1024 Model.max_instances=4096 Model.survival.patient_level=true`
+  - MIR_MIL_MT_V1:
+    - Initial attempt `blca_uni_os_mirmt_seed2024_setsid_20260716_034634` failed with `exit_code=1` because `Model.backbone=MIR_MIL_MT_V1` is not a valid survival backbone name.
+    - Corrected PID/session leader: `3924419`
+    - GPU: `3` via `CUDA_VISIBLE_DEVICES=3`
+    - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/blca_uni_os_mirmt_seed2024_setsid_20260716_034709.log`
+    - Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/blca_uni_os_mirmt_seed2024_setsid_20260716_034709.status`
+    - Command core: `train_mil.py --yaml_path configs/SURVIVAL_MIL.yaml --options Dataset.DATASET_NAME=TCGA_BLCA_UNI_OS Dataset.dataset_csv_path=/data15/data15_5/fanhao/datasets/TCGA-BLCA/metadata/TCGA_BLCA_PROGNOSIS_UNI_OS_split.csv Model.backbone=MIR_MIL Model.backbone_config=configs/releases/MIR_MIL_MT_V1.yaml Model.in_dim=1024 Model.max_instances=4096 Model.survival.patient_level=true`
+- Verification: all three corrected/valid BLCA UNI OS jobs initialized, loaded survival cutpoints `[7.05, 13.34, 22.32]`, and entered `Train_Val_Test`.
