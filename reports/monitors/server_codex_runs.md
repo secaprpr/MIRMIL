@@ -1844,3 +1844,25 @@
     - `TCGA-A6-2680-01Z-00-DX1.7b77c0fb-f51d-4d16-ae77-f7615b1d0b87.svs`
     - `TCGA-A6-2681-01Z-00-DX1.5e11f090-a19d-4d5c-bcf6-c219b55d02bc.svs`
   - Status file still absent, so the download has not completed yet.
+
+## 2026-07-16 06:14 CST
+
+- Task: NSCLC MAMBA2D missing-baseline rerun after coordinate companion fix.
+- R50 MAMBA2D seed `2024` started.
+  - PID/session leader: `106427`.
+  - Python controller PID: `106437`.
+  - Active `train_mil.py` PID at launch verification: `106440`.
+  - GPU: `0` via `CUDA_VISIBLE_DEVICES=0`.
+  - Command: `experiments/run_benchmark.py --split /data15/data15_5/fanhao/datasets/TCGA-NSCLC/metadata/TCGA_NSCLC_LUAD_LUSC_R50_split.csv --dataset-name TCGA_NSCLC_LUAD_LUSC_R50 --num-classes 2 --log-root /data15/data15_5/fanhao/experiments/MIRMIL_NSCLC --models MAMBA2D_MIL --seeds 2024 --epochs 30 --device 0 --num-workers 4 --in-dim 1024 --max-instances 2048 --feature r50 --protocol nsclc_luad_lusc --split-id r50_v1`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_r50_mamba2d_gpu0_20260716_061346.log`.
+  - Status: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_r50_mamba2d_gpu0_20260716_061346.status`.
+  - Launch verification: entered `train_mil.py --yaml_path configs/MAMBA2D_MIL.yaml`; status file absent at checkpoint, so still running.
+- UNI MAMBA2D seed `2024` started.
+  - PID/session leader: `106428`.
+  - Python controller PID: `106436`.
+  - Active `train_mil.py` PID at launch verification: `106441`.
+  - GPU: `1` via `CUDA_VISIBLE_DEVICES=1`.
+  - Command: `experiments/run_benchmark.py --split /data15/data15_5/fanhao/datasets/TCGA-NSCLC/metadata/TCGA_NSCLC_LUAD_LUSC_UNI_split.csv --dataset-name TCGA_NSCLC_LUAD_LUSC_UNI --num-classes 2 --log-root /data15/data15_5/fanhao/experiments/MIRMIL_NSCLC --models MAMBA2D_MIL --seeds 2024 --epochs 30 --device 0 --num-workers 4 --in-dim 1024 --max-instances 2048 --feature uni --protocol nsclc_luad_lusc --split-id uni_v1`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_uni_mamba2d_gpu1_20260716_061346.log`.
+  - Status: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_uni_mamba2d_gpu1_20260716_061346.status`.
+  - Launch verification: entered `train_mil.py --yaml_path configs/MAMBA2D_MIL.yaml`; status file absent at checkpoint, so still running.
