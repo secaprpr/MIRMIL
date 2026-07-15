@@ -904,3 +904,31 @@
   - Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/blca_uni_os_mean_seed2024_setsid_20260716_035214.status`
   - Command core: `train_mil.py --yaml_path configs/SURVIVAL_MIL.yaml --options Dataset.DATASET_NAME=TCGA_BLCA_UNI_OS Dataset.dataset_csv_path=/data15/data15_5/fanhao/datasets/TCGA-BLCA/metadata/TCGA_BLCA_PROGNOSIS_UNI_OS_split.csv Model.backbone=MEAN_MIL Model.backbone_config=configs/MEAN_MIL.yaml Model.in_dim=1024 Model.max_instances=4096 Model.survival.patient_level=true`
   - Verification: initialized, loaded survival cutpoints `[7.05, 13.34, 22.32]`, and entered `Train_Val_Test`.
+
+## 2026-07-16 03:55 CST
+
+- Task: BLCA UNI OS prognosis issue and retry
+- Invalid run detected: BLCA UNI OS + RRT_MIL initial run `blca_uni_os_rrt_seed2024_setsid_20260716_034634` exited with `exit_code=1`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/blca_uni_os_rrt_seed2024_setsid_20260716_034634.log`
+  - Failure mode: after early stopping at epoch `17`, final test checkpoint loading failed with state-dict key mismatch.
+  - Root cause: BLCA UNI OS RRT and MIR were launched within the same minute using the same `Dataset.DATASET_NAME=TCGA_BLCA_UNI_OS`, `Model Info=SURVIVAL_MIL`, and seed. The survival log directory naming collided, causing final-test checkpoint loading to see a checkpoint from a different backbone.
+  - Consequence: this RRT run is invalid and must be discarded.
+- Risk also identified for the original BLCA UNI OS + MIR_MIL run `blca_uni_os_mir_seed2024_setsid_20260716_034634`, because it shared the same collided output namespace with the invalid RRT run. It should be treated as invalid/discarded even if it later writes a status.
+- Corrective action: re-run the affected BLCA UNI OS backbones with identical data split and model configs, changing only `Dataset.DATASET_NAME` to isolate the output namespace.
+- Launched isolated BLCA UNI OS + RRT_MIL retry:
+  - Dataset namespace: `TCGA_BLCA_UNI_OS_RRT`
+  - PID/session leader: `3976795`
+  - GPU: `1` via `CUDA_VISIBLE_DEVICES=1`
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/blca_uni_os_rrt_isolated_seed2024_setsid_20260716_035508.log`
+  - Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/blca_uni_os_rrt_isolated_seed2024_setsid_20260716_035508.status`
+  - Command core: `train_mil.py --yaml_path configs/SURVIVAL_MIL.yaml --options Dataset.DATASET_NAME=TCGA_BLCA_UNI_OS_RRT Dataset.dataset_csv_path=/data15/data15_5/fanhao/datasets/TCGA-BLCA/metadata/TCGA_BLCA_PROGNOSIS_UNI_OS_split.csv Model.backbone=RRT_MIL Model.backbone_config=configs/RRT_MIL.yaml Model.in_dim=1024 Model.max_instances=4096 Model.survival.patient_level=true`
+  - Verification: initialized, loaded survival cutpoints `[7.05, 13.34, 22.32]`, and entered `Train_Val_Test`.
+- Launched isolated BLCA UNI OS + MIR_MIL retry:
+  - Dataset namespace: `TCGA_BLCA_UNI_OS_MIR`
+  - PID/session leader: `3978584`
+  - GPU: `2` via `CUDA_VISIBLE_DEVICES=2`
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/blca_uni_os_mir_isolated_seed2024_setsid_20260716_035535.log`
+  - Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/blca_uni_os_mir_isolated_seed2024_setsid_20260716_035535.status`
+  - Command core: `train_mil.py --yaml_path configs/SURVIVAL_MIL.yaml --options Dataset.DATASET_NAME=TCGA_BLCA_UNI_OS_MIR Dataset.dataset_csv_path=/data15/data15_5/fanhao/datasets/TCGA-BLCA/metadata/TCGA_BLCA_PROGNOSIS_UNI_OS_split.csv Model.backbone=MIR_MIL Model.backbone_config=configs/MIR_MIL.yaml Model.in_dim=1024 Model.max_instances=4096 Model.survival.patient_level=true`
+  - Verification: initialized, loaded survival cutpoints `[7.05, 13.34, 22.32]`, and entered `Train_Val_Test`.
+- Scheduling: BLCA UNI OS + MAX_MIL still pending. No GPU was available after launching the isolated RRT/MIR retries; active jobs remain NSCLC R50/UNI plus BLCA UNI OS AB/MEAN/RRT-isolated/MIR-isolated.
