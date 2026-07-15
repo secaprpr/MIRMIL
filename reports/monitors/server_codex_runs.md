@@ -1580,3 +1580,33 @@
     - Controller advanced to `MO_MIL`, seed `2024`; current active training PID is `4180570`.
     - R50 `MAMBA2D_MIL` has not started yet at this checkpoint.
 - Decision: no recovery action needed; continue monitoring R50 until `MAMBA2D_MIL` either runs or fails due missing coordinates.
+
+## 2026-07-16 05:11 CST
+
+- Task: handoff continuation status check.
+- COADREAD GDC WSI download remains active and continues byte-level progress.
+  - PID/session leader: `4011479`; child Python PID: `4011484`.
+  - Command:
+    `experiments/download_gdc_slides.py download --manifest /data15/data15_5/fanhao/datasets/TCGA-COADREAD/manifests/tcga_coadread_primary_tumor_diagnostic_slides.tsv --output-dir /data15/data15_5/fanhao/datasets/TCGA-COADREAD/raw_gdc --workers 4 --retries 8 --timeout 600`
+  - Log: `/data15/data15_5/fanhao/datasets/TCGA-COADREAD/logs/download_coadread_gdc_wsi_20260716_040244.log`.
+  - Status file: `/data15/data15_5/fanhao/datasets/TCGA-COADREAD/logs/download_coadread_gdc_wsi_20260716_040244.status` not present yet, so the download is still running.
+  - Size-matched complete files: `4 / 624`; partial files: `4`; missing files: `616`.
+  - Byte progress estimate: `8.01 GiB / 336.99 GiB`.
+  - Current partial files:
+    - `TCGA-4T-AA8H-01Z-00-DX1.A46C759C-74A2-4724-B6B5-DECA0D16E029.svs`: `1442840576 / 2145045839`
+    - `TCGA-5M-AAT4-01Z-00-DX1.725C46CA-9354-43AC-AA81-3E5A66354D6B.svs`: `1191182336 / 2385119307`
+    - `TCGA-5M-AAT5-01Z-00-DX1.548E7CEB-48FB-4037-A616-39AB025E7A73.svs`: `914358272 / 2497921503`
+    - `TCGA-5M-AAT6-01Z-00-DX1.8834C952-14E3-4491-8156-52FC917BB014.svs`: `553648128 / 1766078883`
+- NSCLC feature availability:
+  - `patches`: `1046` files.
+  - `r50`: `1039` files.
+  - `uni`: `1052` files.
+- NSCLC R50 original controller has finished with failure status.
+  - Status: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_r50_gpu6_manual_20260716_030702.status` reports `exit_code=1`.
+  - Completed R50 non-coordinate baselines before failure: `9` Best_Log files (`AB_MIL`, `CLAM_SB_MIL`, `CLAM_MB_MIL`, `DS_MIL`, `TRANS_MIL`, `RRT_MIL`, `WIKG_MIL`, `AC_MIL`, `MO_MIL`) for seed `2024`.
+  - Newly verified R50 `MO_MIL` seed `2024` result: best epoch `14`, val macro AUC `0.9350415373836453`, test acc `0.8962264150943396`, test bacc `0.8961894586894588`, test macro AUC `0.9505876068376069`.
+  - Failure reason: `MAMBA2D_MIL` requires coordinates (`coordinate_dim=2`) but NSCLC R50 `.pt` features do not contain coordinates, e.g. `/data15/data15_5/fanhao/datasets/TCGA-NSCLC/CPathPatchFeature/nsclc/r50/pt_files/TCGA-75-5125-01Z-00-DX1.2E419CAF-E248-4959-951E-498D8054433E.pt`.
+  - Decision: document/skip R50 `MAMBA2D_MIL` for this feature set and relaunch remaining non-coordinate R50 models: `MIR_MIL` and `MIR_MIL_MT_V1` for seeds `2024`, `2025`, `2026`.
+- NSCLC UNI corrected remaining controller has finished successfully.
+  - Status: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_uni_remaining_gpu1_20260716_042417.status` reports `exit_code=0`.
+  - UNI has `15` Best_Log files: original non-coordinate baselines seed `2024`, plus corrected `MIR_MIL` and `MIR_MIL_MT_V1` seeds `2024`, `2025`, `2026`.
