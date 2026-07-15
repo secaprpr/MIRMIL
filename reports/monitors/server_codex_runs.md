@@ -1610,3 +1610,25 @@
 - NSCLC UNI corrected remaining controller has finished successfully.
   - Status: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_uni_remaining_gpu1_20260716_042417.status` reports `exit_code=0`.
   - UNI has `15` Best_Log files: original non-coordinate baselines seed `2024`, plus corrected `MIR_MIL` and `MIR_MIL_MT_V1` seeds `2024`, `2025`, `2026`.
+
+## 2026-07-16 05:15 CST
+
+- Task: launch corrected NSCLC R50 remaining non-coordinate MIRMIL runs.
+- Reason: original R50 benchmark controller stopped at coordinate-dependent `MAMBA2D_MIL`; `MIR_MIL` and `MIR_MIL_MT_V1` had not yet run for R50.
+- Failed launch attempts:
+  - Two `nohup bash -lc` / direct `nohup env` attempts produced empty logs and did not persist; retained as empty controller logs for audit:
+    - `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_r50_remaining_gpu6_20260716_051233.log`
+    - `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_r50_remaining_gpu6_20260716_051315.log`
+    - `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_r50_remaining_gpu6_direct_20260716_051411.log`
+  - A foreground `timeout 20` diagnostic confirmed the R50 `MIR_MIL` training entrypoint is valid and reaches epoch progress; it was intentionally interrupted before completion.
+- Active corrected launch:
+  - tmux session: `nsclc_r50_remaining_20260716_051530`.
+  - GPU: `6` via `CUDA_VISIBLE_DEVICES=6`, with internal `General.device=0`.
+  - run_benchmark PID: `4247`.
+  - Current train_mil PID at launch verification: `4250`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_r50_remaining_gpu6_tmux_20260716_051530.log`.
+  - Status: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_r50_remaining_gpu6_tmux_20260716_051530.status`.
+  - Split: `/data15/data15_5/fanhao/datasets/TCGA-NSCLC/metadata/TCGA_NSCLC_LUAD_LUSC_R50_split.csv`.
+  - Command:
+    `CUDA_VISIBLE_DEVICES=6 /data15/data15_5/fanhao/miniforge3/envs/mirmil/bin/python -u experiments/run_benchmark.py --split /data15/data15_5/fanhao/datasets/TCGA-NSCLC/metadata/TCGA_NSCLC_LUAD_LUSC_R50_split.csv --dataset-name TCGA_NSCLC_LUAD_LUSC_R50 --num-classes 2 --log-root /data15/data15_5/fanhao/experiments/MIRMIL_NSCLC --models MIR_MIL MIR_MIL_MT_V1 --seeds 2024 2025 2026 --epochs 30 --device 0 --num-workers 4 --in-dim 1024 --max-instances 4096 --feature r50 --protocol nsclc_luad_lusc --split-id r50_v1`
+  - Verified state: `MIR_MIL` seed `2024` started; log prints `MIL-yaml path: configs/MIR_MIL.yaml`, `Dataset Info:TCGA_NSCLC_LUAD_LUSC_R50`, `Device Info:CUDA:0`, and epoch progress began.
