@@ -1809,3 +1809,38 @@
     - `TCGA-A6-2679-01Z-00-DX1.8df66ef4-d9e5-41db-836d-f0afe46d6b5a.svs`: `50331648 / 128003621` bytes.
     - `TCGA-A6-2680-01Z-00-DX1.7b77c0fb-f51d-4d16-ae77-f7615b1d0b87.svs`: `0 / 172748717` bytes.
   - Status file still absent, so the download has not completed yet.
+
+## 2026-07-16 06:12 CST
+
+- Task: NSCLC R50 seed `2026` MIR result, MAMBA2D coordinate remediation, and COADREAD checkpoint.
+- NSCLC R50 `MIR_MIL` seed `2026` completed successfully under the corrected tmux controller.
+  - Run directory: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/TCGA_NSCLC_LUAD_LUSC_R50/MIR_MIL/time_2026-07-16-06-00_TCGA_NSCLC_LUAD_LUSC_R50_MIR_MIL_seed_2026`.
+  - Best epoch: `24`.
+  - Val macro AUC: `0.9348413572214993`.
+  - Test acc: `0.8962264150943396`.
+  - Test bacc: `0.8958333333333333`.
+  - Test macro AUC: `0.9627849002849003`.
+- Corrected R50 controller advanced to `MIR_MIL_MT_V1` seed `2026`.
+  - Active `train_mil.py` PID at checkpoint: `97538`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_r50_remaining_gpu6_tmux_20260716_051530.log`.
+  - Status file not present yet, so the corrected R50 remaining controller is still running.
+  - Current completed corrected R50 remaining Best_Log count: `5` of expected `6`.
+- MAMBA2D coordinate input issue was diagnosed and remediated without modifying feature tensors.
+  - Existing NSCLC `.pt` feature files are plain tensors without embedded coords.
+  - Existing NSCLC `patches/*.h5` files contain `coords`.
+  - The active R50/UNI split slides all have matching patch h5 files: `1033 / 1033` for R50 and `1033 / 1033` for UNI.
+  - Added non-destructive companion symlink directories expected by `WSI_Coord_Dataset`:
+    - `/data15/data15_5/fanhao/datasets/TCGA-NSCLC/CPathPatchFeature/nsclc/r50/h5_files`
+    - `/data15/data15_5/fanhao/datasets/TCGA-NSCLC/CPathPatchFeature/nsclc/uni/h5_files`
+  - Each directory currently has `1046` h5 symlinks to `/data15/data15_5/fanhao/datasets/TCGA-NSCLC/CPathPatchFeature/nsclc/patches`.
+  - Verified `WSI_Coord_Dataset` returns tensors with shape `[128, 1026]` for sampled R50 and UNI train items when `max_instances=128`.
+- COADREAD GDC WSI download remains active.
+  - PID/session leader: `4011479`; child Python PID: `4011484`.
+  - Size-matched complete files: `18 / 624`; partial files: `4`; missing files: `602`.
+  - Byte progress estimate: `15.00 GiB / 336.99 GiB`.
+  - Latest complete files include:
+    - `TCGA-A6-2678-01Z-00-DX1.bded5c5c-555a-492a-91c7-151492d0ee5e.svs`
+    - `TCGA-A6-2679-01Z-00-DX1.8df66ef4-d9e5-41db-836d-f0afe46d6b5a.svs`
+    - `TCGA-A6-2680-01Z-00-DX1.7b77c0fb-f51d-4d16-ae77-f7615b1d0b87.svs`
+    - `TCGA-A6-2681-01Z-00-DX1.5e11f090-a19d-4d5c-bcf6-c219b55d02bc.svs`
+  - Status file still absent, so the download has not completed yet.
