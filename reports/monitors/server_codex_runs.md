@@ -701,3 +701,33 @@
 - Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_uni_os_max_seed2024_setsid_20260716_033206.status`
 - Split: `/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_UNI_OS_split.csv`
 - Verification: training initialized, survival cutpoints loaded.
+
+## 2026-07-16 03:33 CST
+
+- Task: NSCLC benchmark progress and partial results
+- R50 benchmark remains running; current active child is `CLAM_SB_MIL`, seed `2024`.
+  - Controller log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_r50_gpu6_manual_20260716_030702.log`
+  - Recent progress: `CLAM_SB_MIL` reached epoch `27`; no `Best_Log` was available yet for R50 `CLAM_SB_MIL` at this checkpoint.
+- UNI benchmark remains running and has moved to `TRANS_MIL`, seed `2024`.
+  - Controller log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_uni_gpu0_manual_20260716_030702.log`
+  - Completed UNI `CLAM_SB_MIL`, seed `2024`.
+    - Best log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/TCGA_NSCLC_LUAD_LUSC_UNI/CLAM_SB_MIL/time_2026-07-16-03-20_TCGA_NSCLC_LUAD_LUSC_UNI_CLAM_SB_MIL_seed_2024/Best_Log_seed2024_TCGA_NSCLC_LUAD_LUSC_UNI_CLAM_SB_MIL.csv`
+    - Best epoch `4`; validation macro_auc `0.9816835151636473`; test acc `0.9528301886792453`, test bacc `0.9528133903133903`, test macro_auc `0.9869123931623931`.
+  - Completed UNI `CLAM_MB_MIL`, seed `2024`.
+    - Best log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/TCGA_NSCLC_LUAD_LUSC_UNI/CLAM_MB_MIL/time_2026-07-16-03-24_TCGA_NSCLC_LUAD_LUSC_UNI_CLAM_MB_MIL_seed_2024/Best_Log_seed2024_TCGA_NSCLC_LUAD_LUSC_UNI_CLAM_MB_MIL.csv`
+    - Best epoch `3`; validation macro_auc `0.9892903613251927`; test acc `0.9386792452830188`, test bacc `0.9391025641025641`, test macro_auc `0.9870014245014245`.
+  - Completed UNI `DS_MIL`, seed `2024`.
+    - Best log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/TCGA_NSCLC_LUAD_LUSC_UNI/DS_MIL/time_2026-07-16-03-29_TCGA_NSCLC_LUAD_LUSC_UNI_DS_MIL_seed_2024/Best_Log_seed2024_TCGA_NSCLC_LUAD_LUSC_UNI_DS_MIL.csv`
+    - Best epoch `1`; validation macro_auc `0.9820838754879392`; test acc `0.9245283018867925`, test bacc `0.9239672364672364`, test macro_auc `0.9838853276353275`.
+
+- Task: KIRC prognosis status checkpoint
+- Four MAX_MIL jobs remain running and no final status file exists yet:
+  - KIRC R50 OS + MAX_MIL, GPU `5`, PID/session `3839797`.
+  - KIRC UNI PFS + MAX_MIL, GPU `1`, PID/session `3849977`.
+  - KIRC R50 PFS + MAX_MIL, GPU `2`, PID/session `3856454`.
+  - KIRC UNI OS + MAX_MIL, GPU `3`, PID/session `3856531`.
+
+- Task: COADREAD feature/WSI availability recheck
+- Dataset-root search result: still no COADREAD `.pt`, `.h5`, `.svs`, `.tif`, `.mrxs`, or `.ndpi` files found under `/data15/data15_5/fanhao/datasets/TCGA-COADREAD`.
+- Current COADREAD dataset size remains metadata-only, about `25M`.
+- Consequence: COADREAD prognosis remains blocked by missing feature/WSI paths.
