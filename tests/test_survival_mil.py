@@ -31,8 +31,81 @@ class SurvivalMILTest(unittest.TestCase):
             event_times=[1, 2, 3],
             events=[1, 1, 0],
             risks=[3.0, 2.0, 1.0],
-        )
+        ).c_index
         self.assertEqual(c_index, 1.0)
+
+    def test_cutpoints_are_fit_from_train_only(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            train_paths = []
+            val_paths = []
+            for index in range(6):
+                path = os.path.join(tmpdir, f"TCGA-AA-{index:04d}-01.pt")
+                torch.save(torch.randn(4, 6), path)
+                if index < 4:
+                    train_paths.append(path)
+                else:
+                    val_paths.append(path)
+
+            df = pd.DataFrame(
+                {
+                    "train_slide_path": train_paths + [None, None],
+                    "train_time_months": [5, 10, 15, 20, None, None],
+                    "train_event": [1, 1, 1, 1, None, None],
+                    "val_slide_path": [val_paths[0], val_paths[1], None, None, None, None],
+                    "val_time_months": [200, 300, None, None, None, None],
+                    "val_event": [1, 1, None, None, None, None],
+                    "test_slide_path": [None] * 6,
+                    "test_time_months": [None] * 6,
+                    "test_event": [None] * 6,
+                }
+            )
+            csv_path = os.path.join(tmpdir, "survival.csv")
+            df.to_csv(csv_path, index=False)
+
+            train_dataset = SurvivalWSIDataset(
+                csv_path, "train", fit_cutpoints=True, num_bins=4
+            )
+            val_dataset = SurvivalWSIDataset(
+                csv_path,
+                "val",
+                cutpoints=train_dataset.cutpoints,
+                num_bins=4,
+            )
+            self.assertEqual(train_dataset.cutpoints, [8.75, 12.5, 16.25])
+            self.assertEqual(val_dataset.cutpoints, train_dataset.cutpoints)
+            self.assertEqual(val_dataset.labels_list, [3, 3])
+
+    def test_patient_level_collapses_multiple_slides(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            paths = []
+            for suffix in ["A", "B"]:
+                path = os.path.join(tmpdir, f"TCGA-ZZ-0001-{suffix}.pt")
+                torch.save(torch.randn(3, 6), path)
+                paths.append(path)
+            df = pd.DataFrame(
+                {
+                    "train_slide_path": paths,
+                    "train_patient_id": ["TCGA-ZZ-0001", "TCGA-ZZ-0001"],
+                    "train_time_months": [12, 12],
+                    "train_event": [1, 1],
+                    "val_slide_path": [None, None],
+                    "val_time_months": [None, None],
+                    "val_event": [None, None],
+                    "test_slide_path": [None, None],
+                    "test_time_months": [None, None],
+                    "test_event": [None, None],
+                }
+            )
+            csv_path = os.path.join(tmpdir, "survival.csv")
+            df.to_csv(csv_path, index=False)
+
+            dataset = SurvivalWSIDataset(
+                csv_path, "train", fit_cutpoints=True, patient_level=True
+            )
+            feat, _, _, _, patient_id = dataset[0]
+            self.assertEqual(len(dataset), 1)
+            self.assertEqual(patient_id, "TCGA-ZZ-0001")
+            self.assertEqual(feat.shape[0], 6)
 
     def test_survival_wrapper_outputs_hazards(self):
         backbone = AB_MIL(L=8, D=4, num_classes=4, in_dim=6)
@@ -58,12 +131,15 @@ class SurvivalMILTest(unittest.TestCase):
             df = pd.DataFrame(
                 {
                     "train_slide_path": paths[:4] + [None, None],
+                    "train_patient_id": [f"p{i}" for i in range(4)] + [None, None],
                     "train_time_months": [5, 7, 9, 11, None, None],
                     "train_event": [1, 0, 1, 1, None, None],
                     "val_slide_path": [paths[4], None, None, None, None, None],
+                    "val_patient_id": ["p4", None, None, None, None, None],
                     "val_time_months": [13, None, None, None, None, None],
                     "val_event": [1, None, None, None, None, None],
                     "test_slide_path": [paths[5], None, None, None, None, None],
+                    "test_patient_id": ["p5", None, None, None, None, None],
                     "test_time_months": [15, None, None, None, None, None],
                     "test_event": [0, None, None, None, None, None],
                 }
@@ -112,8 +188,12 @@ class SurvivalMILTest(unittest.TestCase):
                             "alpha": 0.0,
                             "time_column": "time_months",
                             "event_column": "event",
+                            "patient_column": "patient_id",
+                            "patient_level": True,
                             "representation": "auto",
+                            "require_wsi_feature": True,
                             "backbone_num_outputs": 4,
+                            "bootstrap_n": 5,
                         },
                         "optimizer": {
                             "which": "adam",

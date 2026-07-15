@@ -2,6 +2,7 @@ import h5py
 import numpy as np
 import pandas as pd
 import torch
+from pathlib import Path
 from torch.utils.data import Dataset
 
 from .survival_utils import discretize_survival_times, fit_discrete_time_cutpoints
@@ -17,6 +18,8 @@ class SurvivalWSIDataset(Dataset):
         time_column="time_months",
         event_column="event",
         label_column="survival_label",
+        patient_column="patient_id",
+        patient_level=True,
         num_bins=4,
         cutpoints=None,
         fit_cutpoints=False,
@@ -32,18 +35,30 @@ class SurvivalWSIDataset(Dataset):
         self.group = group
         self.max_instances = int(max_instances or 0)
         self.sampling = sampling
-
-        self.slide_path_list = self._read_group_column("slide_path")
-        self.times_list = [float(value) for value in self._read_group_column(time_column)]
-        self.events_list = [int(value) for value in self._read_group_column(event_column)]
+        self.patient_level = bool(patient_level)
 
         prefixed_label = f"{group}_{label_column}"
         fallback_label = f"{group}_label"
-        if prefixed_label in self.dataset_df or fallback_label in self.dataset_df:
-            label_values = self._read_first_existing_column(
-                [prefixed_label, fallback_label]
-            )
-            self.labels_list = [int(value) for value in label_values]
+        label_source = None
+        if prefixed_label in self.dataset_df:
+            label_source = prefixed_label
+        elif fallback_label in self.dataset_df:
+            label_source = fallback_label
+
+        records = self._read_records(
+            time_column=time_column,
+            event_column=event_column,
+            label_source=label_source,
+            patient_column=patient_column,
+        )
+        records = self._collapse_to_patient(records) if self.patient_level else records
+        self.patient_ids_list = [record["patient_id"] for record in records]
+        self.slide_path_list = [record["slide_paths"] for record in records]
+        self.times_list = [float(record["time"]) for record in records]
+        self.events_list = [int(record["event"]) for record in records]
+
+        if label_source is not None:
+            self.labels_list = [int(record["label"]) for record in records]
             self.cutpoints = list(cutpoints or [])
         else:
             if fit_cutpoints:
@@ -60,14 +75,62 @@ class SurvivalWSIDataset(Dataset):
                 self.times_list, self.cutpoints
             ).tolist()
 
-    def _read_group_column(self, base_name):
-        return self._read_first_existing_column([f"{self.group}_{base_name}"])
+    def _read_records(self, time_column, event_column, label_source, patient_column):
+        columns = {
+            "slide_path": f"{self.group}_slide_path",
+            "time": f"{self.group}_{time_column}",
+            "event": f"{self.group}_{event_column}",
+        }
+        missing = [column for column in columns.values() if column not in self.dataset_df]
+        if missing:
+            raise KeyError(f"Missing survival columns: {missing}")
 
-    def _read_first_existing_column(self, names):
-        for name in names:
-            if name in self.dataset_df:
-                return self.dataset_df[name].dropna().to_list()
-        raise KeyError(f"Missing any of columns: {names}")
+        patient_source = f"{self.group}_{patient_column}"
+        has_patient_column = patient_source in self.dataset_df
+        needed = list(columns.values()) + ([label_source] if label_source else [])
+        if has_patient_column:
+            needed.append(patient_source)
+        filtered = self.dataset_df.dropna(subset=needed).copy()
+
+        records = []
+        for _, row in filtered.iterrows():
+            slide_path = str(row[columns["slide_path"]])
+            patient_id = (
+                str(row[patient_source])
+                if has_patient_column
+                else infer_patient_id_from_path(slide_path)
+            )
+            record = {
+                "patient_id": patient_id,
+                "slide_paths": [slide_path],
+                "time": float(row[columns["time"]]),
+                "event": int(row[columns["event"]]),
+            }
+            if label_source:
+                record["label"] = int(row[label_source])
+            records.append(record)
+        return records
+
+    def _collapse_to_patient(self, records):
+        patient_records = {}
+        for record in records:
+            patient_id = record["patient_id"]
+            if patient_id not in patient_records:
+                patient_records[patient_id] = record
+                continue
+            existing = patient_records[patient_id]
+            if not np.isclose(existing["time"], record["time"]) or (
+                int(existing["event"]) != int(record["event"])
+            ):
+                raise ValueError(
+                    f"Inconsistent survival target for patient {patient_id}"
+                )
+            if "label" in existing and int(existing["label"]) != int(record["label"]):
+                raise ValueError(
+                    f"Inconsistent survival label for patient {patient_id}"
+                )
+            existing["slide_paths"].extend(record["slide_paths"])
+        return list(patient_records.values())
 
     def __len__(self):
         return len(self.slide_path_list)
@@ -87,8 +150,10 @@ class SurvivalWSIDataset(Dataset):
         )
 
     def __getitem__(self, idx):
-        slide_path = self.slide_path_list[idx]
-        feat = self._load_feature(slide_path)
+        slide_paths = self.slide_path_list[idx]
+        feats = [self._load_feature(slide_path) for slide_path in slide_paths]
+        feats = [feat.squeeze(0) if len(feat.shape) == 3 else feat for feat in feats]
+        feat = torch.cat(feats, dim=0) if len(feats) > 1 else feats[0]
         if len(feat.shape) == 3:
             feat = feat.squeeze(0)
         indices = self._sample_indices(feat.shape[0])
@@ -98,7 +163,7 @@ class SurvivalWSIDataset(Dataset):
         label = torch.tensor(int(self.labels_list[idx]), dtype=torch.long)
         event_time = torch.tensor(float(self.times_list[idx]), dtype=torch.float32)
         event = torch.tensor(int(self.events_list[idx]), dtype=torch.float32)
-        return feat, label, event_time, event
+        return feat, label, event_time, event, self.patient_ids_list[idx]
 
     def _load_feature(self, slide_path):
         if slide_path.endswith(".h5"):
@@ -158,3 +223,10 @@ class SurvivalWSIDataset(Dataset):
 
     def is_with_labels(self):
         return len(self.labels_list) != 0
+
+
+def infer_patient_id_from_path(slide_path):
+    stem = Path(str(slide_path)).stem
+    if stem.startswith("TCGA-") and len(stem) >= 12:
+        return stem[:12]
+    return stem

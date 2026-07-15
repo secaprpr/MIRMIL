@@ -14,11 +14,13 @@ class SurvivalMILWrapper(nn.Module):
         representation="auto",
         head_hidden_dim=0,
         dropout=0.0,
+        require_wsi_feature=True,
     ):
         super().__init__()
         self.backbone = backbone
         self.num_bins = int(num_bins)
         self.representation = str(representation or "auto")
+        self.require_wsi_feature = bool(require_wsi_feature)
 
         layers = []
         if dropout:
@@ -66,6 +68,13 @@ class SurvivalMILWrapper(nn.Module):
                 return output[self.representation]
             if self.representation == "auto" and "WSI_feature" in output:
                 return output["WSI_feature"]
+            if self.require_wsi_feature:
+                raise KeyError(
+                    "SurvivalMILWrapper requires a backbone WSI_feature for "
+                    "comparable survival heads. Set "
+                    "Model.survival.require_wsi_feature=false only for "
+                    "diagnostic ablations."
+                )
             if "logits" in output:
                 return output["logits"]
             raise KeyError(

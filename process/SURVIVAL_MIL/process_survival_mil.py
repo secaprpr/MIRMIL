@@ -1,4 +1,5 @@
 import copy
+import glob
 import os
 import time
 
@@ -19,7 +20,11 @@ from utils.model_utils import (
 )
 from utils.process_utils import get_process_pipeline
 from utils.survival_dataset import SurvivalWSIDataset
-from utils.survival_utils import NLLSurvLoss, concordance_index
+from utils.survival_utils import (
+    NLLSurvLoss,
+    bootstrap_c_index,
+    concordance_index,
+)
 from utils.general_utils import set_global_seed
 from utils.yaml_utils import read_yaml
 
@@ -77,9 +82,7 @@ def process_SURVIVAL_MIL(args):
             val_loss, val_metrics = survival_val_loop(
                 device, model, val_dataloader, criterion
             )
-            test_loss, test_metrics = survival_val_loop(
-                device, model, test_dataloader, criterion
-            )
+            test_loss, test_metrics = None, None
         elif process_pipeline == "Train_Val":
             val_loss, val_metrics = survival_val_loop(
                 device, model, val_dataloader, criterion
@@ -87,10 +90,6 @@ def process_SURVIVAL_MIL(args):
             test_loss, test_metrics = None, None
         else:
             val_loss, val_metrics, test_loss, test_metrics = None, None, None, None
-            if epoch + 1 == args.General.num_epochs:
-                test_loss, test_metrics = survival_val_loop(
-                    device, model, test_dataloader, criterion
-                )
 
         print("----------------SURVIVAL INFO----------------")
         print(
@@ -123,12 +122,27 @@ def process_SURVIVAL_MIL(args):
         if survival_early_stop(args, epoch_info_log, process_pipeline, epoch):
             print(f"Early Stop In EPOCH {epoch + 1}!")
             save_last_model(args, model.state_dict(), epoch + 1)
-            save_survival_log(args, epoch_info_log, best_epoch)
             break
 
         if epoch + 1 == args.General.num_epochs:
             save_last_model(args, model.state_dict(), epoch + 1)
-            save_survival_log(args, epoch_info_log, best_epoch)
+
+    final_test_loss, final_test_metrics = evaluate_test_once(
+        args,
+        device,
+        model,
+        test_dataset,
+        test_dataloader,
+        criterion,
+        process_pipeline,
+    )
+    attach_final_test_result(
+        epoch_info_log,
+        best_epoch,
+        final_test_loss,
+        final_test_metrics,
+    )
+    save_survival_log(args, epoch_info_log, best_epoch)
 
 
 def build_survival_datasets(args):
@@ -139,6 +153,8 @@ def build_survival_datasets(args):
     time_column = str(_survival_option(args, "time_column", "time_months"))
     event_column = str(_survival_option(args, "event_column", "event"))
     label_column = str(_survival_option(args, "label_column", "survival_label"))
+    patient_column = str(_survival_option(args, "patient_column", "patient_id"))
+    patient_level = bool(_survival_option(args, "patient_level", True))
     path = args.Dataset.dataset_csv_path
 
     train_dataset = SurvivalWSIDataset(
@@ -147,6 +163,8 @@ def build_survival_datasets(args):
         time_column=time_column,
         event_column=event_column,
         label_column=label_column,
+        patient_column=patient_column,
+        patient_level=patient_level,
         num_bins=num_bins,
         fit_cutpoints=True,
         max_instances=max_instances,
@@ -158,6 +176,8 @@ def build_survival_datasets(args):
         time_column=time_column,
         event_column=event_column,
         label_column=label_column,
+        patient_column=patient_column,
+        patient_level=patient_level,
         num_bins=num_bins,
         cutpoints=train_dataset.cutpoints,
         max_instances=max_instances,
@@ -169,6 +189,8 @@ def build_survival_datasets(args):
         time_column=time_column,
         event_column=event_column,
         label_column=label_column,
+        patient_column=patient_column,
+        patient_level=patient_level,
         num_bins=num_bins,
         cutpoints=train_dataset.cutpoints,
         max_instances=max_instances,
@@ -188,6 +210,9 @@ def build_survival_model(args):
         representation=_survival_option(args, "representation", "auto"),
         head_hidden_dim=int(_survival_option(args, "head_hidden_dim", 0)),
         dropout=float(_survival_option(args, "head_dropout", 0.0)),
+        require_wsi_feature=bool(
+            _survival_option(args, "require_wsi_feature", True)
+        ),
     )
 
 
@@ -228,32 +253,76 @@ def survival_train_loop(device, model, loader, criterion, optimizer, scheduler):
     return train_loss_log / max(len(loader), 1), time.time() - start
 
 
-def survival_val_loop(device, model, loader, criterion):
+def survival_val_loop(device, model, loader, criterion, return_predictions=False):
     model.eval()
     loss_log = 0.0
     event_times = []
     events = []
     risks = []
+    records = []
     with torch.no_grad():
         for data in loader:
             bag = data[0].to(device).float()
             labels = data[1].to(device).long()
             event_time = data[2].to(device).float()
             event = data[3].to(device).float()
+            patient_id = data[4][0] if len(data) > 4 else None
             output = model(bag)
             loss = criterion(output["hazards"], output["survival"], labels, event)
             loss_log += loss.item()
             event_times.extend(event_time.cpu().numpy().reshape(-1).tolist())
             events.extend(event.cpu().numpy().reshape(-1).tolist())
             risks.extend(output["risk"].cpu().numpy().reshape(-1).tolist())
+            if return_predictions:
+                records.append(
+                    build_prediction_record(
+                        patient_id,
+                        labels,
+                        event_time,
+                        event,
+                        output,
+                    )
+                )
 
-    c_index = concordance_index(event_times, events, risks)
+    prefer_sksurv = True
+    c_result = concordance_index(
+        event_times, events, risks, prefer_sksurv=prefer_sksurv
+    )
+    ci_low, ci_high = bootstrap_c_index(
+        event_times,
+        events,
+        risks,
+        n_bootstraps=0,
+        prefer_sksurv=prefer_sksurv,
+    )
     metrics = {
-        "c_index": c_index,
+        "c_index": c_result.c_index,
+        "c_index_source": c_result.source,
+        "c_index_ci_low": ci_low,
+        "c_index_ci_high": ci_high,
         "event_count": int(np.sum(events)),
         "sample_count": int(len(events)),
     }
+    if return_predictions:
+        return loss_log / max(len(loader), 1), metrics, records
     return loss_log / max(len(loader), 1), metrics
+
+
+def build_prediction_record(patient_id, labels, event_time, event, output):
+    hazards = output["hazards"].detach().cpu().numpy().reshape(-1)
+    survival = output["survival"].detach().cpu().numpy().reshape(-1)
+    record = {
+        "patient_id": patient_id,
+        "time": float(event_time.detach().cpu().numpy().reshape(-1)[0]),
+        "event": int(event.detach().cpu().numpy().reshape(-1)[0]),
+        "label": int(labels.detach().cpu().numpy().reshape(-1)[0]),
+        "risk": float(output["risk"].detach().cpu().numpy().reshape(-1)[0]),
+    }
+    for index, value in enumerate(hazards):
+        record[f"hazard_{index}"] = float(value)
+    for index, value in enumerate(survival):
+        record[f"survival_{index}"] = float(value)
+    return record
 
 
 def init_survival_epoch_log():
@@ -263,9 +332,15 @@ def init_survival_epoch_log():
         "val_loss": [],
         "test_loss": [],
         "val_c_index": [],
+        "val_c_index_source": [],
+        "val_c_index_ci_low": [],
+        "val_c_index_ci_high": [],
         "val_event_count": [],
         "val_sample_count": [],
         "test_c_index": [],
+        "test_c_index_source": [],
+        "test_c_index_ci_low": [],
+        "test_c_index_ci_high": [],
         "test_event_count": [],
         "test_sample_count": [],
     }
@@ -279,8 +354,89 @@ def add_survival_epoch_log(
     log["val_loss"].append(val_loss)
     log["test_loss"].append(test_loss)
     for prefix, metrics in [("val", val_metrics), ("test", test_metrics)]:
-        for key in ["c_index", "event_count", "sample_count"]:
+        for key in [
+            "c_index",
+            "c_index_source",
+            "c_index_ci_low",
+            "c_index_ci_high",
+            "event_count",
+            "sample_count",
+        ]:
             log[f"{prefix}_{key}"].append(None if metrics is None else metrics[key])
+
+
+def evaluate_test_once(
+    args,
+    device,
+    model,
+    test_dataset,
+    test_dataloader,
+    criterion,
+    process_pipeline,
+):
+    if test_dataset.is_None_Dataset():
+        return None, None
+    load_best_or_last_checkpoint(args, model, device)
+    test_loss, test_metrics, records = survival_val_loop(
+        device, model, test_dataloader, criterion, return_predictions=True
+    )
+    test_metrics = add_bootstrap_ci(args, test_metrics, records)
+    export_patient_predictions(args, records, "test")
+    print("Final Test_Metrics:", test_metrics)
+    return test_loss, test_metrics
+
+
+def load_best_or_last_checkpoint(args, model, device):
+    best_paths = sorted(glob.glob(os.path.join(args.Logs.now_log_dir, "Best*.pth")))
+    last_paths = sorted(glob.glob(os.path.join(args.Logs.now_log_dir, "Last*.pth")))
+    checkpoint_path = best_paths[-1] if best_paths else (last_paths[-1] if last_paths else None)
+    if checkpoint_path is None:
+        print("No saved checkpoint found; evaluating current model state.")
+        return
+    state_dict = torch.load(checkpoint_path, map_location=device)
+    model.load_state_dict(state_dict)
+    print(f"Loaded checkpoint for final test: {checkpoint_path}")
+
+
+def add_bootstrap_ci(args, metrics, records):
+    if metrics is None:
+        return metrics
+    n_bootstraps = int(_survival_option(args, "bootstrap_n", 1000))
+    confidence = float(_survival_option(args, "bootstrap_confidence", 0.95))
+    ci_low, ci_high = bootstrap_c_index(
+        [record["time"] for record in records],
+        [record["event"] for record in records],
+        [record["risk"] for record in records],
+        n_bootstraps=n_bootstraps,
+        confidence=confidence,
+        seed=int(args.General.seed),
+    )
+    metrics["c_index_ci_low"] = ci_low
+    metrics["c_index_ci_high"] = ci_high
+    return metrics
+
+
+def export_patient_predictions(args, records, split):
+    if not records:
+        return
+    path = os.path.join(
+        args.Logs.now_log_dir,
+        f"{split}_patient_predictions_seed{args.General.seed}_"
+        f"{args.Dataset.DATASET_NAME}_{args.General.MODEL_NAME}.csv",
+    )
+    pd.DataFrame(records).to_csv(path, index=False)
+    print(f"Patient-level predictions saved: {path}")
+
+
+def attach_final_test_result(log, best_epoch, test_loss, test_metrics):
+    if test_metrics is None or not log["epoch"]:
+        return
+    index = max(min(best_epoch - 1, len(log["epoch"]) - 1), 0)
+    log["test_loss"][index] = test_loss
+    for key, value in test_metrics.items():
+        log_key = "test_" + key
+        if log_key in log:
+            log[log_key][index] = value
 
 
 def save_survival_log(args, epoch_info_log, best_epoch):

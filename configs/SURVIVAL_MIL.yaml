@@ -36,10 +36,15 @@ Model:
         time_column: time_months
         event_column: event
         label_column: survival_label
+        patient_column: patient_id
+        patient_level: true
         representation: auto
+        require_wsi_feature: true
         head_hidden_dim: 0
         head_dropout: 0.0
         backbone_num_outputs: 4
+        bootstrap_n: 1000
+        bootstrap_confidence: 0.95
     optimizer:
         which: adam
         adam_config:

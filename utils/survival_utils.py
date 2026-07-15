@@ -1,4 +1,5 @@
 import math
+from dataclasses import dataclass
 
 import numpy as np
 import torch
@@ -73,8 +74,33 @@ class NLLSurvLoss(nn.Module):
         return loss.mean()
 
 
-def concordance_index(event_times, events, risks):
+@dataclass
+class ConcordanceResult:
+    c_index: float
+    source: str
+
+
+def concordance_index(event_times, events, risks, prefer_sksurv=True):
     """Harrell's C-index with higher risk meaning shorter predicted survival."""
+    event_times = np.asarray(event_times, dtype=float)
+    events = np.asarray(events, dtype=bool)
+    risks = np.asarray(risks, dtype=float)
+    if prefer_sksurv:
+        try:
+            from sksurv.metrics import concordance_index_censored
+
+            value = concordance_index_censored(events, event_times, risks)[0]
+            return ConcordanceResult(float(value), "scikit-survival")
+        except Exception:
+            pass
+
+    return ConcordanceResult(
+        _harrell_concordance_index(event_times, events, risks),
+        "internal",
+    )
+
+
+def _harrell_concordance_index(event_times, events, risks):
     event_times = np.asarray(event_times, dtype=float)
     events = np.asarray(events, dtype=bool)
     risks = np.asarray(risks, dtype=float)
@@ -95,6 +121,45 @@ def concordance_index(event_times, events, risks):
     if comparable == 0:
         return math.nan
     return concordant / comparable
+
+
+def bootstrap_c_index(
+    event_times,
+    events,
+    risks,
+    n_bootstraps=1000,
+    confidence=0.95,
+    seed=2024,
+    prefer_sksurv=True,
+):
+    event_times = np.asarray(event_times, dtype=float)
+    events = np.asarray(events, dtype=bool)
+    risks = np.asarray(risks, dtype=float)
+    if len(event_times) < 2 or int(n_bootstraps or 0) <= 0:
+        return math.nan, math.nan
+
+    rng = np.random.default_rng(int(seed))
+    values = []
+    for _ in range(int(n_bootstraps)):
+        indices = rng.integers(0, len(event_times), size=len(event_times))
+        if len(np.unique(event_times[indices])) < 2 or not np.any(events[indices]):
+            continue
+        value = concordance_index(
+            event_times[indices],
+            events[indices],
+            risks[indices],
+            prefer_sksurv=prefer_sksurv,
+        ).c_index
+        if not math.isnan(value):
+            values.append(value)
+
+    if not values:
+        return math.nan, math.nan
+    alpha = (1.0 - float(confidence)) / 2.0
+    return (
+        float(np.quantile(values, alpha)),
+        float(np.quantile(values, 1.0 - alpha)),
+    )
 
 
 def _compare_risk(shorter_risk, longer_risk):
