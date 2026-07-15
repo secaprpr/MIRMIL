@@ -1993,3 +1993,42 @@
 - KIRC/BLCA prognosis status.
   - Existing prognosis result count: `36` `Best_Log*.csv` files under `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS`.
   - No active `MIRMIL_PROGNOSIS` / `SURVIVAL_MIL` training process was found at this checkpoint.
+
+## 2026-07-16 06:27 CST
+
+- Task: NSCLC missing baseline seed completion launch.
+- Rationale: strict interpretation of the handoff command requires seed `2024/2025/2026` for all listed baselines. Existing non-MAMBA baseline results were complete for seed `2024` only; MIR_MIL and MIR_MIL_MT_V1 already had seed `2024/2025/2026`; MAMBA2D seed `2024` was already active on GPUs `0/1`.
+- R50 non-MAMBA baselines seed `2025/2026` started.
+  - PID/session leader: `125404`.
+  - GPU: `2` via `CUDA_VISIBLE_DEVICES=2`.
+  - Models: `AB_MIL CLAM_SB_MIL CLAM_MB_MIL DS_MIL TRANS_MIL RRT_MIL WIKG_MIL AC_MIL MO_MIL`.
+  - Command: `experiments/run_benchmark.py --split /data15/data15_5/fanhao/datasets/TCGA-NSCLC/metadata/TCGA_NSCLC_LUAD_LUSC_R50_split.csv --dataset-name TCGA_NSCLC_LUAD_LUSC_R50 --num-classes 2 --log-root /data15/data15_5/fanhao/experiments/MIRMIL_NSCLC --models AB_MIL CLAM_SB_MIL CLAM_MB_MIL DS_MIL TRANS_MIL RRT_MIL WIKG_MIL AC_MIL MO_MIL --seeds 2025 2026 --epochs 30 --device 0 --num-workers 4 --in-dim 1024 --max-instances 4096 --feature r50 --protocol nsclc_luad_lusc --split-id r50_v1`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_r50_baselines_seed2025_2026_gpu2_20260716_062640.log`.
+  - Status: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_r50_baselines_seed2025_2026_gpu2_20260716_062640.status`.
+  - Split: `/data15/data15_5/fanhao/datasets/TCGA-NSCLC/metadata/TCGA_NSCLC_LUAD_LUSC_R50_split.csv`.
+  - Launch verification: entered `AB_MIL` seed `2025` training.
+- UNI non-MAMBA baselines seed `2025/2026` started.
+  - PID/session leader: `125405`.
+  - GPU: `3` via `CUDA_VISIBLE_DEVICES=3`.
+  - Models: `AB_MIL CLAM_SB_MIL CLAM_MB_MIL DS_MIL TRANS_MIL RRT_MIL WIKG_MIL AC_MIL MO_MIL`.
+  - Command: `experiments/run_benchmark.py --split /data15/data15_5/fanhao/datasets/TCGA-NSCLC/metadata/TCGA_NSCLC_LUAD_LUSC_UNI_split.csv --dataset-name TCGA_NSCLC_LUAD_LUSC_UNI --num-classes 2 --log-root /data15/data15_5/fanhao/experiments/MIRMIL_NSCLC --models AB_MIL CLAM_SB_MIL CLAM_MB_MIL DS_MIL TRANS_MIL RRT_MIL WIKG_MIL AC_MIL MO_MIL --seeds 2025 2026 --epochs 30 --device 0 --num-workers 4 --in-dim 1024 --max-instances 4096 --feature uni --protocol nsclc_luad_lusc --split-id uni_v1`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_uni_baselines_seed2025_2026_gpu3_20260716_062640.log`.
+  - Status: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_uni_baselines_seed2025_2026_gpu3_20260716_062640.status`.
+  - Split: `/data15/data15_5/fanhao/datasets/TCGA-NSCLC/metadata/TCGA_NSCLC_LUAD_LUSC_UNI_split.csv`.
+  - Launch verification: entered `AB_MIL` seed `2025` training.
+- R50 MAMBA2D seed `2025/2026` started.
+  - PID/session leader: `125406`.
+  - GPU: `5` via `CUDA_VISIBLE_DEVICES=5`.
+  - Command: `experiments/run_benchmark.py --split /data15/data15_5/fanhao/datasets/TCGA-NSCLC/metadata/TCGA_NSCLC_LUAD_LUSC_R50_split.csv --dataset-name TCGA_NSCLC_LUAD_LUSC_R50 --num-classes 2 --log-root /data15/data15_5/fanhao/experiments/MIRMIL_NSCLC --models MAMBA2D_MIL --seeds 2025 2026 --epochs 30 --device 0 --num-workers 4 --in-dim 1024 --max-instances 2048 --feature r50 --protocol nsclc_luad_lusc --split-id r50_v1`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_r50_mamba2d_seed2025_2026_gpu5_20260716_062640.log`.
+  - Status: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_r50_mamba2d_seed2025_2026_gpu5_20260716_062640.status`.
+  - Split: `/data15/data15_5/fanhao/datasets/TCGA-NSCLC/metadata/TCGA_NSCLC_LUAD_LUSC_R50_split.csv`.
+  - Launch verification: entered `MAMBA2D_MIL` seed `2025` training.
+- UNI MAMBA2D seed `2025/2026` started.
+  - PID/session leader: `125407`.
+  - GPU: `6` via `CUDA_VISIBLE_DEVICES=6`.
+  - Command: `experiments/run_benchmark.py --split /data15/data15_5/fanhao/datasets/TCGA-NSCLC/metadata/TCGA_NSCLC_LUAD_LUSC_UNI_split.csv --dataset-name TCGA_NSCLC_LUAD_LUSC_UNI --num-classes 2 --log-root /data15/data15_5/fanhao/experiments/MIRMIL_NSCLC --models MAMBA2D_MIL --seeds 2025 2026 --epochs 30 --device 0 --num-workers 4 --in-dim 1024 --max-instances 2048 --feature uni --protocol nsclc_luad_lusc --split-id uni_v1`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_uni_mamba2d_seed2025_2026_gpu6_20260716_062640.log`.
+  - Status: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_uni_mamba2d_seed2025_2026_gpu6_20260716_062640.status`.
+  - Split: `/data15/data15_5/fanhao/datasets/TCGA-NSCLC/metadata/TCGA_NSCLC_LUAD_LUSC_UNI_split.csv`.
+  - Launch verification: entered `MAMBA2D_MIL` seed `2025` training.
