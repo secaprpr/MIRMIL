@@ -214,3 +214,12 @@
 - Guard marker: `reports/monitors/nsclc_benchmark_started.marker`
 - Behavior: waits until a HuggingFace download `done` marker exists, resumes download if the process exits without `done`, validates all R50/UNI split feature paths, runs dry-runs, then launches NSCLC R50 and UNI benchmarks with the handoff model list and seeds `2024/2025/2026`.
 - Current status at start: `patches=1046 files, r50=893 files, uni=917 files`; download still running, so benchmark not started yet.
+
+## 2026-07-16 02:29 CST
+
+- Task: NSCLC auto-start watcher script update and restart
+- Previous watcher PID: `3664269`
+- New watcher PID/session leader: `3669077`
+- Reason: updated `reports/monitors/nsclc_auto_start.sh` so future automatic writes to `reports/monitors/server_codex_runs.md` are committed and pushed to `origin/main`.
+- Command: `setsid bash -lc 'cd /data15/data15_5/fanhao/projects/MIRMIL; exec reports/monitors/nsclc_auto_start.sh'`
+- Current status at restart: `patches=1046 files, r50=893 files, uni=952 files`; download still running, NSCLC benchmarks not started yet.

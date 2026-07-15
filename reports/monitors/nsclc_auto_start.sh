@@ -29,6 +29,15 @@ append_run_log() {
   } >> "$RUN_LOG"
 }
 
+sync_run_log() {
+  if git diff --quiet -- "$RUN_LOG"; then
+    return 0
+  fi
+  git add "$RUN_LOG"
+  git commit -m "Log NSCLC auto-start progress" >> "$AUTO_LOG" 2>&1 || return 0
+  git push >> "$AUTO_LOG" 2>&1 || true
+}
+
 if ! mkdir "$LOCKDIR" 2>/dev/null; then
   log "another nsclc_auto_start instance is running; exiting"
   exit 0
@@ -55,6 +64,7 @@ resume_download() {
     "- Reason: download process exited without a detected done marker." \
     "- Command: \`snapshot_download(repo_id='Dearcat/CPathPatchFeature', allow_patterns=['nsclc/r50/**','nsclc/uni/**','nsclc/patches/**'])\`" \
     "- Log: \`$resume_log\`"
+  sync_run_log
   DEST="$DEST" nohup "$PY" -u - <<'PY' > "$resume_log" 2>&1 &
 import datetime
 import os
@@ -215,8 +225,10 @@ append_run_log \
   "- R50 split validation: passed" \
   "- UNI split validation: passed" \
   "- Next: launching R50 on GPU0 and UNI on GPU1 when each GPU memory is below 500 MiB."
+sync_run_log
 
 launch_benchmark r50 "$R50_SPLIT" TCGA_NSCLC_LUAD_LUSC_R50 0 r50_v1
 launch_benchmark uni "$UNI_SPLIT" TCGA_NSCLC_LUAD_LUSC_UNI 1 uni_v1
+sync_run_log
 
 log "nsclc auto-start watcher finished launching benchmarks"
