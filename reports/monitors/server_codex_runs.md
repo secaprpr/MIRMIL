@@ -963,3 +963,35 @@
   - Best log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/TCGA_NSCLC_LUAD_LUSC_UNI/RRT_MIL/time_2026-07-16-03-49_TCGA_NSCLC_LUAD_LUSC_UNI_RRT_MIL_seed_2024/Best_Log_seed2024_TCGA_NSCLC_LUAD_LUSC_UNI_RRT_MIL.csv`
   - Best epoch `7`; validation macro_auc `0.9822840556500851`; test acc `0.9575471698113207`, test bacc `0.9577991452991452`, test macro_auc `0.9895833333333333`.
   - UNI benchmark controller remains running and has moved to `WIKG_MIL`, seed `2024`.
+
+## 2026-07-16 04:03 CST
+
+- Task: COADREAD WSI preparation and BLCA UNI OS status update.
+- COADREAD local data audit:
+  - Dataset directory: `/data15/data15_5/fanhao/datasets/TCGA-COADREAD`
+  - Existing content before action: metadata only, about `25M`; no local `.pt`, `.h5`, `.svs`, `.tif`, `.mrxs`, or `.ndpi` feature/WSI files found under the dataset tree.
+  - Dearcat/CPathPatchFeature audit: no `coad`, `coadread`, `colon`, or `rectum` entries; only `README.md` matched `read`, so there are no ready COADREAD R50/UNI features in that HF dataset.
+  - Free space check: `/data15/data15_5` has about `3.2T` available.
+- Created a reproducible GDC public slide manifest for COADREAD Primary Tumor Diagnostic Slide SVS files.
+  - Script added: `experiments/download_gdc_slides.py`
+  - Manifest: `/data15/data15_5/fanhao/datasets/TCGA-COADREAD/manifests/tcga_coadread_primary_tumor_diagnostic_slides.tsv`
+  - Query projects: `TCGA-COAD`, `TCGA-READ`
+  - Files: `624`; total bytes `361840115368`; total size about `336.99 GiB`.
+  - Manifest rows include GDC UUID, filename, md5, size, project_id, case_submitter_id, data_format, experimental_strategy, sample_type, and slide_submitter_id.
+- Launched COADREAD GDC WSI download.
+  - PID/session leader: `4011479`
+  - Child Python PID at checkpoint: `4011484`
+  - Command core: `experiments/download_gdc_slides.py download --manifest /data15/data15_5/fanhao/datasets/TCGA-COADREAD/manifests/tcga_coadread_primary_tumor_diagnostic_slides.tsv --output-dir /data15/data15_5/fanhao/datasets/TCGA-COADREAD/raw_gdc --workers 4 --retries 8 --timeout 600`
+  - Log: `/data15/data15_5/fanhao/datasets/TCGA-COADREAD/logs/download_coadread_gdc_wsi_20260716_040244.log`
+  - Status file: `/data15/data15_5/fanhao/datasets/TCGA-COADREAD/logs/download_coadread_gdc_wsi_20260716_040244.status`
+  - Initial checkpoint: raw download directory has `4` files and about `33M`, consistent with four concurrent in-progress downloads; no final status file yet.
+- Completed: BLCA UNI OS + RRT_MIL isolated retry, status `exit_code=0`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/blca_uni_os_rrt_isolated_seed2024_setsid_20260716_035508.log`
+  - Result from controller log: loaded `Best_EPOCH_9.pth`; final test c-index `0.606516290726817`, CI `[0.5079400996825885, 0.7082144602305283]`, event_count `35`, sample_count `77`.
+- Completed: BLCA UNI OS + MIR_MIL isolated retry, status `exit_code=0`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/blca_uni_os_mir_isolated_seed2024_setsid_20260716_035535.log`
+  - Result from controller log: loaded `Best_EPOCH_12.pth`; final test c-index `0.5795739348370927`, CI `[0.47530779405779405, 0.6828781982716761]`, event_count `35`, sample_count `77`.
+- Still running:
+  - BLCA UNI OS + MAX_MIL isolated run, GPU `3`, PID/session `3990563`; latest observed validation c-index includes `0.5208070617906684`; no status file yet.
+  - NSCLC R50 benchmark controller, active child `TRANS_MIL`, seed `2024`.
+  - NSCLC UNI benchmark controller, active child `WIKG_MIL`, seed `2024`.
