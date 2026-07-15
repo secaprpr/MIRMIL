@@ -1873,10 +1873,41 @@
   - Both runs initialized `DataLoader`, `Model`, and `Train_Val_Test`; neither has emitted epoch 1 metrics yet.
   - GPU usage at checkpoint: GPU0 and GPU1 each use about `8707 MiB`; both show active utilization, so the runs are not failed or idle.
   - Status files still absent.
-- COADREAD GDC WSI download remains active.
+  - COADREAD GDC WSI download remains active.
   - Size-matched complete files: `19 / 624`; partial files: `4`; missing files: `601`.
   - Byte progress estimate: `15.53 GiB / 336.99 GiB`.
   - Latest complete file includes `TCGA-A6-2683-01Z-00-DX1.0dfc5d0a-68f4-45e1-a879-0428313c6dbc.svs`.
+  - Status file still absent.
+
+## 2026-07-16 06:18 CST
+
+- Task: active long-run checkpoint with MAMBA2D epoch-1 verification.
+- NSCLC R50 corrected remaining controller remains active.
+  - Active run: `MIR_MIL_MT_V1`, seed `2026`.
+  - Latest observed progress: epoch `16 / 30`.
+  - Best observed validation macro AUC in this run so far: `0.9289360424381943` at epoch `16`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_r50_remaining_gpu6_tmux_20260716_051530.log`.
+  - Status file still absent.
+- NSCLC MAMBA2D R50 seed `2024` is running and completed epoch `1`.
+  - Epoch 1 cost time: `181.5534770488739` seconds.
+  - Val macro AUC: `0.84846361725553`.
+  - Test acc: `0.7924528301886793`.
+  - Test bacc: `0.7932692307692308`.
+  - Test macro AUC: `0.8938746438746439`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_r50_mamba2d_gpu0_20260716_061346.log`.
+  - Status file still absent.
+- NSCLC MAMBA2D UNI seed `2024` is running and completed epoch `1`.
+  - Epoch 1 cost time: `180.90235996246338` seconds.
+  - Val macro AUC: `0.9785807226503853`.
+  - Test acc: `0.9386792452830188`.
+  - Test bacc: `0.9391025641025641`.
+  - Test macro AUC: `0.9848646723646722`.
+  - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_uni_mamba2d_gpu1_20260716_061346.log`.
+  - Status file still absent.
+- COADREAD GDC WSI download remains active.
+  - Size-matched complete files: `20 / 624`; partial files: `4`; missing files: `600`.
+  - Byte progress estimate: `15.72 GiB / 336.99 GiB`.
+  - Latest complete file includes `TCGA-A6-2684-01Z-00-DX1.be127778-e160-4ae3-9e5a-13a16eae2e7a.svs`.
   - Status file still absent.
 - UNI MAMBA2D seed `2024` started.
   - PID/session leader: `106428`.
