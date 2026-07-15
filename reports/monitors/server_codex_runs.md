@@ -1566,3 +1566,17 @@
     - Active model: `AC_MIL`, seed `2024`.
     - Log shows training reached epoch `23`; no R50 `AC_MIL` `Best_Log` yet.
 - Decision: no UNI recovery needed; continue monitoring R50 controller and COADREAD download.
+
+## 2026-07-16 05:00 CST
+
+- Task: active long-run status check.
+- COADREAD GDC WSI download remains active and continues byte-level progress.
+  - PID/session leader: `4011479`; child Python PID: `4011484`.
+  - Size-matched complete files: `4 / 624`; partial files: `4`; missing files: `616`.
+  - Byte progress estimate: `6.65 GiB / 336.99 GiB`.
+- NSCLC benchmark status:
+  - R50 benchmark controller remains running on GPU6.
+    - Newly observed R50 `AC_MIL` seed `2024` result: best epoch `25`, val macro AUC `0.9406465819237314`, test acc `0.8962264150943396`, test bacc `0.8952991452991452`, test macro AUC `0.9599358974358974`.
+    - Controller advanced to `MO_MIL`, seed `2024`; current active training PID is `4180570`.
+    - R50 `MAMBA2D_MIL` has not started yet at this checkpoint.
+- Decision: no recovery action needed; continue monitoring R50 until `MAMBA2D_MIL` either runs or fails due missing coordinates.
