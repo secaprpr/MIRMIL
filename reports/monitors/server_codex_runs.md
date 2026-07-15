@@ -1941,3 +1941,55 @@
   - Log: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_uni_mamba2d_gpu1_20260716_061346.log`.
   - Status: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_uni_mamba2d_gpu1_20260716_061346.status`.
   - Launch verification: entered `train_mil.py --yaml_path configs/MAMBA2D_MIL.yaml`; status file absent at checkpoint, so still running.
+
+## 2026-07-16 06:25 CST
+
+- Task: active long-run checkpoint and NSCLC R50 corrected-controller completion.
+- NSCLC R50 corrected remaining controller completed successfully.
+  - Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/controller_logs/nsclc_r50_remaining_gpu6_tmux_20260716_051530.status`.
+  - Status: `exit_code=0`.
+  - Final corrected R50 remaining Best_Log count: `6 / 6`.
+  - Final active run was `MIR_MIL_MT_V1`, seed `2026`; the underlying model directory is named `MIR_MIL` because this variant shares the same backbone entry point.
+  - Run directory: `/data15/data15_5/fanhao/experiments/MIRMIL_NSCLC/TCGA_NSCLC_LUAD_LUSC_R50/MIR_MIL/time_2026-07-16-06-10_TCGA_NSCLC_LUAD_LUSC_R50_MIR_MIL_seed_2026`.
+  - Best epoch: `18`.
+  - Val macro AUC: `0.933039735762186`.
+  - Test acc: `0.9009433962264151`.
+  - Test bacc: `0.9006410256410255`.
+  - Test macro AUC: `0.9593126780626781`.
+- NSCLC MAMBA2D R50 seed `2024` remains active.
+  - PID/session leader: `106427`; Python controller PID: `106437`; active `train_mil.py` parent PID: `106440`.
+  - GPU: `0` via `CUDA_VISIBLE_DEVICES=0`.
+  - Epoch 2 completed.
+  - Epoch 2 val macro AUC: `0.8955059553598238`.
+  - Epoch 2 test acc: `0.8679245283018868`.
+  - Epoch 2 test bacc: `0.8671652421652422`.
+  - Epoch 2 test macro AUC: `0.9280181623931624`.
+  - Status file still absent, so the run is still active.
+- NSCLC MAMBA2D UNI seed `2024` remains active.
+  - PID/session leader: `106428`; Python controller PID: `106436`; active `train_mil.py` parent PID: `106441`.
+  - GPU: `1` via `CUDA_VISIBLE_DEVICES=1`.
+  - Epoch 2 completed.
+  - Epoch 2 val macro AUC: `0.975127614853368`.
+  - Epoch 2 test acc: `0.9245283018867925`.
+  - Epoch 2 test bacc: `0.9239672364672364`.
+  - Epoch 2 test macro AUC: `0.9882033475783476`.
+  - Status file still absent, so the run is still active.
+- COADREAD GDC WSI download remains active.
+  - PID/session leader: `4011479`; child Python PID: `4011484`.
+  - Size-matched complete files: `21 / 624`; partial files: `4`; missing files: `599`.
+  - Byte progress estimate: `16.50 GiB / 336.99 GiB`.
+  - Raw download directory size: `17G`.
+  - Latest complete files include:
+    - `TCGA-A6-2680-01Z-00-DX1.7b77c0fb-f51d-4d16-ae77-f7615b1d0b87.svs`
+    - `TCGA-A6-2681-01Z-00-DX1.5e11f090-a19d-4d5c-bcf6-c219b55d02bc.svs`
+    - `TCGA-A6-2682-01Z-00-DX1.be71dca0-b9b7-40be-a6c6-9d053c7886a6.svs`
+    - `TCGA-A6-2683-01Z-00-DX1.0dfc5d0a-68f4-45e1-a879-0428313c6dbc.svs`
+    - `TCGA-A6-2684-01Z-00-DX1.be127778-e160-4ae3-9e5a-13a16eae2e7a.svs`
+  - Status file still absent, so the download has not completed yet.
+- COADREAD feature location recheck.
+  - Search under `/data15/data15_5/fanhao/datasets/TCGA-COADREAD` found no completed `.pt` feature files or `.h5` patch files.
+  - Current usable data under COADREAD is metadata/manifests plus partially downloaded `raw_gdc` SVS.
+  - Consequence: do not start COADREAD patching, feature extraction, or prognosis training until the 624-slide GDC WSI download completes and is size-verified.
+- KIRC/BLCA prognosis status.
+  - Existing prognosis result count: `36` `Best_Log*.csv` files under `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS`.
+  - No active `MIRMIL_PROGNOSIS` / `SURVIVAL_MIL` training process was found at this checkpoint.
