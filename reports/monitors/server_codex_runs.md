@@ -367,3 +367,12 @@
 - Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_r50_pfs_mirmt_seed2024_setsid_20260716_024806.status`
 - Split: `/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_R50_PFS_split.csv`
 - Verification: training initialized successfully on CUDA-visible GPU5; survival cutpoints loaded.
+
+## 2026-07-16 02:52 CST
+
+- Task: Prognosis job status update
+- Completed: KIRC R50 OS + MIR_MIL_MT_V1, status `exit_code=0`; completed 30 epochs, loaded checkpoint `Best_EPOCH_29.pth`, final test c-index `0.6935014548981572` with CI `[0.5811142326159898, 0.791194095672032]`, event_count `25`, sample_count `74`.
+- Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_r50_os_mirmt_seed2024_setsid_20260716_022450.log`
+- Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_r50_os_mirmt_seed2024_setsid_20260716_022450.status`
+- Split: `/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_R50_OS_split.csv`
+- NSCLC status: download PID `3566032`, monitor PID `3651599`, and auto-start PID `3669077` remain alive; no `] done` marker yet; latest counts remain `patches=1046`, `r50=893`, `uni=1040`.
