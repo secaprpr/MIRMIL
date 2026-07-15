@@ -760,3 +760,16 @@
   - Command scope: searched `/data15/data15_5/fanhao/datasets/TCGA-COADREAD` to max depth 6 for `.pt`, `.h5`, `.svs`, `.tif`, `.mrxs`, `.ndpi`.
   - Result: no feature or WSI files found; dataset root remains about `25M`.
   - Consequence: COADREAD prognosis is still blocked by missing feature/WSI paths; no training or extraction was started.
+
+## 2026-07-16 03:41 CST
+
+- Task: active run checkpoint
+- NSCLC benchmark controllers remain running; no new final `Best_Log` files were present at this checkpoint.
+  - R50 current active child remains `CLAM_MB_MIL`, seed `2024`; latest observed progress reached epoch `13` with validation macro AUC around `0.9109198278450606` at epoch `13` and best observed validation macro AUC in this run around `0.9172255029526574`.
+  - UNI current active child remains `TRANS_MIL`, seed `2024`; latest observed progress reached epoch `11` with validation macro AUC around `0.9772795515964369` at epoch `11`.
+- KIRC MAX_MIL jobs remain running; no final status files were observed.
+  - R50 OS + MAX_MIL reached at least epoch `11`, latest observed validation c-index `0.6625874125874126`.
+  - UNI PFS + MAX_MIL reached at least epoch `8`, latest observed validation c-index `0.6958661417322834`; best-so-far remains `0.7431102362204725`.
+  - R50 PFS + MAX_MIL reached at least epoch `8`, latest observed validation c-index `0.4409448818897638`; best-so-far remains `0.5334645669291339`.
+  - UNI OS + MAX_MIL reached at least epoch `7`, latest observed validation c-index `0.7211538461538461`; best-so-far remains `0.7263986013986014`.
+- GPU status check: GPUs `0/1/2/3/5/6` are being used by current monitored jobs; GPUs `4` and `7` remain occupied by other workloads. No additional jobs were launched.
