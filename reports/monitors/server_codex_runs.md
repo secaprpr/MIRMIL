@@ -1037,3 +1037,18 @@
   - NSCLC R50 benchmark controller, active child `TRANS_MIL`, seed `2024`.
   - NSCLC UNI benchmark controller, active child `AC_MIL`, seed `2024`.
   - COADREAD WSI download.
+
+## 2026-07-16 04:09 CST
+
+- Task: active long-run status check.
+- COADREAD GDC WSI download remains active.
+  - PID/session leader: `4011479`; child Python PID: `4011484`.
+  - Raw download directory: `/data15/data15_5/fanhao/datasets/TCGA-COADREAD/raw_gdc`
+  - Current raw size: about `737M`.
+  - Size-matched complete files: `0 / 624`; partial files: `4`; missing files: `620`.
+  - Byte progress estimate: `0.72 GiB / 336.99 GiB`.
+  - The four current partial downloads are the first four manifest slides; each has written `192,937,984` bytes at this checkpoint.
+- NSCLC benchmark status:
+  - R50 benchmark controller remains running; active child is still `TRANS_MIL`, seed `2024`; no new R50 best-log result beyond `DS_MIL` was present at this checkpoint.
+  - UNI benchmark controller remains running; active child is `AC_MIL`, seed `2024`; no new UNI best-log result beyond `WIKG_MIL` was present at this checkpoint.
+- No new GPU job was launched at this checkpoint because COADREAD WSI download has not completed and NSCLC controllers are already advancing their model queues.
