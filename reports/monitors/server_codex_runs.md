@@ -409,3 +409,79 @@
 - Log: `/data15/data15_5/fanhao/datasets/TCGA-NSCLC/CPathPatchFeature/logs/download_nsclc_resume_20260716_025617.log`
 - PID file: `/data15/data15_5/fanhao/datasets/TCGA-NSCLC/CPathPatchFeature/logs/download_nsclc_resume_20260716_025617.pid`
 - Verification: PID `3720292` alive after launch; log contains resume start line.
+
+## 2026-07-16 03:00 CST
+
+- Task: Handoff continuation status check
+- NSCLC: resume download PID/session `3720292` is alive. Current counts: `patches=1046 files, 772M`; `r50=989 files, 45G`; `uni=1040 files, 48G`. Resume log is progressing through HuggingFace snapshot files and does not yet contain the final `] done` marker, so NSCLC benchmarks remain blocked by download completion.
+- GPU snapshot before new prognosis launches: GPUs `0/1/2/5` were idle; GPU `3` was running KIRC R50 OS + AB_MIL; GPUs `4/6/7` remained occupied by other workloads.
+
+- Task: KIRC R50 PFS prognosis, RRT_MIL backbone, seed 2024, `setsid`
+- Status: completed, status file `exit_code=0`.
+- Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_r50_pfs_rrt_seed2024_setsid_20260716_023410.log`
+- Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_r50_pfs_rrt_seed2024_setsid_20260716_023410.status`
+- Split: `/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_R50_PFS_split.csv`
+- Result from controller log: loaded `Best_EPOCH_19.pth`; final test c-index `0.6438356164383562`, CI `[0.5006338659736451, 0.7683694446054603]`, event_count `22`, sample_count `72`.
+
+- Task: KIRC UNI OS prognosis, MIR_MIL_MT_V1 backbone config, seed 2024, `setsid`
+- Status: completed, status file `exit_code=0`.
+- Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_uni_os_mirmt_seed2024_setsid_20260716_024608.log`
+- Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_uni_os_mirmt_seed2024_setsid_20260716_024608.status`
+- Split: `/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_UNI_OS_split.csv`
+- Result from controller log: loaded `Best_EPOCH_5.pth`; final test c-index `0.7866149369544132`, CI `[0.6937703803812092, 0.863822916729381]`, event_count `25`, sample_count `74`.
+
+- Task: KIRC UNI PFS prognosis, MIR_MIL_MT_V1 backbone config, seed 2024, `setsid`
+- Status: completed, status file `exit_code=0`.
+- Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_uni_pfs_mirmt_seed2024_setsid_20260716_024711.log`
+- Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_uni_pfs_mirmt_seed2024_setsid_20260716_024711.status`
+- Split: `/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_UNI_PFS_split.csv`
+- Result from controller log: loaded `Best_EPOCH_5.pth`; final test c-index `0.7837573385518591`, CI `[0.6915862994631139, 0.8762020651661364]`, event_count `22`, sample_count `72`.
+
+- Task: KIRC R50 PFS prognosis, MIR_MIL_MT_V1 backbone config, seed 2024, `setsid`
+- Status: completed, status file `exit_code=0`.
+- Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_r50_pfs_mirmt_seed2024_setsid_20260716_024806.log`
+- Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_r50_pfs_mirmt_seed2024_setsid_20260716_024806.status`
+- Split: `/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_R50_PFS_split.csv`
+- Result from controller log: loaded `Best_EPOCH_3.pth`; final test c-index `0.6115459882583171`, CI `[0.4947975085671284, 0.7167438833940656]`, event_count `22`, sample_count `72`.
+
+- Task: KIRC R50 OS prognosis, AB_MIL backbone, seed 2024, `setsid`
+- Status: still running; no status file yet.
+- PID/session leader: `3713137`
+- GPU: `3` via `CUDA_VISIBLE_DEVICES=3`
+- Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_r50_os_ab_seed2024_setsid_20260716_025225.log`
+- Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_r50_os_ab_seed2024_setsid_20260716_025225.status`
+- Split: `/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_R50_OS_split.csv`
+- Recent validation: reached epoch 8 with val c-index `0.5`.
+
+- Task: KIRC R50 PFS prognosis, AB_MIL backbone, seed 2024, `setsid`
+- PID/session leader: `3726147`
+- GPU: `0` via `CUDA_VISIBLE_DEVICES=0`
+- Command: `setsid bash -lc 'cd /data15/data15_5/fanhao/projects/MIRMIL; CUDA_VISIBLE_DEVICES=0 /data15/data15_5/fanhao/miniforge3/envs/mirmil/bin/python -u train_mil.py --yaml_path configs/SURVIVAL_MIL.yaml --options General.seed=2024 General.num_epochs=30 General.device=0 General.num_workers=2 General.best_model_metric=c_index General.earlystop.use=true General.earlystop.patience=8 General.earlystop.metric=c_index Dataset.DATASET_NAME=TCGA_KIRC_R50_PFS Dataset.dataset_csv_path=/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_R50_PFS_split.csv Logs.log_root_dir=/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS Model.backbone=AB_MIL Model.backbone_config=configs/AB_MIL.yaml Model.in_dim=1024 Model.max_instances=4096 Model.survival.num_bins=4 Model.survival.time_column=time_months Model.survival.event_column=event Model.survival.patient_column=patient_id Model.survival.patient_level=true; code=$?; echo exit_code=$code > /data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_r50_pfs_ab_seed2024_setsid_20260716_030040.status; exit $code'`
+- Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_r50_pfs_ab_seed2024_setsid_20260716_030040.log`
+- Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_r50_pfs_ab_seed2024_setsid_20260716_030040.status`
+- Split: `/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_R50_PFS_split.csv`
+- Verification: training initialized, survival cutpoints loaded.
+
+- Task: KIRC UNI OS prognosis, AB_MIL backbone, seed 2024, `setsid`
+- PID/session leader: `3726148`
+- GPU: `1` via `CUDA_VISIBLE_DEVICES=1`
+- Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_uni_os_ab_seed2024_setsid_20260716_030040.log`
+- Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_uni_os_ab_seed2024_setsid_20260716_030040.status`
+- Split: `/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_UNI_OS_split.csv`
+- Verification: training initialized, survival cutpoints loaded.
+
+- Task: KIRC UNI PFS prognosis, AB_MIL backbone, seed 2024, `setsid`
+- PID/session leader: `3726149`
+- GPU: `2` via `CUDA_VISIBLE_DEVICES=2`
+- Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_uni_pfs_ab_seed2024_setsid_20260716_030040.log`
+- Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_uni_pfs_ab_seed2024_setsid_20260716_030040.status`
+- Split: `/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_UNI_PFS_split.csv`
+- Verification: training initialized, survival cutpoints loaded.
+
+- Task: KIRC R50 OS prognosis, MEAN_MIL backbone, seed 2024, `setsid`
+- PID/session leader: `3726150`
+- GPU: `5` via `CUDA_VISIBLE_DEVICES=5`
+- Log: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_r50_os_mean_seed2024_setsid_20260716_030040.log`
+- Status file: `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS/controller_logs/kirc_r50_os_mean_seed2024_setsid_20260716_030040.status`
+- Split: `/data15/data15_5/fanhao/datasets/TCGA-RCC/metadata/TCGA-KIRC-PROGNOSIS/TCGA_KIRC_PROGNOSIS_R50_OS_split.csv`
+- Verification: training initialized, survival cutpoints loaded.
