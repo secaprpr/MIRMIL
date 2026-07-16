@@ -19,6 +19,93 @@
 
 不要执行 `git reset --hard`、`git checkout -- .` 或删除用户未说明的文件。远端项目目录可能有大量未跟踪实验脚本和临时文件，视为用户资产。
 
+## 服务器 Codex 最新同步状态（2026-07-16 10:03 CST）
+
+本节是服务器端 Codex 对当前真实运行状态的同步。上面的“固定上下文”和后续命令保留为操作手册，但以本节为最新进度依据。
+
+### Codex 执行端区分
+
+- Mac Codex：原始交接文件写入方；不在服务器上运行实验任务。
+- Server Codex：当前执行端，工作目录 `/data15/data15_5/fanhao/projects/MIRMIL`。
+- Git 状态：`main...origin/main` 已同步到远端；最新已推送提交为 `5094d7a Log NSCLC R50 AB seed2025 result`。大量未跟踪文件仍保留为用户资产，未清理。
+- 长任务记录：仍以 `reports/monitors/server_codex_runs.md` 为详细流水账；本文件只记录当前可执行交接状态。
+
+### 设备 / GPU 状态
+
+当前 `nvidia-smi` 显示：
+
+| GPU | 当前状态 | 说明 |
+| --- | --- | --- |
+| 0 | 空闲，约 `3 MiB` | 此前用于 NSCLC R50 MAMBA2D seed2024，已完成 |
+| 1 | 空闲，约 `3 MiB` | 此前用于 NSCLC UNI MAMBA2D seed2024，已完成 |
+| 2 | 空闲，约 `3 MiB` | 此前用于 NSCLC R50 非 MAMBA baseline seed2025/2026，已完成 |
+| 3 | 空闲，约 `3 MiB` | 此前用于 NSCLC UNI 非 MAMBA baseline seed2025/2026，已完成 |
+| 4 | 占用，约 `8927 MiB` | 其他 `python` 进程占用；不要抢占，除非重新确认归属 |
+| 5 | 空闲，约 `3 MiB` | 此前用于 NSCLC R50 MAMBA2D seed2025/2026，已完成 |
+| 6 | 空闲，约 `3 MiB` | 此前用于 NSCLC UNI MAMBA2D seed2025/2026，已完成 |
+| 7 | 占用，约 `9279 MiB` | 其他 `python` 进程占用；不要抢占，除非重新确认归属 |
+
+当前没有活跃的 NSCLC `run_benchmark.py` / `train_mil.py` 进程。当前活跃的本目标长任务只有 COADREAD GDC WSI 下载。
+
+### NSCLC 当前状态
+
+NSCLC 下载已完成，R50/UNI split 和特征路径已可用。此前 MAMBA2D 因 `.pt` 特征不含坐标失败，已通过非破坏性 `h5_files` symlink companion 修复：
+
+- `/data15/data15_5/fanhao/datasets/TCGA-NSCLC/CPathPatchFeature/nsclc/r50/h5_files`
+- `/data15/data15_5/fanhao/datasets/TCGA-NSCLC/CPathPatchFeature/nsclc/uni/h5_files`
+
+NSCLC R50 和 UNI 的所有 baseline / MIR_MIL / MIR_MIL_MT_V1 / MAMBA2D 结果已经补齐：
+
+- R50：`36` 个 `Best_Log*.csv`
+- UNI：`36` 个 `Best_Log*.csv`
+- 完成范围：
+  - 非 MAMBA baselines：`AB_MIL, CLAM_SB_MIL, CLAM_MB_MIL, DS_MIL, TRANS_MIL, RRT_MIL, WIKG_MIL, AC_MIL, MO_MIL`，seeds `2024/2025/2026`
+  - `MAMBA2D_MIL`，seeds `2024/2025/2026`
+  - `MIR_MIL`，seeds `2024/2025/2026`
+  - `MIR_MIL_MT_V1`，seeds `2024/2025/2026`；注意日志目录名仍是 `MIR_MIL`，需要结合 controller/config 上下文区分
+- 相关 controller status：
+  - `nsclc_r50_baselines_seed2025_2026_gpu2_20260716_062640.status`: `exit_code=0`
+  - `nsclc_uni_baselines_seed2025_2026_gpu3_20260716_062640.status`: `exit_code=0`
+  - `nsclc_r50_mamba2d_gpu0_20260716_061346.status`: `exit_code=0`
+  - `nsclc_uni_mamba2d_gpu1_20260716_061346.status`: `exit_code=0`
+  - `nsclc_r50_mamba2d_seed2025_2026_gpu5_20260716_062640.status`: `exit_code=0`
+  - `nsclc_uni_mamba2d_seed2025_2026_gpu6_20260716_062640.status`: `exit_code=0`
+  - `nsclc_r50_remaining_gpu6_tmux_20260716_051530.status`: `exit_code=0`
+  - `nsclc_uni_remaining_gpu1_20260716_042417.status`: `exit_code=0`
+- 老的 `nsclc_r50_gpu6_manual_20260716_030702.status` 和 `nsclc_uni_gpu0_manual_20260716_030702.status` 是 MAMBA2D 坐标修复前失败的历史 controller，保留为失败诊断记录，不代表当前缺口。
+
+NSCLC 当前不需要再启动补跑。后续只需要按需汇总结果表。
+
+### COADREAD 当前状态
+
+COADREAD 没有找到可直接使用的 `.pt` 特征或 `.h5` patch，因此当前走 GDC WSI 下载路线。下载仍在进行，不能开始 patch / R50 特征 / UNI 特征 / COADREAD 预后。
+
+- 活跃下载 PID/session leader：`4011479`
+- Python child PID：`4011484`
+- Manifest：`/data15/data15_5/fanhao/datasets/TCGA-COADREAD/manifests/tcga_coadread_primary_tumor_diagnostic_slides.tsv`
+- Raw WSI 目录：`/data15/data15_5/fanhao/datasets/TCGA-COADREAD/raw_gdc`
+- 下载日志：`/data15/data15_5/fanhao/datasets/TCGA-COADREAD/logs/download_coadread_gdc_wsi_20260716_040244.log`
+- Status 文件：`/data15/data15_5/fanhao/datasets/TCGA-COADREAD/logs/download_coadread_gdc_wsi_20260716_040244.status`；当前尚不存在，说明下载未完成
+- 当前进度：`117 / 624` 完整，`4` 个 partial，`503` 个 missing
+- 字节进度估计：`41.23 GiB / 336.99 GiB`
+- raw 目录占用：约 `42G`
+
+下一步必须等 COADREAD 下载完成并 size-match 验证 `624 / 624` 后，再执行：
+
+1. `experiments/prepare_tcga_coadread_pipeline.py --require-wsi`
+2. `feature_extractor/create_h5_patches.py`
+3. R50/UNI 特征提取
+4. 生成 COADREAD prognosis feature split
+5. 启动 COADREAD 预后任务
+
+### KIRC / BLCA 预后状态
+
+KIRC/BLCA 预后任务已完成/audited：
+
+- `/data15/data15_5/fanhao/experiments/MIRMIL_PROGNOSIS` 下已有 `36` 个 prognosis `Best_Log*.csv`
+- 当前无活跃 `MIRMIL_PROGNOSIS` / `SURVIVAL_MIL` 训练进程
+- 不要重复启动 KIRC/BLCA 预后，除非用户要求补实验
+
 ## 总目标
 
 1. 每半小时轮询 NSCLC 下载，等待 r50、uni、patches 全部下载完。
