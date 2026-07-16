@@ -42,6 +42,7 @@ class SplitSurvivalDataset(Dataset):
         max_instances: int = 0,
         sampling: str = "random",
         seed: int = 1,
+        cache_dir: Path | None = None,
     ):
         self.csv_path = Path(csv_path)
         self.split = split
@@ -49,6 +50,7 @@ class SplitSurvivalDataset(Dataset):
         self.max_instances = int(max_instances or 0)
         self.sampling = str(sampling)
         self.seed = int(seed)
+        self.cache_dir = Path(cache_dir) if cache_dir else None
         rows = pd.read_csv(self.csv_path)
         if "Split" not in rows.columns:
             raise KeyError(f"{self.csv_path} must contain a Split column")
@@ -115,11 +117,45 @@ class SplitSurvivalDataset(Dataset):
         idx.sort()
         return features[torch.from_numpy(idx).long()]
 
+    @staticmethod
+    def _torch_load(path: str | Path) -> torch.Tensor:
+        try:
+            return torch.load(path, map_location="cpu", weights_only=True)
+        except TypeError:
+            return torch.load(path, map_location="cpu")
+
+    def _cache_path(self, index: int, row: pd.Series) -> Path | None:
+        if self.cache_dir is None or self.max_instances <= 0:
+            return None
+        key = "|".join(
+            [
+                str(self.csv_path.resolve()),
+                self.split,
+                str(index),
+                str(row["ID"]),
+                str(row["WSI"]),
+                self.sampling,
+                str(self.seed),
+                str(self.max_instances),
+            ]
+        )
+        digest = hashlib.sha256(key.encode("utf-8")).hexdigest()
+        return self.cache_dir / self.csv_path.stem / self.split / f"{digest}.pt"
+
     def __getitem__(self, index: int):
         row = self.rows.iloc[index]
-        tensors = [torch.load(p) for p in str(row["WSI"]).split(";")]
-        features = torch.cat(tensors, dim=0).float()
-        features = self._sample_instances(features, index)
+        cache_path = self._cache_path(index, row)
+        if cache_path is not None and cache_path.exists():
+            features = self._torch_load(cache_path).float()
+        else:
+            tensors = [self._torch_load(p) for p in str(row["WSI"]).split(";")]
+            features = torch.cat(tensors, dim=0).float()
+            features = self._sample_instances(features, index)
+            if cache_path is not None:
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
+                tmp_path = cache_path.with_suffix(f".{os.getpid()}.tmp")
+                torch.save(features, tmp_path)
+                os.replace(tmp_path, cache_path)
         censorship = 1 if int(row["Status"]) == 0 else 0
         return (
             str(row["ID"]),
@@ -239,6 +275,7 @@ def main() -> None:
     parser.add_argument("--n-features", type=int, default=1024)
     parser.add_argument("--epeg-k", type=int, default=15)
     parser.add_argument("--crmsa-k", type=int, default=3)
+    parser.add_argument("--cache-dir", type=Path, default=None)
     args = parser.parse_args()
 
     random.seed(args.seed)
@@ -254,6 +291,7 @@ def main() -> None:
         max_instances=args.max_instances,
         sampling="random",
         seed=args.seed,
+        cache_dir=args.cache_dir,
     )
     val_ds = SplitSurvivalDataset(
         args.csv,
@@ -263,6 +301,7 @@ def main() -> None:
         max_instances=args.max_instances,
         sampling="uniform",
         seed=args.seed,
+        cache_dir=args.cache_dir,
     )
     test_ds = SplitSurvivalDataset(
         args.csv,
@@ -272,6 +311,7 @@ def main() -> None:
         max_instances=args.max_instances,
         sampling="uniform",
         seed=args.seed,
+        cache_dir=args.cache_dir,
     )
     loaders = {
         "train": DataLoader(train_ds, batch_size=1, shuffle=True, num_workers=args.num_workers, collate_fn=collate_single),
@@ -296,6 +336,7 @@ def main() -> None:
         "num_bins": args.num_bins,
         "lr": args.lr,
         "weight_decay": args.weight_decay,
+        "cache_dir": str(args.cache_dir) if args.cache_dir else None,
         "train_cases": len(train_ds),
         "val_cases": len(val_ds),
         "test_cases": len(test_ds),

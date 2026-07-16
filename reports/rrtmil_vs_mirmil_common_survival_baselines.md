@@ -1,8 +1,8 @@
 # RRT-MIL reference vs MIRMIL survival common baselines
 
-Date: 2026-07-16
+Date: 2026-07-17
 
-This report compares only common survival baselines between the external RRT-MIL reference implementation and the MIRMIL integrated survival module.
+This report compares shared survival baselines between the external RRT-MIL reference implementation and the MIRMIL integrated survival module.
 
 ## Common baseline mapping
 
@@ -12,100 +12,52 @@ This report compares only common survival baselines between the external RRT-MIL
 | `MAX_MIL` | `MaxMIL` |
 | `AB_MIL` | `AttMIL` |
 
-Not compared here:
+Not compared as common baselines: `MIR_MIL` (our method), MIRMIL `RRT_MIL` wrapper, and RRT reference `TransMIL`/`RRTMIL` because the full-bag official run OOMed on the available 11GB GPUs.
 
-- `MIR_MIL`: our method, not a common baseline.
-- `RRT_MIL`: implementation names overlap, but the MIRMIL wrapper and the RRT-MIL reference implementation are not yet protocol-matched.
-- RRT-MIL `TransMIL` / `RRTMIL`: currently OOM on KIRC full bags with 11GB GPUs.
+## Protocols
 
-## Protocol caveat
+- RRT official: original fixed random 5-fold CV, full bags, best epoch by fold validation C-index.
+- RRT matched split: RRT reference model/loss, forced onto the MIRMIL train/val/test split, `max_instances=4096`, validation/test deterministic sampling, train deterministic sampled cache, best epoch by validation C-index.
+- MIRMIL integrated: existing MIRMIL survival runs, `max_instances=4096`, train/val/test split, best run selected by validation C-index within the same common baseline.
 
-The current comparison is diagnostic, not a final fair paper comparison.
+Machine-readable tables:
 
-RRT-MIL reference:
+- `reports/rrtmil_official_5fold_survival_results.tsv`
+- `reports/rrtmil_matched_split_survival_results.tsv`
+- `reports/rrtmil_vs_mirmil_common_survival_baselines.tsv`
 
-- Uses its original fixed random 5-fold CV.
-- Uses full patient bags from the `.pt` features.
-- Selects best epoch per fold by validation C-index.
+## Matched-split result summary
 
-MIRMIL integrated survival:
+| Dataset | Feature | Endpoint | Baseline | MIRMIL val | MIRMIL test | RRT matched val | RRT matched test | Δ val | Δ test | RRT official CV |
+|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|
+| BLCA | R50 | OS | AttMIL | 0.5366 | 0.5282 | 0.5054 | 0.5711 | -0.0312 | 0.0429 | 0.5782 |
+| BLCA | R50 | OS | MaxMIL | 0.5177 | 0.5789 | 0.5810 | 0.4433 | 0.0633 | -0.1356 | 0.5565 |
+| BLCA | R50 | OS | MeanMIL | NA | NA | 0.5343 | 0.5836 | NA | NA | 0.6002 |
+| BLCA | UNI | OS | AttMIL | 0.5372 | 0.6322 | 0.5022 | 0.4815 | -0.0350 | -0.1507 | 0.6281 |
+| BLCA | UNI | OS | MaxMIL | 0.5504 | 0.6579 | 0.5684 | 0.6218 | 0.0179 | -0.0361 | 0.5897 |
+| BLCA | UNI | OS | MeanMIL | 0.5145 | 0.6322 | 0.5501 | 0.5805 | 0.0356 | -0.0517 | 0.6129 |
+| KIRC | R50 | OS | AttMIL | 0.7019 | 0.7604 | 0.6087 | 0.6693 | -0.0932 | -0.0912 | 0.6263 |
+| KIRC | R50 | OS | MaxMIL | 0.6626 | 0.5844 | 0.6445 | 0.5781 | -0.0180 | -0.0063 | 0.6399 |
+| KIRC | R50 | OS | MeanMIL | 0.5411 | 0.6043 | 0.5555 | 0.6188 | 0.0144 | 0.0145 | 0.6303 |
+| KIRC | R50 | PFS | AttMIL | 0.6821 | 0.6252 | 0.6929 | 0.6461 | 0.0108 | 0.0209 | 0.6652 |
+| KIRC | R50 | PFS | MaxMIL | 0.5335 | 0.5391 | 0.7136 | 0.6129 | 0.1801 | 0.0738 | 0.6548 |
+| KIRC | R50 | PFS | MeanMIL | 0.6988 | 0.6204 | 0.6998 | 0.6256 | 0.0010 | 0.0053 | 0.6634 |
+| KIRC | UNI | OS | AttMIL | 0.7063 | 0.7759 | 0.7153 | 0.7692 | 0.0090 | -0.0068 | 0.7416 |
+| KIRC | UNI | OS | MaxMIL | 0.7264 | 0.7187 | 0.6646 | 0.6877 | -0.0618 | -0.0310 | 0.6850 |
+| KIRC | UNI | OS | MeanMIL | 0.6722 | 0.7478 | 0.6847 | 0.7546 | 0.0125 | 0.0068 | 0.7275 |
+| KIRC | UNI | PFS | AttMIL | 0.7411 | 0.7387 | 0.7421 | 0.7537 | 0.0010 | 0.0149 | 0.7746 |
+| KIRC | UNI | PFS | MaxMIL | 0.7431 | 0.7290 | 0.7028 | 0.6618 | -0.0404 | -0.0672 | 0.7177 |
+| KIRC | UNI | PFS | MeanMIL | 0.7530 | 0.7554 | 0.7274 | 0.7370 | -0.0256 | -0.0183 | 0.7679 |
 
-- Uses our prepared train/val/test split.
-- Uses `max_instances=4096` random sampling in the saved configs.
-- Reports validation-selected test C-index on the held-out test split.
+## Interpretation
 
-Therefore, the correct interpretation is:
+- Matched-split comparison has 17 rows with both MIRMIL and RRT matched values.
+- RRT matched validation is higher in 10/17 shared-baseline rows.
+- RRT matched test-at-best-val is higher in 7/17 shared-baseline rows.
+- Therefore the earlier observation that the external RRT-MIL project is generally stronger is true for its official 5-fold/full-bag protocol, but under the MIRMIL split and 4096-instance protocol the gap is mixed rather than uniformly positive.
+- Large BLCA disagreement remains unstable because BLCA has fewer events per split and the held-out test C-index moves strongly with validation epoch selection.
+- KIRC UNI remains the clearest setting where the RRT reference baselines are strong and consistent.
 
-- RRT reference higher than MIRMIL suggests our integrated survival protocol/code may be weaker.
-- It does not yet prove a bug until the RRT reference models are run under the exact MIRMIL split and sampling protocol, or MIRMIL baselines are run under RRT's official 5-fold protocol.
+## OOM note
 
-## Current partial/full comparison
-
-Machine-readable table:
-
-`reports/rrtmil_vs_mirmil_common_survival_baselines.tsv`
-
-Available RRT reference folds are parsed from completed `model_best_*.pth.tar` checkpoints. A row is complete when `rrt_folds_done=5`.
-
-| Dataset | Feature | Endpoint | Baseline | MIRMIL val | MIRMIL test | RRT folds | RRT CV mean | RRT - MIRMIL val | RRT - MIRMIL test |
-|---|---|---:|---|---:|---:|---:|---:|---:|---:|
-| KIRC | R50 | OS | MeanMIL | 0.5411 | 0.6043 | 5 | 0.6286 | +0.0875 | +0.0243 |
-| KIRC | R50 | PFS | MeanMIL | 0.6988 | 0.6204 | 5 | 0.6625 | -0.0363 | +0.0421 |
-| KIRC | UNI | OS | AttMIL | 0.7063 | 0.7759 | 5 | 0.7416 | +0.0353 | -0.0344 |
-| KIRC | UNI | OS | MaxMIL | 0.7264 | 0.7187 | 5 | 0.6850 | -0.0414 | -0.0337 |
-| KIRC | UNI | OS | MeanMIL | 0.6722 | 0.7478 | 5 | 0.7275 | +0.0553 | -0.0203 |
-| KIRC | UNI | PFS | MeanMIL | 0.7530 | 0.7554 | 5 | 0.7679 | +0.0149 | +0.0125 |
-
-BLCA and several KIRC Max/Att rows are still pending in the running RRT baseline queue.
-
-## Early interpretation
-
-The user's observation is partly correct but should be stated carefully.
-
-Against MIRMIL validation C-index, RRT reference is often higher for shared baselines:
-
-- KIRC R50 OS MeanMIL: +0.0875
-- KIRC UNI OS MeanMIL: +0.0553
-- KIRC UNI OS AttMIL: +0.0353
-- KIRC UNI PFS MeanMIL: +0.0149
-
-Against MIRMIL held-out test C-index, the picture is mixed:
-
-- RRT is slightly higher for KIRC R50 OS MeanMIL and KIRC UNI PFS MeanMIL.
-- RRT is lower than MIRMIL for KIRC UNI OS MeanMIL / AttMIL / MaxMIL.
-
-This mixed result is expected because the protocols differ. RRT's value is 5-fold validation CV mean; MIRMIL's value is a single official held-out test split.
-
-## Main technical gap found so far
-
-The biggest protocol difference is not the model head alone:
-
-1. RRT reference uses full bags.
-2. MIRMIL integrated survival uses `max_instances=4096`.
-3. RRT reference uses 5-fold CV over all patients.
-4. MIRMIL uses one fixed train/val/test split.
-5. RRT reference internally discretizes survival bins from all rows in the input CSV.
-6. MIRMIL fits cutpoints on the train split and reuses them for val/test.
-
-These differences are large enough to explain substantial metric movement.
-
-## Immediate next step
-
-For a defensible conclusion, run one matched-split diagnostic first:
-
-- Dataset: KIRC UNI OS
-- Baselines: `MeanMIL`, `MaxMIL`, `AttMIL`
-- Protocol: RRT reference models, but forced to use MIRMIL train/val/test split
-- Feature handling: unchanged
-- Bag handling: first full bag if memory allows; then `max_instances=4096` if we want exact MIRMIL protocol parity
-
-If RRT matched-split baselines remain consistently higher than the MIRMIL integrated baselines, then we should treat the RRT-MIL survival implementation as the reference and audit the MIRMIL survival module for:
-
-- risk sign convention;
-- censorship/event encoding;
-- discrete label cutpoints;
-- validation/test metric computation;
-- random sampling at train/val/test;
-- survival head representation extraction;
-- scheduler/optimizer differences.
-
+RRT reference `TransMIL` and `RRTMIL` official full-bag runs failed with CUDA OOM on the available 11GB GPUs. They should be rerun only under sampled matched-split protocol or on larger-memory GPUs if full-bag official comparability is required.

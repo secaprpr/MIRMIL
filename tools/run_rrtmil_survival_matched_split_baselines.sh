@@ -18,6 +18,8 @@ MAX_PARALLEL="${#GPUS[@]}"
 EPOCHS="${EPOCHS:-20}"
 SEED="${SEED:-1}"
 MAX_INSTANCES="${MAX_INSTANCES:-4096}"
+NUM_WORKERS="${NUM_WORKERS:-0}"
+CACHE_DIR="${CACHE_DIR:-${EXP_ROOT}/matched_split_cache}"
 MODELS_CSV="${MODELS_CSV:-MeanMIL,MaxMIL,AttMIL,TransMIL,RRTMIL}"
 DATASETS_CSV="${DATASETS_CSV:-KIRC_UNI_OS,KIRC_R50_OS,KIRC_UNI_PFS,KIRC_R50_PFS,BLCA_UNI_OS,BLCA_R50_OS}"
 IFS=',' read -r -a MODELS <<< "${MODELS_CSV}"
@@ -51,6 +53,7 @@ run_task() {
     echo "[epochs] ${EPOCHS}"
     echo "[seed] ${SEED}"
     echo "[max_instances] ${MAX_INSTANCES}"
+    echo "[cache_dir] ${CACHE_DIR}"
     CUDA_VISIBLE_DEVICES="${gpu}" PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}" \
       "${PY}" "${ROOT}/tools/run_rrtmil_survival_matched_split.py" \
         --csv "${csv}" \
@@ -59,8 +62,9 @@ run_task() {
         --epochs "${EPOCHS}" \
         --seed "${SEED}" \
         --device cuda:0 \
-        --num-workers 2 \
-        --max-instances "${MAX_INSTANCES}"
+        --num-workers "${NUM_WORKERS}" \
+        --max-instances "${MAX_INSTANCES}" \
+        --cache-dir "${CACHE_DIR}"
     code=$?
     if [[ "${code}" == "0" ]]; then
       status="completed"
