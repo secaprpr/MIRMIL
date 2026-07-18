@@ -92,16 +92,44 @@ class ExperimentUtilsTest(unittest.TestCase):
         )
         ab_command = build_command(args, "AB_MIL", 2024)
         mir_command = build_command(args, "MIR_MIL", 2024)
+        mir_v2_command = build_command(args, "MIR_MIL_V2", 2024)
+        mir_v21_command = build_command(args, "MIR_MIL_V21", 2024)
         ot_command = build_command(args, "OT_MIL_CLASS_MASS", 2024)
         mo_command = build_command(args, "MO_MIL", 2024)
 
-        for command in (ab_command, mir_command, ot_command, mo_command):
+        for command in (
+            ab_command,
+            mir_command,
+            mir_v2_command,
+            mir_v21_command,
+            ot_command,
+            mo_command,
+        ):
             self.assertIn("Model.max_instances=4096", command)
             self.assertIn("Model.sampling=random", command)
             self.assertIn("General.num_epochs=30", command)
             self.assertIn("Dataset.balanced_sampler.use=true", command)
         self.assertIn("General.experiment_variant=AB_MIL", ab_command)
         self.assertIn("General.experiment_variant=MIR_MIL", mir_command)
+        self.assertIn(
+            "General.experiment_variant=MIR_MIL_V2", mir_v2_command
+        )
+        self.assertIn(
+            "Model.pairwise_boundary_weight=0.1", mir_v2_command
+        )
+        self.assertIn(
+            "Model.pairwise_boundary_loss_weight=0.1", mir_v2_command
+        )
+        self.assertIn(
+            "Model.pairwise_boundary_weight=0.0", mir_v21_command
+        )
+        self.assertIn(
+            "Model.pairwise_boundary_loss_weight=0.05", mir_v21_command
+        )
+        self.assertIn(
+            "Model.pairwise_boundary_alignment_weight=0.05",
+            mir_v21_command,
+        )
         self.assertIn(
             "General.experiment_variant=OT_MIL_CLASS_MASS", ot_command
         )

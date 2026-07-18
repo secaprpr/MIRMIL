@@ -190,6 +190,109 @@ def test_residual_class_moment_readout_backpropagates_through_residual():
     assert head.residual_scale.grad is not None
 
 
+def test_pairwise_boundary_readout_is_permutation_invariant_and_zero_sum():
+    model = make_model(
+        pairwise_boundary_weight=0.1,
+        pairwise_boundary_query_dim=5,
+        pairwise_boundary_value_dim=7,
+        pairwise_boundary_rank_dim=4,
+    )
+    bag = torch.randn(17, 6, dtype=torch.double)
+    permutation = torch.randperm(bag.shape[0])
+
+    first = model(bag)
+    second = model(bag[permutation])
+
+    torch.testing.assert_close(
+        first["logits"], second["logits"], atol=1e-10, rtol=1e-10
+    )
+    torch.testing.assert_close(
+        first["pairwise_boundary_logits"],
+        second["pairwise_boundary_logits"],
+        atol=1e-10,
+        rtol=1e-10,
+    )
+    encoded = model.state_from_weighted_points(bag)[1]
+    class_residual, _ = model.pairwise_boundary_head(encoded)
+    torch.testing.assert_close(
+        class_residual.sum(dim=1), torch.zeros(1, dtype=torch.double)
+    )
+
+
+def test_pairwise_boundary_loss_supervises_pairs_and_backpropagates():
+    model = make_model(
+        pairwise_boundary_weight=0.1,
+        pairwise_boundary_loss_weight=0.2,
+        pairwise_boundary_query_dim=5,
+        pairwise_boundary_value_dim=7,
+        pairwise_boundary_rank_dim=4,
+    ).float()
+    bag = torch.randn(1, 19, 6)
+    label = torch.tensor([1])
+
+    output, losses = model.compute_loss(
+        bag, label, torch.nn.CrossEntropyLoss()
+    )
+    losses["loss"].backward()
+
+    assert output["pairwise_boundary_logits"].shape == (1, 3)
+    assert losses["pairwise_boundary_loss"].item() > 0
+    head = model.pairwise_boundary_head
+    assert head.class_queries.grad is not None
+    assert torch.isfinite(head.class_queries.grad).all()
+    assert head.class_factors.grad is not None
+    assert torch.isfinite(head.class_factors.grad).all()
+
+
+def test_pairwise_boundary_loss_ignores_pairs_without_target_class():
+    model = make_model(pairwise_boundary_loss_weight=0.2).float()
+    pairwise_logits = torch.tensor([[0.2, 100.0, -0.4]])
+    label = torch.tensor([1])
+
+    loss = model.pairwise_boundary_loss(pairwise_logits, label)
+    expected = F.binary_cross_entropy_with_logits(
+        torch.tensor([0.2, -0.4]), torch.tensor([1.0, 0.0])
+    )
+
+    torch.testing.assert_close(loss, expected)
+
+
+def test_pairwise_boundary_alignment_updates_only_deployed_logits():
+    model = make_model(
+        pairwise_boundary_loss_weight=0.2,
+        pairwise_boundary_alignment_weight=0.3,
+    ).float()
+    logits = torch.tensor([[0.1, -0.2, 0.4]], requires_grad=True)
+    pairwise_logits = torch.tensor(
+        [[1.0, -1.0, 0.7]], requires_grad=True
+    )
+    label = torch.tensor([1])
+
+    loss = model.pairwise_boundary_alignment_loss(
+        logits, pairwise_logits, label
+    )
+    loss.backward()
+
+    assert loss.item() > 0
+    assert logits.grad is not None
+    assert torch.isfinite(logits.grad).all()
+    assert pairwise_logits.grad is None
+
+
+def test_pairwise_boundary_alignment_has_no_inference_residual():
+    base = make_model()
+    aligned = make_model(
+        pairwise_boundary_loss_weight=0.2,
+        pairwise_boundary_alignment_weight=0.3,
+    )
+    aligned.load_state_dict(base.state_dict(), strict=False)
+    bag = torch.randn(17, 6, dtype=torch.double)
+
+    torch.testing.assert_close(
+        aligned(bag)["logits"], base(bag)["logits"]
+    )
+
+
 def test_logit_calibration_defaults_to_identity():
     base = make_model()
     calibrated = make_model(use_logit_calibration=True)
@@ -309,6 +412,7 @@ def test_boundary_heads_are_absent_by_default():
 
     assert "ovr_logits" not in output
     assert "adjacent_logits" not in output
+    assert "pairwise_boundary_logits" not in output
 
 
 def test_ovr_boundary_head_adds_supervised_loss_and_gradients():
@@ -1147,6 +1251,27 @@ def test_residual_class_moment_options_are_constructed_from_yaml():
             model.residual_class_moment_token_head.residual_scale, 0.025
         ),
     )
+
+
+def test_pairwise_boundary_options_are_constructed_from_yaml():
+    args = read_yaml("configs/MIR_MIL.yaml")
+    args.General.num_classes = 3
+    args.Model.pairwise_boundary_weight = 0.1
+    args.Model.pairwise_boundary_loss_weight = 0.2
+    args.Model.pairwise_boundary_alignment_weight = 0.3
+    args.Model.pairwise_boundary_query_dim = 17
+    args.Model.pairwise_boundary_value_dim = 19
+    args.Model.pairwise_boundary_rank_dim = 11
+
+    model = get_model_from_yaml(args)
+
+    assert model.pairwise_boundary_weight == 0.1
+    assert model.pairwise_boundary_loss_weight == 0.2
+    assert model.pairwise_boundary_alignment_weight == 0.3
+    assert model.pairwise_boundary_head is not None
+    assert model.pairwise_boundary_head.query_dim == 17
+    assert model.pairwise_boundary_head.value_dim == 19
+    assert model.pairwise_boundary_head.rank_dim == 11
 
 
 def test_logit_calibration_options_are_constructed_from_yaml():

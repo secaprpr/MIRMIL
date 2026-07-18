@@ -259,6 +259,60 @@ def save_log(args,epoch_info_log,best_epoch,process_pipeline):
 def get_model_from_yaml(yaml_args):
     model_name = yaml_args.General.MODEL_NAME
     if model_name == 'MIR_MIL':
+        prediction_mode = _model_option(
+            yaml_args, "prediction_mode", "legacy"
+        )
+        if prediction_mode == "boundary_risk":
+            from modules.MIR_MIL.boundary_risk_mil import BoundaryRiskMIL
+            return BoundaryRiskMIL(
+                in_dim=yaml_args.Model.in_dim,
+                num_classes=yaml_args.General.num_classes,
+                hidden_dim=yaml_args.Model.hidden_dim,
+                dropout=yaml_args.Model.dropout,
+                act=yaml_args.Model.act,
+                aggregation=_model_option(
+                    yaml_args, "risk_aggregation", "entropic"
+                ),
+                risk_temperature=_model_option(
+                    yaml_args, "risk_temperature", 0.5
+                ),
+                decision_temperature=_model_option(
+                    yaml_args, "risk_decision_temperature", 1.0
+                ),
+                score_bound=_model_option(
+                    yaml_args, "boundary_score_bound", 3.0
+                ),
+            )
+        if prediction_mode == "ordinal_risk":
+            from modules.MIR_MIL.ordinal_risk_mil import OrdinalRiskMIL
+            return OrdinalRiskMIL(
+                in_dim=yaml_args.Model.in_dim,
+                num_classes=yaml_args.General.num_classes,
+                hidden_dim=yaml_args.Model.hidden_dim,
+                dropout=yaml_args.Model.dropout,
+                act=yaml_args.Model.act,
+                aggregation=_model_option(
+                    yaml_args, "risk_aggregation", "entropic"
+                ),
+                prediction_head=_model_option(
+                    yaml_args, "risk_prediction_head", "ordinal"
+                ),
+                risk_temperature=_model_option(
+                    yaml_args, "risk_temperature", 0.5
+                ),
+                learnable_risk_temperature=_model_option(
+                    yaml_args, "learnable_risk_temperature", False
+                ),
+                decision_temperature=_model_option(
+                    yaml_args, "risk_decision_temperature", 1.0
+                ),
+                initial_threshold_center=_model_option(
+                    yaml_args, "initial_threshold_center", 0.0
+                ),
+                initial_threshold_gap=_model_option(
+                    yaml_args, "initial_threshold_gap", 1.0
+                ),
+            )
         from modules.MIR_MIL.mir_mil import MIR_MIL
         return MIR_MIL(
             in_dim=yaml_args.Model.in_dim,
@@ -434,6 +488,30 @@ def get_model_from_yaml(yaml_args):
             ),
             moment_token_dropout=_model_option(
                 yaml_args, "moment_token_dropout", 0.0
+            ),
+            pairwise_boundary_weight=_model_option(
+                yaml_args, "pairwise_boundary_weight", 0.0
+            ),
+            pairwise_boundary_loss_weight=_model_option(
+                yaml_args, "pairwise_boundary_loss_weight", 0.0
+            ),
+            pairwise_boundary_alignment_weight=_model_option(
+                yaml_args, "pairwise_boundary_alignment_weight", 0.0
+            ),
+            pairwise_boundary_query_dim=_model_option(
+                yaml_args, "pairwise_boundary_query_dim", 64
+            ),
+            pairwise_boundary_value_dim=_model_option(
+                yaml_args, "pairwise_boundary_value_dim", 128
+            ),
+            pairwise_boundary_rank_dim=_model_option(
+                yaml_args, "pairwise_boundary_rank_dim", 64
+            ),
+            pairwise_boundary_temperature=_model_option(
+                yaml_args, "pairwise_boundary_temperature", 1.0
+            ),
+            pairwise_boundary_dropout=_model_option(
+                yaml_args, "pairwise_boundary_dropout", 0.0
             ),
             tail_token_weight=_model_option(
                 yaml_args, "tail_token_weight", 0.0

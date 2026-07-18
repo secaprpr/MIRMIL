@@ -218,6 +218,8 @@ def mir_train_loop(
     totals = {
         "loss": 0.0,
         "classification_loss": 0.0,
+        "pairwise_boundary_loss": 0.0,
+        "pairwise_boundary_alignment_loss": 0.0,
         "distillation_loss": 0.0,
         "logit_margin_loss": 0.0,
         "ordinal_loss": 0.0,

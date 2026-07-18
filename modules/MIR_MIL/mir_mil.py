@@ -783,6 +783,111 @@ class MomentMultiTokenAttentionReadout(nn.Module):
         return self.output(token_statistics.flatten().unsqueeze(0))
 
 
+class PairwiseBoundaryMomentReadout(nn.Module):
+    """Antisymmetric moment readout for generic pairwise class boundaries."""
+
+    def __init__(
+        self,
+        hidden_dim,
+        num_classes,
+        query_dim,
+        value_dim,
+        rank_dim,
+        temperature,
+        dropout,
+    ):
+        super().__init__()
+        if num_classes < 2:
+            raise ValueError("pairwise boundary readout requires classes >= 2")
+        if min(query_dim, value_dim, rank_dim) <= 0:
+            raise ValueError(
+                "pairwise query_dim, value_dim, and rank_dim must be positive"
+            )
+        if temperature <= 0:
+            raise ValueError("pairwise boundary temperature must be positive")
+        self.num_classes = int(num_classes)
+        self.query_dim = int(query_dim)
+        self.value_dim = int(value_dim)
+        self.rank_dim = int(rank_dim)
+        self.temperature = float(temperature)
+        pairs = torch.tensor(
+            [
+                (left, right)
+                for left in range(self.num_classes)
+                for right in range(left + 1, self.num_classes)
+            ],
+            dtype=torch.long,
+        )
+        incidence = torch.zeros(
+            pairs.shape[0], self.num_classes, dtype=torch.float32
+        )
+        incidence[torch.arange(pairs.shape[0]), pairs[:, 0]] = -1.0
+        incidence[torch.arange(pairs.shape[0]), pairs[:, 1]] = 1.0
+        self.register_buffer("pair_indices", pairs, persistent=False)
+        self.register_buffer("incidence", incidence, persistent=False)
+        self.key = nn.Linear(hidden_dim, self.query_dim)
+        self.value = nn.Linear(hidden_dim, self.value_dim)
+        self.class_queries = nn.Parameter(
+            torch.empty(self.num_classes, self.query_dim)
+        )
+        self.summary_projector = nn.Sequential(
+            nn.LayerNorm(4 * self.value_dim),
+            nn.Dropout(dropout),
+            nn.Linear(4 * self.value_dim, self.rank_dim),
+            nn.GELU(),
+        )
+        self.class_factors = nn.Parameter(
+            torch.empty(self.num_classes, self.rank_dim)
+        )
+        self.class_bias = nn.Parameter(torch.zeros(self.num_classes))
+        with torch.random.fork_rng(devices=[]):
+            nn.init.normal_(
+                self.class_queries, std=1.0 / math.sqrt(self.query_dim)
+            )
+            nn.init.normal_(
+                self.class_factors, std=1.0 / math.sqrt(self.rank_dim)
+            )
+
+    @staticmethod
+    def _moments(attention, values):
+        mean = torch.einsum("np,nv->pv", attention, values)
+        second = torch.einsum("np,nv->pv", attention, values.square())
+        variance = (second - mean.square()).clamp_min(0.0)
+        return mean, variance
+
+    def forward(self, encoded):
+        keys = self.key(encoded)
+        values = self.value(encoded)
+        left = self.pair_indices[:, 0]
+        right = self.pair_indices[:, 1]
+        directions = F.normalize(
+            self.class_queries[right] - self.class_queries[left],
+            dim=1,
+            eps=1e-12,
+        )
+        scale = math.sqrt(self.query_dim) * self.temperature
+        scores = torch.einsum("nd,pd->np", keys, directions) / scale
+        right_attention = torch.softmax(scores, dim=0)
+        left_attention = torch.softmax(-scores, dim=0)
+        left_mean, left_variance = self._moments(left_attention, values)
+        right_mean, right_variance = self._moments(right_attention, values)
+        summaries = torch.cat(
+            (left_mean, left_variance, right_mean, right_variance), dim=1
+        )
+        evidence = self.summary_projector(summaries)
+        factor_differences = (
+            self.class_factors[right] - self.class_factors[left]
+        )
+        pair_logits = (evidence * factor_differences).sum(dim=1)
+        pair_logits = (
+            pair_logits + self.class_bias[right] - self.class_bias[left]
+        )
+        incidence = self.incidence.to(dtype=pair_logits.dtype)
+        class_logits = pair_logits.unsqueeze(0) @ incidence
+        class_logits = class_logits / max(self.num_classes - 1, 1)
+        return class_logits, pair_logits.unsqueeze(0)
+
+
 class TailTokenAttentionReadout(nn.Module):
     """Multi-token readout that preserves both average and tail evidence.
 
@@ -1814,6 +1919,14 @@ class MIR_MIL(nn.Module):
         moment_token_readout_dim=128,
         moment_token_temperature=1.0,
         moment_token_dropout=0.0,
+        pairwise_boundary_weight=0.0,
+        pairwise_boundary_loss_weight=0.0,
+        pairwise_boundary_alignment_weight=0.0,
+        pairwise_boundary_query_dim=64,
+        pairwise_boundary_value_dim=128,
+        pairwise_boundary_rank_dim=64,
+        pairwise_boundary_temperature=1.0,
+        pairwise_boundary_dropout=0.0,
         tail_token_weight=0.0,
         tail_token_count=4,
         tail_token_dim=64,
@@ -2103,6 +2216,44 @@ class MIR_MIL(nn.Module):
             raise ValueError("moment_token_temperature must be positive")
         if not 0 <= self.moment_token_dropout < 1:
             raise ValueError("moment_token_dropout must be in [0, 1)")
+        self.pairwise_boundary_weight = float(pairwise_boundary_weight)
+        self.pairwise_boundary_loss_weight = float(
+            pairwise_boundary_loss_weight
+        )
+        self.pairwise_boundary_alignment_weight = float(
+            pairwise_boundary_alignment_weight
+        )
+        self.pairwise_boundary_query_dim = int(
+            pairwise_boundary_query_dim
+        )
+        self.pairwise_boundary_value_dim = int(
+            pairwise_boundary_value_dim
+        )
+        self.pairwise_boundary_rank_dim = int(pairwise_boundary_rank_dim)
+        self.pairwise_boundary_temperature = float(
+            pairwise_boundary_temperature
+        )
+        self.pairwise_boundary_dropout = float(pairwise_boundary_dropout)
+        if (
+            self.pairwise_boundary_weight < 0
+            or self.pairwise_boundary_loss_weight < 0
+            or self.pairwise_boundary_alignment_weight < 0
+        ):
+            raise ValueError("pairwise boundary weights must be non-negative")
+        if min(
+            self.pairwise_boundary_query_dim,
+            self.pairwise_boundary_value_dim,
+            self.pairwise_boundary_rank_dim,
+        ) <= 0:
+            raise ValueError("pairwise boundary dimensions must be positive")
+        if self.pairwise_boundary_temperature <= 0:
+            raise ValueError(
+                "pairwise_boundary_temperature must be positive"
+            )
+        if not 0 <= self.pairwise_boundary_dropout < 1:
+            raise ValueError(
+                "pairwise_boundary_dropout must be in [0, 1)"
+            )
         self.tail_token_weight = float(tail_token_weight)
         self.tail_token_count = int(tail_token_count)
         self.tail_token_dim = int(tail_token_dim)
@@ -2801,6 +2952,7 @@ class MIR_MIL(nn.Module):
         self.multi_token_head = None
         self.multi_token_gate = None
         self.moment_token_head = None
+        self.pairwise_boundary_head = None
         self.tail_token_head = None
         self.class_moment_token_head = None
         self.residual_class_moment_token_head = None
@@ -2893,6 +3045,20 @@ class MIR_MIL(nn.Module):
                 readout_dim=self.moment_token_readout_dim,
                 temperature=self.moment_token_temperature,
                 dropout=self.moment_token_dropout,
+            )
+        if (
+            self.pairwise_boundary_weight > 0
+            or self.pairwise_boundary_loss_weight > 0
+            or self.pairwise_boundary_alignment_weight > 0
+        ):
+            self.pairwise_boundary_head = PairwiseBoundaryMomentReadout(
+                hidden_dim=hidden_dim,
+                num_classes=self.num_classes,
+                query_dim=self.pairwise_boundary_query_dim,
+                value_dim=self.pairwise_boundary_value_dim,
+                rank_dim=self.pairwise_boundary_rank_dim,
+                temperature=self.pairwise_boundary_temperature,
+                dropout=self.pairwise_boundary_dropout,
             )
         if self.tail_token_weight > 0:
             self.tail_token_head = TailTokenAttentionReadout(
@@ -3262,6 +3428,14 @@ class MIR_MIL(nn.Module):
         if self.moment_token_head is not None:
             logits = logits + (
                 self.moment_token_weight * self.moment_token_head(encoded)
+            )
+        if self.pairwise_boundary_head is not None:
+            pairwise_class_logits, pairwise_logits = (
+                self.pairwise_boundary_head(encoded)
+            )
+            auxiliary["pairwise_boundary_logits"] = pairwise_logits
+            logits = logits + (
+                self.pairwise_boundary_weight * pairwise_class_logits
             )
         if self.tail_token_head is not None:
             logits = logits + (
@@ -3919,6 +4093,60 @@ class MIR_MIL(nn.Module):
         violations = self.logit_margin + negative_logits - true_logits
         return F.relu(violations).square().mean()
 
+    def pairwise_boundary_loss(self, pairwise_logits, label):
+        if pairwise_logits is None:
+            return None
+        if self.pairwise_boundary_loss_weight <= 0:
+            return pairwise_logits.new_zeros(())
+        pairs = self.pairwise_boundary_head.pair_indices
+        left = pairs[:, 0].unsqueeze(0)
+        right = pairs[:, 1].unsqueeze(0)
+        labels = label.long().view(-1, 1)
+        relevant = (labels == left) | (labels == right)
+        targets = (labels == right).to(dtype=pairwise_logits.dtype)
+        return F.binary_cross_entropy_with_logits(
+            pairwise_logits[relevant], targets[relevant]
+        )
+
+    def pairwise_boundary_alignment_loss(
+        self, logits, pairwise_logits, label
+    ):
+        """Distill reliable moment boundaries into the deployed logits.
+
+        The moment readout acts as privileged training-time evidence.  Only
+        correctly oriented, better-than-random pair estimates contribute, and
+        their confidence weights are detached.  Consequently the deployed
+        prediction path remains the original single MIR-MIL head.
+        """
+        if pairwise_logits is None:
+            return None
+        if self.pairwise_boundary_alignment_weight <= 0:
+            return pairwise_logits.new_zeros(())
+        pairs = self.pairwise_boundary_head.pair_indices
+        left = pairs[:, 0].unsqueeze(0)
+        right = pairs[:, 1].unsqueeze(0)
+        labels = label.long().view(-1, 1)
+        relevant = (labels == left) | (labels == right)
+        hard_targets = (labels == right).to(dtype=pairwise_logits.dtype)
+        teacher_probabilities = pairwise_logits.detach().sigmoid()
+        correct_probabilities = torch.where(
+            hard_targets.bool(),
+            teacher_probabilities,
+            1.0 - teacher_probabilities,
+        )
+        confidence = (2.0 * correct_probabilities - 1.0).clamp_min(0.0)
+        main_pair_logits = logits[:, right.squeeze(0)] - logits[
+            :, left.squeeze(0)
+        ]
+        losses = F.binary_cross_entropy_with_logits(
+            main_pair_logits,
+            teacher_probabilities,
+            reduction="none",
+        )
+        weights = confidence * relevant.to(dtype=confidence.dtype)
+        weight_sum = weights.sum()
+        return (losses * weights).sum() / weight_sum.clamp_min(1e-12)
+
     def ovr_boundary_loss(self, ovr_logits, label):
         if self.ovr_loss_weight <= 0 or ovr_logits is None:
             return ovr_logits.new_zeros(()) if ovr_logits is not None else None
@@ -4000,6 +4228,19 @@ class MIR_MIL(nn.Module):
             output["logits"], label
         )
         ordinal_loss = self.ordinal_cdf_loss(output["logits"], label)
+        pairwise_boundary_loss = bag.new_zeros(())
+        pairwise_boundary_alignment_loss = bag.new_zeros(())
+        if "pairwise_boundary_logits" in output:
+            pairwise_boundary_loss = self.pairwise_boundary_loss(
+                output["pairwise_boundary_logits"], label
+            )
+            pairwise_boundary_alignment_loss = (
+                self.pairwise_boundary_alignment_loss(
+                    output["logits"],
+                    output["pairwise_boundary_logits"],
+                    label,
+                )
+            )
         ovr_loss = bag.new_zeros(())
         if "ovr_logits" in output:
             ovr_loss = self.ovr_boundary_loss(output["ovr_logits"], label)
@@ -4058,6 +4299,9 @@ class MIR_MIL(nn.Module):
             prototype_loss = self.potential.regularization()
         loss = (
             classification_loss
+            + self.pairwise_boundary_loss_weight * pairwise_boundary_loss
+            + self.pairwise_boundary_alignment_weight
+            * pairwise_boundary_alignment_loss
             + self.logit_margin_loss_weight * logit_margin_loss
             + self.ordinal_weight * ordinal_loss
             + self.ovr_loss_weight * ovr_loss
@@ -4074,6 +4318,10 @@ class MIR_MIL(nn.Module):
         return output, {
             "loss": loss,
             "classification_loss": classification_loss,
+            "pairwise_boundary_loss": pairwise_boundary_loss,
+            "pairwise_boundary_alignment_loss": (
+                pairwise_boundary_alignment_loss
+            ),
             "logit_margin_loss": logit_margin_loss,
             "ordinal_loss": ordinal_loss,
             "ovr_loss": ovr_loss,

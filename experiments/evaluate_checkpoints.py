@@ -194,7 +194,11 @@ def evaluate_run(
         "bacc": metrics["bacc"],
         "macro_f1": metrics["macro_f1"],
     }
-    focus_class_index = int(getattr(args.Model, "focus_class_index", 1))
+    focus_class_index = int(
+        args.Model.focus_class_index
+        if "focus_class_index" in args.Model
+        else 1
+    )
     binary_targets = [
         int(label == focus_class_index) for label in labels
     ]

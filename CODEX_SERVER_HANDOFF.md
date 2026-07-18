@@ -1,5 +1,9 @@
 # 双 Codex 服务器交接文件
 
+> 2026-07-18 更新：当前 MIR-MIL 架构优化任务请优先阅读
+> `CODEX_MIRMIL_UNIFIED_HANDOFF.md`。本文后续内容主要是早期服务器数据准备、
+> baseline 和预后任务记录，其中部分运行状态已经过时。
+
 本文档给即将在服务器上运行的 Codex CLI 使用。当前写入方在 Mac，本文件落点应为：
 
 `/data15/data15_5/fanhao/projects/MIRMIL/CODEX_SERVER_HANDOFF.md`

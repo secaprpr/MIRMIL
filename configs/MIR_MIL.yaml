@@ -110,6 +110,14 @@ Model:
     moment_token_readout_dim: 128
     moment_token_temperature: 1.0
     moment_token_dropout: 0.0
+    pairwise_boundary_weight: 0.0
+    pairwise_boundary_loss_weight: 0.0
+    pairwise_boundary_alignment_weight: 0.0
+    pairwise_boundary_query_dim: 64
+    pairwise_boundary_value_dim: 128
+    pairwise_boundary_rank_dim: 64
+    pairwise_boundary_temperature: 1.0
+    pairwise_boundary_dropout: 0.0
     tail_token_weight: 0.0
     tail_token_count: 4
     tail_token_dim: 64

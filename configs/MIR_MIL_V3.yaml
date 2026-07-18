@@ -1,0 +1,109 @@
+General:
+    MODEL_NAME: MIR_MIL
+    experiment_variant: MIR_MIL_V3_RISK_ORDINAL
+    seed: 2024
+    num_classes: 3
+    num_epochs: 30
+    device: 0
+    num_workers: 4
+    best_model_metric: macro_auc
+    earlystop:
+        use: True
+        patience: 8
+        metric: macro_auc
+        min_delta: 0.0
+
+Dataset:
+    DATASET_NAME: your_dataset_name
+    dataset_csv_path: /path/to/your/dataset.csv
+    balanced_sampler:
+        use: True
+        replacement: True
+        strategy: weighted
+        samples_per_class: 0
+
+Logs:
+    log_root_dir: /path/to/your/log_dir
+
+Tracking:
+    wandb:
+        enabled: False
+        project: MIR-MIL
+        entity: null
+        mode: online
+        tags: [stage:v3-hypothesis-test]
+        feature: unknown
+        variant: MIR_MIL_V3_RISK_ORDINAL
+        protocol: architecture-ablation
+        split_id: unspecified
+        comparison_id: null
+        source_manifest_sha256: null
+        feature_manifest_sha256: null
+        coordinate_manifest_sha256: null
+        encoder_checkpoint_sha256: null
+        upload_checkpoints: False
+        max_artifact_mb: 50
+
+Model:
+    prediction_mode: ordinal_risk
+    in_dim: 1024
+    coordinate_dim: 0
+    hidden_dim: 256
+    dropout: 0.1
+    act: gelu
+    max_instances: 4096
+    sampling: random
+    risk_aggregation: entropic
+    risk_prediction_head: ordinal
+    risk_temperature: 0.5
+    learnable_risk_temperature: False
+    risk_decision_temperature: 1.0
+    initial_threshold_center: 0.0
+    initial_threshold_gap: 1.0
+    boundary_score_bound: 3.0
+    focus_class_index: 1
+
+    criterion: ce
+    label_smoothing: 0.0
+    class_weighting: none
+    class_weight_beta: 0.999
+    focal_gamma: 0.0
+    distillation_prob_path: null
+    distillation_weight: 0.0
+    distillation_temperature: 1.0
+    distillation_min_entropy: 0.0
+    distillation_max_confidence: 1.0
+    distillation_entropy_weight_power: 0.0
+    ranking_memory_weight: 0.0
+    ranking_memory_margin: 0.1
+    ranking_memory_momentum: 0.9
+    ranking_memory_max_pairs: 64
+    ranking_memory_class_indices: null
+    ranking_memory_hard_mining: False
+    ranking_memory_warmup_epochs: 0
+    ranking_memory_score_type: logit
+    ema_decay: 0.0
+    swa_start_epoch: 0
+    optimizer:
+        which: adamw
+        adam_config:
+            lr: 0.0002
+            weight_decay: 0.00001
+        adamw_config:
+            lr: 0.0002
+            weight_decay: 0.00001
+    scheduler:
+        warmup: 2
+        which: cosine
+        step_config:
+            step_size: 10
+            gamma: 0.5
+        multi_step_config:
+            milestones: [20, 35]
+            gamma: 0.5
+        exponential_config:
+            gamma: 0.95
+        cosine_config:
+            T_max: 28
+            eta_min: 0.000001
+            clamp_after_t_max: False
